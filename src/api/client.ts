@@ -1,0 +1,129 @@
+// Клиент api-contract v1. Ключи JSON соответствуют полям Go-структур.
+
+export type TaskStatus =
+  | 'queued' | 'ready' | 'running' | 'testing' | 'review'
+  | 'fixing' | 'blocked' | 'failed' | 'done' | 'cancelled'
+
+export interface Criterion { text: string; ok: boolean }
+
+export interface Task {
+  ID: string; EpicID: string; Num: number
+  Title: string; Description: string
+  Status: TaskStatus; Estimate: number
+  Capabilities: string[]; Criteria: Criterion[] | null; Deps: string[] | null
+  AttemptUsed: number; AttemptLimit: number
+  RunnerID: string; Branch: string; PRURL: string; BlockReason: string
+  Created: string; Updated: string
+}
+
+export interface Epic {
+  ID: string; ProjectID: string; Title: string; Goal: string
+  Status: 'planned' | 'running' | 'paused' | 'done' | 'archived'
+  Created: string
+}
+
+export interface EpicView extends Epic {
+  tasks: Task[] | null
+  progress: { pct: number; weighted: boolean }
+}
+
+export interface Project { ID: string; Name: string; Repo: string; Created: string }
+
+export interface Runner {
+  ID: string; Agent: string; Model: string; Host: string
+  Capabilities: string[]; Status: string; TaskID: string
+  CtxPct: number; Draining: boolean; LastSeen: string
+}
+
+export interface Event {
+  ID: number; TS: string; ActorKind: string; ActorID: string
+  Type: string; ProjectID: string; EpicID: string; TaskID: string; Text: string
+}
+
+export interface Attention {
+  ID: string; ProjectID: string; TaskID: string
+  Reason: string; Message: string; Status: string; ClaimedBy: string; Created: string
+}
+
+const USER = 'vladimir' // dev-идентичность; аутентификация — вне не-целей среза
+
+async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const resp = await fetch(`/api/v1${path}`, {
+    method,
+    headers: { 'X-Rivet-User': USER, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  const data = await resp.json().catch(() => null)
+  if (!resp.ok) {
+    const msg = (data as { error?: { message?: string } })?.error?.message ?? resp.statusText
+    throw new Error(msg)
+  }
+  return data as T
+}
+
+export const api = {
+  projects: () => req<Project[] | null>('GET', '/projects'),
+  createProject: (name: string, repo: string) => req<Project>('POST', '/projects', { name, repo }),
+  epics: (projectId: string) => req<Epic[] | null>('GET', `/projects/${projectId}/epics`),
+  createEpic: (projectId: string, title: string, goal: string) =>
+    req<Epic>('POST', `/projects/${projectId}/epics`, { title, goal }),
+  decompose: (epicId: string) => req<{ tasks: Task[] }>('POST', `/epics/${epicId}/decompose`),
+  epic: (id: string) => req<EpicView>('GET', `/epics/${id}`),
+  epicAction: (id: string, action: 'start' | 'pause' | 'resume' | 'archive') =>
+    req('POST', `/epics/${id}/${action}`),
+  addTask: (epicId: string, t: { title: string; description: string; criteria: string[]; deps: string[] }) =>
+    req<Task>('POST', `/epics/${epicId}/tasks`, t),
+  task: (id: string) => req<{ task: Task; timeline: Event[] | null }>('GET', `/tasks/${id}`),
+  answer: (id: string, text: string) => req('POST', `/tasks/${id}/answer`, { text }),
+  retry: (id: string) => req('POST', `/tasks/${id}/retry`),
+  cancel: (id: string) => req('POST', `/tasks/${id}/cancel`),
+  merge: (id: string) => req('POST', `/tasks/${id}/merge`),
+  attention: () => req<Attention[] | null>('GET', '/attention'),
+  claim: (id: string) => req('POST', `/attention/${id}/claim`),
+  runners: () => req<Runner[] | null>('GET', '/runners'),
+  drain: (id: string, on: boolean) => req('POST', `/runners/${id}/${on ? 'drain' : 'undrain'}`),
+  events: (q: { project?: string; epic?: string; task?: string; cursor?: number }) => {
+    const p = new URLSearchParams()
+    if (q.project) p.set('project', q.project)
+    if (q.epic) p.set('epic', q.epic)
+    if (q.task) p.set('task', q.task)
+    if (q.cursor) p.set('cursor', String(q.cursor))
+    return req<Event[] | null>('GET', `/events?${p}`)
+  },
+  usage: (groupBy: string) =>
+    req<{ key: string; tokens_in: number; tokens_out: number; cost_usd: number; duration_s: number }[] | null>(
+      'GET', `/usage?group_by=${groupBy}`),
+}
+
+export interface LogChunk { task_id: string; data: string }
+
+// SSE проекта: реплей событий по Last-Event-ID делает сам EventSource,
+// session.log приходит только live (по контракту).
+export function subscribe(projectId: string, handlers: {
+  onEvent: (e: Event) => void
+  onLog?: (c: LogChunk) => void
+  onState?: (connected: boolean) => void
+}): () => void {
+  const es = new EventSource(`/api/v1/stream?project=${projectId}`)
+  const evTypes = ['task.status', 'epic.progress', 'session.step', 'task.assign', 'task.review_passed', 'epic.decomposed', 'attention.new', 'attention.claimed']
+  for (const t of evTypes) {
+    es.addEventListener(t, (m) => handlers.onEvent(JSON.parse((m as MessageEvent).data)))
+  }
+  es.addEventListener('session.log', (m) => handlers.onLog?.(JSON.parse((m as MessageEvent).data)))
+  es.onopen = () => handlers.onState?.(true)
+  es.onerror = () => handlers.onState?.(false)
+  return () => es.close()
+}
+
+export const stLabel: Record<string, string> = {
+  queued: 'QUEUED', ready: 'READY', running: 'RUNNING', testing: 'TESTING',
+  review: 'REVIEW', fixing: 'FIXING', blocked: 'BLOCKED', failed: 'FAILED',
+  done: 'DONE', cancelled: 'CANCELLED', idle: 'IDLE', offline: 'OFFLINE',
+  planned: 'PLANNED', paused: 'PAUSED', archived: 'ARCHIVED',
+}
+
+export const stColor: Record<string, string> = {
+  queued: '--c-queue', ready: '--c-ready', running: '--c-run', testing: '--c-test',
+  review: '--c-review', fixing: '--c-fix', blocked: '--c-block', failed: '--c-fail',
+  done: '--c-done', cancelled: '--c-cancel',
+}
