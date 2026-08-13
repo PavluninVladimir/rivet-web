@@ -85,7 +85,7 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
           </button>
         </header>
         <div id="viewport">
-          {route.view === 'projects' && <ProjectsView />}
+          {route.view === 'projects' && <ProjectsView isAdmin={user.Admin} />}
           {route.view === 'epics' && <EpicsView />}
           {route.view === 'epic' && <EpicDashboard key={route.id} epicId={route.id} taskId={route.taskId} />}
           {route.view === 'tasks' && <TasksView />}

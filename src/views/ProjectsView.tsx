@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
+import { Environments } from '../components/Environments'
 import { useStore } from '../store'
 
-export function ProjectsView() {
-  const { projects, refreshProjects, setProjectId, nav } = useStore()
+export function ProjectsView({ isAdmin }: { isAdmin: boolean }) {
+  const { projects, projectId, refreshProjects, setProjectId, nav } = useStore()
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
   const [repo, setRepo] = useState('')
@@ -36,6 +37,8 @@ export function ProjectsView() {
           ))}
         </tbody>
       </table>
+
+      {projectId && <Environments projectId={projectId} isAdmin={isAdmin} />}
 
       {creating && (
         <div className="modal-wrap" onClick={() => setCreating(false)}>
