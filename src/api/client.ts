@@ -63,6 +63,21 @@ export interface User {
   Admin: boolean; Disabled: boolean; Created: string
 }
 
+// Сессия задачи (api-contract add-session-visibility): tokens null =
+// источник не сообщил (не ноль), длительность считается из started_at/ended_at.
+export interface Session {
+  id: string
+  attempt: number
+  stage: 'coding' | 'testing' | 'review' | 'fix' | string
+  agent: string
+  model: string
+  driver_kind: 'scheduler' | 'user'
+  tokens: number | null
+  started_at: string
+  ended_at: string | null
+  has_transcript: boolean
+}
+
 // Обработчик 401: консоль уводит на экран входа (спека web-console
 // «Вход в консоль»); hash-маршрут сохраняется, после входа пользователь
 // возвращается на ту же страницу.
@@ -85,6 +100,19 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   return data as T
 }
 
+// Транскрипт приходит как text/plain, а не JSON — отдельный путь без
+// разбора тела (ошибки сервер по-прежнему шлёт JSON-конвертом).
+async function reqText(path: string): Promise<string> {
+  const resp = await fetch(`/api/v1${path}`)
+  if (!resp.ok) {
+    if (resp.status === 401) onUnauthorized()
+    const data = await resp.json().catch(() => null)
+    const msg = (data as { error?: { message?: string } })?.error?.message ?? resp.statusText
+    throw new Error(msg)
+  }
+  return resp.text()
+}
+
 export const api = {
   login: (login: string, password: string) => req<User>('POST', '/auth/login', { login, password }),
   logout: () => req('POST', '/auth/logout'),
@@ -101,6 +129,8 @@ export const api = {
   addTask: (epicId: string, t: { title: string; description: string; criteria: string[]; deps: string[] }) =>
     req<Task>('POST', `/epics/${epicId}/tasks`, t),
   task: (id: string) => req<{ task: Task; timeline: Event[] | null }>('GET', `/tasks/${id}`),
+  taskSessions: (id: string) => req<Session[]>('GET', `/tasks/${id}/sessions`),
+  sessionTranscript: (id: string) => reqText(`/sessions/${id}/transcript`),
   answer: (id: string, text: string) => req('POST', `/tasks/${id}/answer`, { text }),
   retry: (id: string) => req('POST', `/tasks/${id}/retry`),
   cancel: (id: string) => req('POST', `/tasks/${id}/cancel`),
