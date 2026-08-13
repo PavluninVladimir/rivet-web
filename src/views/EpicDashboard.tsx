@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api, stColor, type EpicView, type Runner, type Task } from '../api/client'
+import { api, stColor, type EpicView, type Runner, type Task, type UsageRow } from '../api/client'
 import { Dag, type DagFilter } from '../components/Dag'
 import { TaskDrawer } from '../components/TaskDrawer'
-import { StBadge } from '../components/ui'
+import { CtxBar, fmtCost, fmtDuration, fmtTokens, StBadge } from '../components/ui'
 import { useStore } from '../store'
 
 const SEG_ORDER = ['done', 'running', 'testing', 'fixing', 'review', 'ready', 'queued', 'blocked', 'failed', 'cancelled']
@@ -44,6 +44,8 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
   const total = tasks.reduce((s, t) => s + t.Estimate, 0) || 1
   const epicAtt = attention.filter(a => tasks.some(t => t.ID === a.TaskID))
   const online = runners.filter(r => r.Status !== 'offline')
+  const usageByTask = new Map<string, UsageRow>((epic.usage ?? []).map(u => [u.key, u]))
+  const usageTotal = epic.usage_total
 
   return (
     <div className="view-epic">
@@ -72,6 +74,13 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
             })}
           </div>
           <span className="sub">{counts['done'] ?? 0} / {tasks.length} задач · взвешено по оценке</span>
+          {usageTotal && (
+            <span className="sub mono" title="Суммарный usage Epic: токены вход/выход · стоимость · время">
+              {fmtTokens(usageTotal.tokens_in)} / {fmtTokens(usageTotal.tokens_out)} tok
+              {' · '}{fmtCost(usageTotal.cost_usd)}
+              {' · '}{fmtDuration(usageTotal.duration_s)}
+            </span>
+          )}
           <div className="epic-chips">
             {SEG_ORDER.filter(s => s !== 'done' && counts[s]).map(s => (
               <span key={s} className="chip">
@@ -124,17 +133,22 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
             : (
               <div className="epic-list">
                 <table className="tbl">
-                  <thead><tr><th>Задача</th><th>Название</th><th>Статус</th><th>Runner</th><th className="num">Попытки</th></tr></thead>
+                  <thead><tr><th>Задача</th><th>Название</th><th>Статус</th><th>Runner</th><th className="num">Попытки</th><th className="num">Токены</th><th className="num">Стоимость</th></tr></thead>
                   <tbody>
-                    {tasks.map(t => (
-                      <tr key={t.ID} className="rowlink" onClick={() => openTask(t.ID)}>
-                        <td className="id">task-{t.Num}</td>
-                        <td>{t.Title}</td>
-                        <td><StBadge s={t.Status} /></td>
-                        <td className="mono muted">{t.RunnerID || '—'}</td>
-                        <td className="num">{t.AttemptUsed}/{t.AttemptLimit}</td>
-                      </tr>
-                    ))}
+                    {tasks.map(t => {
+                      const u = usageByTask.get(t.ID)
+                      return (
+                        <tr key={t.ID} className="rowlink" onClick={() => openTask(t.ID)}>
+                          <td className="id">task-{t.Num}</td>
+                          <td>{t.Title}</td>
+                          <td><StBadge s={t.Status} /></td>
+                          <td className="mono muted">{t.RunnerID || '—'}</td>
+                          <td className="num">{t.AttemptUsed}/{t.AttemptLimit}</td>
+                          <td className="num mono muted">{u ? `${fmtTokens(u.tokens_in)} / ${fmtTokens(u.tokens_out)}` : '—'}</td>
+                          <td className="num mono muted">{u ? fmtCost(u.cost_usd) : '—'}</td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -152,6 +166,7 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
                   <StBadge s={r.Status} />
                 </div>
                 {r.TaskID && <div className="rc-action mono">{tasks.find(t => t.ID === r.TaskID) ? `task-${tasks.find(t => t.ID === r.TaskID)!.Num}` : 'занят'}</div>}
+                {r.TaskID && <CtxBar pct={r.CtxPct} />}
               </div>
             ))}
           </div>
