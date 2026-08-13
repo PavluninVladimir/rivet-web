@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { api, setOnUnauthorized, type User } from './api/client'
 import { StoreProvider, useStore, type Route } from './store'
 import { EpicsView } from './views/EpicsView'
 import { EpicDashboard } from './views/EpicDashboard'
@@ -6,6 +7,7 @@ import { ProjectsView } from './views/ProjectsView'
 import { TasksView } from './views/TasksView'
 import { RunnersView } from './views/RunnersView'
 import { ActivityView } from './views/ActivityView'
+import { Login } from './components/Login'
 import { Palette } from './components/Palette'
 
 const NAV: { view: Route['view']; label: string }[] = [
@@ -16,7 +18,7 @@ const NAV: { view: Route['view']; label: string }[] = [
   { view: 'activity', label: 'Активность' },
 ]
 
-function Shell() {
+function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
   const { route, nav, attention, connected, projects, projectId, setProjectId } = useStore()
   const [palOpen, setPalOpen] = useState(false)
 
@@ -53,6 +55,10 @@ function Shell() {
           ))}
         </nav>
         <div className="side-foot">
+          <div className="line" title={user.Login}>
+            <span className="mono">{user.Name || user.Login}</span>
+            <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={onLogout}>Выйти</button>
+          </div>
           <div className="line">
             <span className={'dot ' + (connected ? 'ok' : 'bad')} />
             {connected ? 'Подключено' : 'Нет связи'}
@@ -94,5 +100,19 @@ function Shell() {
 }
 
 export default function App() {
-  return <StoreProvider><Shell /></StoreProvider>
+  // undefined — сессия ещё проверяется, null — нужен вход.
+  const [user, setUser] = useState<User | null | undefined>(undefined)
+
+  useEffect(() => {
+    // 401 в любой момент работы возвращает на экран входа; hash-маршрут
+    // сохраняется, после входа пользователь попадает на ту же страницу.
+    setOnUnauthorized(() => setUser(null))
+    api.me().then(setUser).catch(() => setUser(null))
+  }, [])
+
+  const logout = () => { api.logout().catch(() => {}).finally(() => setUser(null)) }
+
+  if (user === undefined) return <div className="login-wrap"><span className="muted">Загрузка…</span></div>
+  if (!user) return <Login onLogin={setUser} />
+  return <StoreProvider><Shell user={user} onLogout={logout} /></StoreProvider>
 }

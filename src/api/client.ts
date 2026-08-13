@@ -58,16 +58,27 @@ export interface Attention {
   Reason: string; Message: string; Status: string; ClaimedBy: string; Created: string
 }
 
-const USER = 'vladimir' // dev-идентичность; аутентификация — вне не-целей среза
+export interface User {
+  ID: string; Login: string; Name: string
+  Admin: boolean; Disabled: boolean; Created: string
+}
+
+// Обработчик 401: консоль уводит на экран входа (спека web-console
+// «Вход в консоль»); hash-маршрут сохраняется, после входа пользователь
+// возвращается на ту же страницу.
+let onUnauthorized: () => void = () => {}
+export function setOnUnauthorized(fn: () => void) { onUnauthorized = fn }
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
+  // Аутентификация — httpOnly-cookie сессии, браузер шлёт её сам (same-origin).
   const resp = await fetch(`/api/v1${path}`, {
     method,
-    headers: { 'X-Rivet-User': USER, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
   })
   const data = await resp.json().catch(() => null)
   if (!resp.ok) {
+    if (resp.status === 401 && path !== '/auth/login') onUnauthorized()
     const msg = (data as { error?: { message?: string } })?.error?.message ?? resp.statusText
     throw new Error(msg)
   }
@@ -75,6 +86,9 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
 }
 
 export const api = {
+  login: (login: string, password: string) => req<User>('POST', '/auth/login', { login, password }),
+  logout: () => req('POST', '/auth/logout'),
+  me: () => req<User>('GET', '/auth/me'),
   projects: () => req<Project[] | null>('GET', '/projects'),
   createProject: (name: string, repo: string) => req<Project>('POST', '/projects', { name, repo }),
   epics: (projectId: string) => req<Epic[] | null>('GET', `/projects/${projectId}/epics`),
