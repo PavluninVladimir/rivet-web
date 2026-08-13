@@ -22,9 +22,21 @@ export interface Epic {
   Created: string
 }
 
+// Usage-агрегат (api-contract add-usage-metering): null = данных нет,
+// показывается как «—», не как 0.
+export interface UsageRow {
+  key: string
+  tokens_in: number | null
+  tokens_out: number | null
+  cost_usd: number | null
+  duration_s: number
+}
+
 export interface EpicView extends Epic {
   tasks: Task[] | null
   progress: { pct: number; weighted: boolean }
+  usage?: UsageRow[] | null      // вклад задач (key = id задачи)
+  usage_total?: UsageRow | null  // итог по Epic
 }
 
 export interface Project { ID: string; Name: string; Repo: string; Created: string }
@@ -32,7 +44,8 @@ export interface Project { ID: string; Name: string; Repo: string; Created: stri
 export interface Runner {
   ID: string; Agent: string; Model: string; Host: string
   Capabilities: string[]; Status: string; TaskID: string
-  CtxPct: number; Draining: boolean; LastSeen: string
+  CtxPct: number | null // null — заполненность контекста неизвестна
+  Draining: boolean; LastSeen: string
 }
 
 export interface Event {
@@ -90,9 +103,12 @@ export const api = {
     if (q.cursor) p.set('cursor', String(q.cursor))
     return req<Event[] | null>('GET', `/events?${p}`)
   },
-  usage: (groupBy: string) =>
-    req<{ key: string; tokens_in: number; tokens_out: number; cost_usd: number; duration_s: number }[] | null>(
-      'GET', `/usage?group_by=${groupBy}`),
+  usage: (groupBy: string, period?: { from?: string; to?: string }) => {
+    const p = new URLSearchParams({ group_by: groupBy })
+    if (period?.from) p.set('from', period.from)
+    if (period?.to) p.set('to', period.to)
+    return req<UsageRow[] | null>('GET', `/usage?${p}`)
+  },
 }
 
 export interface LogChunk { task_id: string; data: string }

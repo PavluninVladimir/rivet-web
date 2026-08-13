@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type Runner } from '../api/client'
-import { StBadge } from '../components/ui'
+import { CtxBar, StBadge } from '../components/ui'
 import { useStore } from '../store'
 
 export function RunnersView() {
@@ -24,7 +24,7 @@ export function RunnersView() {
         <span className="sub">{runners.filter(r => r.Status !== 'offline').length} online</span>
       </div>
       <table className="tbl">
-        <thead><tr><th>ID</th><th>Агент</th><th>Хост</th><th>Capabilities</th><th>Статус</th><th></th></tr></thead>
+        <thead><tr><th>ID</th><th>Агент</th><th>Хост</th><th>Capabilities</th><th>Контекст</th><th>Статус</th><th></th></tr></thead>
         <tbody>
           {runners.map(r => (
             <tr key={r.ID}>
@@ -32,6 +32,7 @@ export function RunnersView() {
               <td className="muted">{r.Agent}{r.Model ? ` · ${r.Model}` : ''}</td>
               <td className="mono muted">{r.Host}</td>
               <td className="mono muted">{r.Capabilities.join(', ')}</td>
+              <td><CtxBar pct={r.CtxPct} /></td>
               <td><StBadge s={r.Status} />{r.Draining && <span className="muted" style={{ marginLeft: 6, fontSize: 10.5 }}>drain</span>}</td>
               <td style={{ textAlign: 'right' }}>
                 <button className="btn sm" onClick={() => toggle(r)}>
