@@ -141,7 +141,12 @@ export function subscribe(projectId: string, handlers: {
   }
   es.addEventListener('session.log', (m) => handlers.onLog?.(JSON.parse((m as MessageEvent).data)))
   es.onopen = () => handlers.onState?.(true)
-  es.onerror = () => handlers.onState?.(false)
+  es.onerror = () => {
+    handlers.onState?.(false)
+    // EventSource не отдаёт статус ошибки: пробуем /auth/me — при 401
+    // сработает глобальный onUnauthorized и консоль уйдёт на экран входа.
+    void api.me().catch(() => {})
+  }
   return () => es.close()
 }
 
