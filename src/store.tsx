@@ -33,6 +33,7 @@ interface Store {
   tick: number            // растёт на каждом SSE-событии — зависимость для рефетчей
   lastEvent: Event | null
   logs: Map<string, string> // live-лог по задачам (только текущее подключение)
+  deployLogs: Map<string, string> // live-лог публикаций по deployment_id
   refreshProjects: () => void
 }
 
@@ -48,6 +49,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [tick, setTick] = useState(0)
   const [lastEvent, setLastEvent] = useState<Event | null>(null)
   const logsRef = useRef(new Map<string, string>())
+  const deployLogsRef = useRef(new Map<string, string>())
 
   const nav = useCallback((r: Route) => { location.hash = routeHash(r) }, [])
   useEffect(() => {
@@ -76,11 +78,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       onEvent: (e) => {
         setLastEvent(e)
         setTick(t => t + 1)
-        if (e.Type.startsWith('attention') || e.Type === 'task.status') refreshAttention()
+        if (e.Type.startsWith('attention') || e.Type === 'task.status' || e.Type === 'deploy.status') refreshAttention()
       },
       onLog: (c) => {
         const cur = logsRef.current.get(c.task_id) ?? ''
         logsRef.current.set(c.task_id, (cur + c.data).slice(-64000))
+        setTick(t => t + 1)
+      },
+      onDeployLog: (c) => {
+        const cur = deployLogsRef.current.get(c.deploy_id) ?? ''
+        deployLogsRef.current.set(c.deploy_id, (cur + c.data).slice(-64000))
         setTick(t => t + 1)
       },
       onState: setConnected,
@@ -90,7 +97,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{
       route, nav, projects, projectId, setProjectId,
-      attention, connected, tick, lastEvent, logs: logsRef.current, refreshProjects,
+      attention, connected, tick, lastEvent, logs: logsRef.current,
+      deployLogs: deployLogsRef.current, refreshProjects,
     }}>
       {children}
     </Ctx.Provider>

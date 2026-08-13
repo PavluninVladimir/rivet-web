@@ -39,6 +39,20 @@ export function TasksView() {
           <div className="attention-head"><h2>Требует внимания</h2><span className="n">{attention.length}</span></div>
           <div className="attention-row">
             {attention.map(a => {
+              // Эскалация публикации (DEPLOY_FAILED) не привязана к задаче:
+              // карточка ведёт к блоку окружений проекта.
+              if (a.DeploymentID) {
+                return (
+                  <button key={a.ID} className="att-card" onClick={() => nav({ view: 'projects' })}>
+                    <div className="att-top">
+                      <span className="tid mono">deploy</span>
+                      <span className="att-reason">{a.Reason}</span>
+                    </div>
+                    <div className="att-msg">{a.Message}</div>
+                    <div className="att-act">К окружениям →</div>
+                  </button>
+                )
+              }
               const row = rows.find(r => r.task.ID === a.TaskID)
               return (
                 <button key={a.ID} className="att-card"
