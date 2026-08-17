@@ -3,7 +3,7 @@ import { api, stLabel, type Deployment, type EnvConfig, type Environment } from 
 import { useStore } from '../store'
 import { fmtDuration, timeShort } from './ui'
 
-// Блок «Окружения» проекта (спека web-console «Окружения проекта»):
+// Блок «Окружения» проекта (спека web «Окружения проекта»):
 // статус последней публикации, запуск, история с логом, resume после
 // провала. Настройка — только администратор (форма скрыта остальным).
 

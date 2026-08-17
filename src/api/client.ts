@@ -39,7 +39,57 @@ export interface EpicView extends Epic {
   usage_total?: UsageRow | null  // итог по Epic
 }
 
-export interface Project { ID: string; Name: string; Repo: string; Created: string }
+export interface Project {
+  ID: string; Name: string; Created: string
+  Checks?: { name: string; cmd: string }[] | null
+  // Подключённый репозиторий (api-contract add-repo-onboarding); Repo
+  // сохраняется для совместимости и повторяет repo_path.
+  Repo: string
+  provider: string
+  base_url: string
+  repo_path: string
+  default_branch: string
+  web_url: string
+}
+
+export interface Check { name: string; cmd: string }
+
+// Результат проверки подключения: причина отказа различается по смыслу,
+// чтобы показать её пользователю рядом с полем.
+export interface ProbeResult {
+  ok: boolean
+  reason: '' | 'not_found' | 'no_access' | 'insufficient_scope' | 'unreachable' | 'bad_token' | string
+  message: string
+  token_owner: string
+  repo_path: string
+  base_url: string
+  default_branch: string
+  can_push: boolean
+  can_merge_request: boolean
+}
+
+export interface RepositoryStatus {
+  provider: string
+  base_url: string
+  repo_path: string
+  default_branch: string
+  web_url: string
+  credential: { owner: string; token_prefix: string; added_at: string } | null
+  state: 'ok' | 'invalid' | 'unchecked' | string
+  checked_at: string | null
+  webhook: { registered: boolean; url: string; secret_hint: string }
+}
+
+// Вход создания проекта: либо repo_url (подключить), либо create (создать).
+export interface CreateProjectInput {
+  name: string
+  provider: string
+  repo_url?: string
+  base_url?: string
+  token?: string
+  checks?: Check[]
+  create?: { owner: string; repo_name: string; visibility: 'private' | 'public' }
+}
 
 export interface Runner {
   ID: string; Agent: string; Model: string; Host: string
@@ -58,6 +108,8 @@ export interface Attention {
   DeploymentID: string // эскалация публикации (DEPLOY_FAILED): задачи нет
   Reason: string; Message: string; Status: string; ClaimedBy: string; Created: string
 }
+
+export interface Member { Login: string; Name: string; Added: string }
 
 export interface User {
   ID: string; Login: string; Name: string
@@ -116,7 +168,7 @@ export interface Session {
   has_transcript: boolean
 }
 
-// Обработчик 401: консоль уводит на экран входа (спека web-console
+// Обработчик 401: консоль уводит на экран входа (спека web
 // «Вход в консоль»); hash-маршрут сохраняется, после входа пользователь
 // возвращается на ту же страницу.
 let onUnauthorized: () => void = () => {}
@@ -156,7 +208,19 @@ export const api = {
   logout: () => req('POST', '/auth/logout'),
   me: () => req<User>('GET', '/auth/me'),
   projects: () => req<Project[] | null>('GET', '/projects'),
-  createProject: (name: string, repo: string) => req<Project>('POST', '/projects', { name, repo }),
+  createProject: (input: CreateProjectInput) => req<Project>('POST', '/projects', input),
+  patchProject: (id: string, patch: { name?: string; checks?: Check[] }) =>
+    req<Project>('PATCH', `/projects/${id}`, patch),
+  probe: (input: { provider: string; repo_url?: string; base_url?: string; token: string }) =>
+    req<ProbeResult>('POST', '/scm/probe', input),
+  repository: (projectId: string) => req<RepositoryStatus>('GET', `/projects/${projectId}/repository`),
+  replaceCredentials: (projectId: string, token: string) =>
+    req<RepositoryStatus>('PUT', `/projects/${projectId}/credentials`, { token }),
+  members: (projectId: string) => req<Member[] | null>('GET', `/projects/${projectId}/members`),
+  addMember: (projectId: string, login: string) =>
+    req('POST', `/projects/${projectId}/members`, { login }),
+  removeMember: (projectId: string, login: string) =>
+    req('DELETE', `/projects/${projectId}/members/${login}`),
   epics: (projectId: string) => req<Epic[] | null>('GET', `/projects/${projectId}/epics`),
   createEpic: (projectId: string, title: string, goal: string) =>
     req<Epic>('POST', `/projects/${projectId}/epics`, { title, goal }),
@@ -215,7 +279,8 @@ export function subscribe(projectId: string, handlers: {
   onState?: (connected: boolean) => void
 }): () => void {
   const es = new EventSource(`/api/v1/stream?project=${projectId}`)
-  const evTypes = ['task.status', 'epic.progress', 'session.step', 'task.assign', 'task.review_passed', 'epic.decomposed', 'attention.new', 'attention.claimed', 'deploy.status', 'environment.config']
+  const evTypes = ['task.status', 'epic.progress', 'session.step', 'task.assign', 'task.review_passed', 'epic.decomposed', 'attention.new', 'attention.claimed', 'deploy.status', 'environment.config',
+    'project.repository', 'project.settings']
   for (const t of evTypes) {
     es.addEventListener(t, (m) => handlers.onEvent(JSON.parse((m as MessageEvent).data)))
   }

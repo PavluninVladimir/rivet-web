@@ -6,6 +6,7 @@ export type Route =
   | { view: 'projects' } | { view: 'epics' } | { view: 'tasks' }
   | { view: 'runners' } | { view: 'activity' }
   | { view: 'epic'; id: string; taskId?: string }
+  | { view: 'project-settings'; id: string }
 
 function parseHash(): Route {
   const h = location.hash.replace(/^#\/?/, '')
@@ -13,12 +14,14 @@ function parseHash(): Route {
   if (a === 'epic' && b) {
     return c === 'task' && d ? { view: 'epic', id: b, taskId: d } : { view: 'epic', id: b }
   }
+  if (a === 'project' && b && c === 'settings') return { view: 'project-settings', id: b }
   if (a === 'projects' || a === 'tasks' || a === 'runners' || a === 'activity') return { view: a }
   return { view: 'epics' }
 }
 
 export function routeHash(r: Route): string {
   if (r.view === 'epic') return r.taskId ? `#/epic/${r.id}/task/${r.taskId}` : `#/epic/${r.id}`
+  if (r.view === 'project-settings') return `#/project/${r.id}/settings`
   return `#/${r.view}`
 }
 
