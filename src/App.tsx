@@ -4,6 +4,7 @@ import { StoreProvider, useStore, type Route } from './store'
 import { EpicsView } from './views/EpicsView'
 import { EpicDashboard } from './views/EpicDashboard'
 import { ProjectsView } from './views/ProjectsView'
+import { ProjectSettings } from './views/ProjectSettings'
 import { TasksView } from './views/TasksView'
 import { RunnersView } from './views/RunnersView'
 import { ActivityView } from './views/ActivityView'
@@ -78,14 +79,17 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
             <span className="mono">{project?.Name ?? '—'}</span>
             {route.view === 'epic'
               ? <><span className="sep">/</span><a onClick={() => nav({ view: 'epics' })}>Epic’и</a><span className="sep">/</span><b>дашборд</b></>
-              : <><span className="sep">/</span><b>{NAV.find(n => n.view === route.view)?.label ?? ''}</b></>}
+              : route.view === 'project-settings'
+                ? <><span className="sep">/</span><a onClick={() => nav({ view: 'projects' })}>Проекты</a><span className="sep">/</span><b>настройки</b></>
+                : <><span className="sep">/</span><b>{NAV.find(n => n.view === route.view)?.label ?? ''}</b></>}
           </div>
           <button className="kbtn" onClick={() => setPalOpen(true)}>
             Поиск или команда… <span className="kbd">⌘K</span>
           </button>
         </header>
         <div id="viewport">
-          {route.view === 'projects' && <ProjectsView isAdmin={user.Admin} />}
+          {route.view === 'projects' && <ProjectsView />}
+          {route.view === 'project-settings' && <ProjectSettings key={route.id} projectId={route.id} isAdmin={user.Admin} />}
           {route.view === 'epics' && <EpicsView />}
           {route.view === 'epic' && <EpicDashboard key={route.id} epicId={route.id} taskId={route.taskId} />}
           {route.view === 'tasks' && <TasksView />}

@@ -42,8 +42,10 @@ export function TasksView() {
               // Эскалация публикации (DEPLOY_FAILED) не привязана к задаче:
               // карточка ведёт к блоку окружений проекта.
               if (a.DeploymentID) {
+                // Окружения живут на странице настроек проекта, туда и ведём.
                 return (
-                  <button key={a.ID} className="att-card" onClick={() => nav({ view: 'projects' })}>
+                  <button key={a.ID} className="att-card"
+                    onClick={() => nav({ view: 'project-settings', id: a.ProjectID })}>
                     <div className="att-top">
                       <span className="tid mono">deploy</span>
                       <span className="att-reason">{a.Reason}</span>

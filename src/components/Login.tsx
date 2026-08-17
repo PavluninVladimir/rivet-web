@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { api, type User } from '../api/client'
 
-// Экран входа (спека web-console «Вход в консоль»): до аутентификации данных
+// Экран входа (спека web «Вход в консоль»): до аутентификации данных
 // установки не видно. Собран из токенов прототипа: центрированная карточка,
 // тёмная тема, моно-акценты.
 export function Login({ onLogin }: { onLogin: (u: User) => void }) {

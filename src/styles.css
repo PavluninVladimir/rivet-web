@@ -316,3 +316,9 @@ textarea.answer { width: 100%; min-height: 64px; background: var(--term-bg); bor
   white-space: pre-wrap; word-break: break-word; max-height: 80px; overflow: auto; }
 .env-history { margin-top: 10px; border-top: 1px solid var(--fg-soft); padding-top: 8px;
   display: flex; flex-direction: column; gap: 4px; }
+
+/* ─── мастер создания проекта (add-repo-onboarding) ──────────────────── */
+.modal.wizard { max-width: 560px; }
+.wiz-steps { display: flex; gap: 12px; margin: 4px 0 10px; }
+.wiz-step { font: 500 11px var(--font-mono); letter-spacing: .04em; color: var(--muted); }
+.wiz-step.active { color: var(--fg); border-bottom: 2px solid var(--c-run); padding-bottom: 2px; }

@@ -1,24 +1,12 @@
 import { useEffect, useState } from 'react'
-import { api } from '../api/client'
-import { Environments } from '../components/Environments'
+import { ProjectWizard } from '../components/ProjectWizard'
 import { useStore } from '../store'
 
-export function ProjectsView({ isAdmin }: { isAdmin: boolean }) {
-  const { projects, projectId, refreshProjects, setProjectId, nav } = useStore()
+export function ProjectsView() {
+  const { projects, refreshProjects, setProjectId, nav } = useStore()
   const [creating, setCreating] = useState(false)
-  const [name, setName] = useState('')
-  const [repo, setRepo] = useState('')
-  const [err, setErr] = useState('')
 
   useEffect(refreshProjects, [refreshProjects])
-
-  const create = async () => {
-    try {
-      const p = await api.createProject(name, repo)
-      setCreating(false); setName(''); setRepo(''); setErr('')
-      refreshProjects(); setProjectId(p.ID); nav({ view: 'epics' })
-    } catch (e) { setErr(String(e)) }
-  }
 
   return (
     <div className="page">
@@ -27,32 +15,27 @@ export function ProjectsView({ isAdmin }: { isAdmin: boolean }) {
         <div className="right"><button className="btn primary" onClick={() => setCreating(true)}>Новый проект</button></div>
       </div>
       <table className="tbl">
-        <thead><tr><th>Название</th><th>Репозиторий</th></tr></thead>
+        <thead><tr><th>Название</th><th>Репозиторий</th><th>Хостинг</th><th></th></tr></thead>
         <tbody>
           {projects.map(p => (
             <tr key={p.ID} className="rowlink" onClick={() => { setProjectId(p.ID); nav({ view: 'epics' }) }}>
               <td>{p.Name}</td>
-              <td className="mono muted">{p.Repo}</td>
+              <td className="mono muted">{p.repo_path || p.Repo}</td>
+              <td className="mono muted">{p.provider}</td>
+              <td style={{ textAlign: 'right' }}>
+                <button className="btn sm" onClick={e => {
+                  e.stopPropagation(); setProjectId(p.ID); nav({ view: 'project-settings', id: p.ID })
+                }}>Настройки</button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      {projectId && <Environments projectId={projectId} isAdmin={isAdmin} />}
-
       {creating && (
-        <div className="modal-wrap" onClick={() => setCreating(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <h2>Новый проект</h2>
-            <input placeholder="Название" value={name} onChange={e => setName(e.target.value)} />
-            <input placeholder="Репозиторий (owner/name)" value={repo} onChange={e => setRepo(e.target.value)} />
-            {err && <div style={{ color: 'var(--c-block)', fontSize: 12 }}>{err}</div>}
-            <div className="row">
-              <button className="btn" onClick={() => setCreating(false)}>Отмена</button>
-              <button className="btn primary" onClick={create}>Создать</button>
-            </div>
-          </div>
-        </div>
+        <ProjectWizard onClose={() => setCreating(false)} onCreated={p => {
+          setCreating(false); refreshProjects(); setProjectId(p.ID); nav({ view: 'epics' })
+        }} />
       )}
     </div>
   )
