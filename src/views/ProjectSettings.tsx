@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type Check, type Member, type Project, type RepositoryStatus } from '../api/client'
+import { api, type Check, type Member, type Project, type RepositoryStatus, type User } from '../api/client'
 import { Environments } from '../components/Environments'
 import { useStore } from '../store'
 
@@ -13,7 +13,7 @@ const STATE_LABEL: Record<string, string> = {
   unchecked: 'подключение не проверялось',
 }
 
-export function ProjectSettings({ projectId, isAdmin }: { projectId: string; isAdmin: boolean }) {
+export function ProjectSettings({ projectId, user }: { projectId: string; user: User }) {
   const { tick, projects, refreshProjects } = useStore()
   const project: Project | undefined = projects.find(p => p.ID === projectId)
   const [repo, setRepo] = useState<RepositoryStatus | null>(null)
@@ -48,11 +48,15 @@ export function ProjectSettings({ projectId, isAdmin }: { projectId: string; isA
 
   if (!project) return <div className="page"><span className="muted">Проект не найден.</span></div>
 
+  // Меняет настройки только владелец проекта (спека domain-model); остальным
+  // страница показывает те же данные без изменяющих действий.
+  const isOwner = members.some(m => m.login === user.login && m.role === 'owner')
+
   return (
     <div className="page">
       <div className="page-head">
         <h1>Настройки проекта</h1>
-        <span className="sub">{project.Name}</span>
+        <span className="sub">{project.Name}{isOwner ? '' : ' · только просмотр'}</span>
       </div>
       {err && <div style={{ color: 'var(--c-block)', fontSize: 12, marginBottom: 8 }}>{err}</div>}
       {saved && <div style={{ color: 'var(--c-done)', fontSize: 12, marginBottom: 8 }}>{saved}</div>}
@@ -74,15 +78,17 @@ export function ProjectSettings({ projectId, isAdmin }: { projectId: string; isA
               <div className="kv"><span>учётные данные</span>
                 <b>{repo.credential ? `${repo.credential.owner} · ${repo.credential.token_prefix}…` : 'токен установки'}</b></div>
             </div>
-            <div className="row" style={{ marginTop: 8 }}>
-              <input type="password" placeholder="Новый токен доступа"
-                value={token} onChange={e => setToken(e.target.value)} />
-              <button className="btn sm" disabled={!token}
-                onClick={act(async () => { await api.replaceCredentials(projectId, token); setToken('') },
-                  'учётные данные заменены')}>
-                Заменить токен
-              </button>
-            </div>
+            {isOwner && (
+              <div className="row" style={{ marginTop: 8 }}>
+                <input type="password" placeholder="Новый токен доступа"
+                  value={token} onChange={e => setToken(e.target.value)} />
+                <button className="btn sm" disabled={!token}
+                  onClick={act(async () => { await api.replaceCredentials(projectId, token); setToken('') },
+                    'учётные данные заменены')}>
+                  Заменить токен
+                </button>
+              </div>
+            )}
           </>
         ) : <span className="muted">нет данных о подключении</span>}
       </div>
@@ -102,50 +108,65 @@ export function ProjectSettings({ projectId, isAdmin }: { projectId: string; isA
 
       <div className="dw-sec">
         <h3>Название и проверки</h3>
-        <input placeholder="Название проекта" value={name} onChange={e => setName(e.target.value)} />
+        <input placeholder="Название проекта" value={name} disabled={!isOwner}
+          onChange={e => setName(e.target.value)} />
         {checks.map((c, i) => (
           <div className="row" key={i} style={{ gap: 8, marginTop: 6 }}>
-            <input placeholder="Имя" value={c.name}
+            <input placeholder="Имя" value={c.name} disabled={!isOwner}
               onChange={e => setChecks(checks.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
-            <input placeholder="Команда" value={c.cmd}
+            <input placeholder="Команда" value={c.cmd} disabled={!isOwner}
               onChange={e => setChecks(checks.map((x, j) => j === i ? { ...x, cmd: e.target.value } : x))} />
-            <button className="btn sm" onClick={() => setChecks(checks.filter((_, j) => j !== i))}>✕</button>
+            {isOwner && <button className="btn sm" onClick={() => setChecks(checks.filter((_, j) => j !== i))}>✕</button>}
           </div>
         ))}
-        <div className="row" style={{ marginTop: 8 }}>
-          <button className="btn sm" onClick={() => setChecks([...checks, { name: '', cmd: '' }])}>
-            Добавить проверку
-          </button>
-          <button className="btn sm primary" style={{ marginLeft: 'auto' }}
-            onClick={act(() => api.patchProject(projectId, { name, checks }), 'настройки сохранены')}>
-            Сохранить настройки
-          </button>
-        </div>
+        {isOwner && (
+          <div className="row" style={{ marginTop: 8 }}>
+            <button className="btn sm" onClick={() => setChecks([...checks, { name: '', cmd: '' }])}>
+              Добавить проверку
+            </button>
+            <button className="btn sm primary" style={{ marginLeft: 'auto' }}
+              onClick={act(() => api.patchProject(projectId, { name, checks }), 'настройки сохранены')}>
+              Сохранить настройки
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="dw-sec">
         <h3>Участники</h3>
         <div className="sess-list">
           {members.map(m => (
-            <div className="sess-row" key={m.Login}>
-              <span className="mono">{m.Login}</span>
-              <span className="sess-agent">{m.Name}</span>
-              <button className="btn sm" onClick={act(() => api.removeMember(projectId, m.Login), 'участник удалён')}>
-                Удалить
-              </button>
+            <div className="sess-row" key={m.login}>
+              <span className="mono">{m.login}</span>
+              <span className="sess-agent">{m.name}</span>
+              <span className="chip"><span className="n">{m.role}</span></span>
+              {isOwner && (
+                <>
+                  <button className="btn sm"
+                    onClick={act(() => api.setMemberRole(projectId, m.login, m.role === 'owner' ? 'member' : 'owner'),
+                      'роль изменена')}>
+                    {m.role === 'owner' ? 'Снять владельца' : 'Сделать владельцем'}
+                  </button>
+                  <button className="btn sm" onClick={act(() => api.removeMember(projectId, m.login), 'участник удалён')}>
+                    Удалить
+                  </button>
+                </>
+              )}
             </div>
           ))}
         </div>
-        <div className="row" style={{ marginTop: 8 }}>
-          <input placeholder="Логин участника" value={login} onChange={e => setLogin(e.target.value)} />
-          <button className="btn sm" disabled={!login}
-            onClick={act(async () => { await api.addMember(projectId, login); setLogin('') }, 'участник добавлен')}>
-            Добавить
-          </button>
-        </div>
+        {isOwner && (
+          <div className="row" style={{ marginTop: 8 }}>
+            <input placeholder="Логин участника" value={login} onChange={e => setLogin(e.target.value)} />
+            <button className="btn sm" disabled={!login}
+              onClick={act(async () => { await api.addMember(projectId, login); setLogin('') }, 'участник добавлен')}>
+              Добавить
+            </button>
+          </div>
+        )}
       </div>
 
-      <Environments projectId={projectId} isAdmin={isAdmin} />
+      <Environments projectId={projectId} isAdmin={user.admin} />
     </div>
   )
 }

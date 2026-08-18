@@ -5,6 +5,7 @@ import { api, subscribe, type Attention, type Event, type Project } from './api/
 export type Route =
   | { view: 'projects' } | { view: 'epics' } | { view: 'tasks' }
   | { view: 'runners' } | { view: 'activity' }
+  | { view: 'app-management' } | { view: 'profile' }
   | { view: 'epic'; id: string; taskId?: string }
   | { view: 'project-settings'; id: string }
 
@@ -15,7 +16,8 @@ function parseHash(): Route {
     return c === 'task' && d ? { view: 'epic', id: b, taskId: d } : { view: 'epic', id: b }
   }
   if (a === 'project' && b && c === 'settings') return { view: 'project-settings', id: b }
-  if (a === 'projects' || a === 'tasks' || a === 'runners' || a === 'activity') return { view: a }
+  if (a === 'projects' || a === 'tasks' || a === 'runners' || a === 'activity'
+    || a === 'app-management' || a === 'profile') return { view: a }
   return { view: 'epics' }
 }
 

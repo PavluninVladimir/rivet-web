@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, setOnUnauthorized, type User } from './api/client'
+import { api, setOnPasswordChangeRequired, setOnUnauthorized, type User } from './api/client'
 import { StoreProvider, useStore, type Route } from './store'
 import { EpicsView } from './views/EpicsView'
 import { EpicDashboard } from './views/EpicDashboard'
@@ -8,6 +8,8 @@ import { ProjectSettings } from './views/ProjectSettings'
 import { TasksView } from './views/TasksView'
 import { RunnersView } from './views/RunnersView'
 import { ActivityView } from './views/ActivityView'
+import { AppManagement } from './views/AppManagement'
+import { PasswordGate, Profile } from './views/Profile'
 import { Login } from './components/Login'
 import { Palette } from './components/Palette'
 
@@ -55,9 +57,19 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
             </button>
           ))}
         </nav>
+        {user.admin && (
+          <nav style={{ marginTop: 6 }}>
+            <button className={'nav-item' + (route.view === 'app-management' ? ' active' : '')}
+              onClick={() => nav({ view: 'app-management' })}>
+              Управление
+            </button>
+          </nav>
+        )}
         <div className="side-foot">
-          <div className="line" title={user.Login}>
-            <span className="mono">{user.Name || user.Login}</span>
+          <div className="line" title={user.login}>
+            <a className="mono" style={{ cursor: 'pointer' }} onClick={() => nav({ view: 'profile' })}>
+              {user.name || user.login}
+            </a>
             <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={onLogout}>Выйти</button>
           </div>
           <div className="line">
@@ -81,7 +93,11 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
               ? <><span className="sep">/</span><a onClick={() => nav({ view: 'epics' })}>Epic’и</a><span className="sep">/</span><b>дашборд</b></>
               : route.view === 'project-settings'
                 ? <><span className="sep">/</span><a onClick={() => nav({ view: 'projects' })}>Проекты</a><span className="sep">/</span><b>настройки</b></>
-                : <><span className="sep">/</span><b>{NAV.find(n => n.view === route.view)?.label ?? ''}</b></>}
+                : route.view === 'app-management'
+                  ? <><span className="sep">/</span><b>Управление приложением</b></>
+                  : route.view === 'profile'
+                    ? <><span className="sep">/</span><b>Профиль</b></>
+                    : <><span className="sep">/</span><b>{NAV.find(n => n.view === route.view)?.label ?? ''}</b></>}
           </div>
           <button className="kbtn" onClick={() => setPalOpen(true)}>
             Поиск или команда… <span className="kbd">⌘K</span>
@@ -89,7 +105,13 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
         </header>
         <div id="viewport">
           {route.view === 'projects' && <ProjectsView />}
-          {route.view === 'project-settings' && <ProjectSettings key={route.id} projectId={route.id} isAdmin={user.Admin} />}
+          {route.view === 'project-settings' && <ProjectSettings key={route.id} projectId={route.id} user={user} />}
+          {route.view === 'profile' && <Profile me={user} />}
+          {/* Раздел установки — только администратору: прямой переход по
+              адресу показывает отказ, а не данные (спека web). */}
+          {route.view === 'app-management' && (user.admin
+            ? <AppManagement me={user} />
+            : <div className="page"><span className="muted">Раздел доступен только администратору установки.</span></div>)}
           {route.view === 'epics' && <EpicsView />}
           {route.view === 'epic' && <EpicDashboard key={route.id} epicId={route.id} taskId={route.taskId} />}
           {route.view === 'tasks' && <TasksView />}
@@ -111,6 +133,9 @@ export default function App() {
     // 401 в любой момент работы возвращает на экран входа; hash-маршрут
     // сохраняется, после входа пользователь попадает на ту же страницу.
     setOnUnauthorized(() => setUser(null))
+    // Пароль сброшен администратором: любой отказ password_change_required
+    // переводит консоль на форму смены пароля.
+    setOnPasswordChangeRequired(() => setUser(u => (u ? { ...u, must_change_password: true } : u)))
     api.me().then(setUser).catch(() => setUser(null))
   }, [])
 
@@ -118,5 +143,8 @@ export default function App() {
 
   if (user === undefined) return <div className="login-wrap"><span className="muted">Загрузка…</span></div>
   if (!user) return <Login onLogin={setUser} />
+  if (user.must_change_password) {
+    return <PasswordGate onDone={() => { api.me().then(setUser).catch(() => setUser(null)) }} />
+  }
   return <StoreProvider><Shell user={user} onLogout={logout} /></StoreProvider>
 }

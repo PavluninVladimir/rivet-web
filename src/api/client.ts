@@ -109,11 +109,35 @@ export interface Attention {
   Reason: string; Message: string; Status: string; ClaimedBy: string; Created: string
 }
 
-export interface Member { Login: string; Name: string; Added: string }
+// Роль участника проекта (api-contract add-user-management): owner меняет
+// настройки проекта, member работает с задачами.
+export type Role = 'owner' | 'member'
+
+export interface Member {
+  login: string
+  name: string
+  role: Role
+  added_at: string
+}
 
 export interface User {
-  ID: string; Login: string; Name: string
-  Admin: boolean; Disabled: boolean; Created: string
+  id: string
+  login: string
+  name: string
+  admin: boolean
+  disabled: boolean
+  created_at: string
+  must_change_password: boolean
+}
+
+// Метаданные PAT; секрет приходит один раз при создании.
+export interface AccessToken {
+  id: string
+  name: string
+  prefix: string
+  created_at: string
+  expires_at: string | null
+  last_used_at: string | null
 }
 
 // Окружение публикации (api-contract implement-deployment): config без
@@ -174,6 +198,15 @@ export interface Session {
 let onUnauthorized: () => void = () => {}
 export function setOnUnauthorized(fn: () => void) { onUnauthorized = fn }
 
+// Пароль сброшен администратором: до смены API отвечает 403 с этим кодом,
+// консоль показывает форму смены (api-contract add-user-management).
+let onPasswordChangeRequired: () => void = () => {}
+export function setOnPasswordChangeRequired(fn: () => void) { onPasswordChangeRequired = fn }
+
+function apiCode(data: unknown): string {
+  return (data as { error?: { code?: string } })?.error?.code ?? ''
+}
+
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   // Аутентификация — httpOnly-cookie сессии, браузер шлёт её сам (same-origin).
   const resp = await fetch(`/api/v1${path}`, {
@@ -181,9 +214,11 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
     headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
   })
-  const data = await resp.json().catch(() => null)
+  // 204 приходит без тела: json() на нём падает.
+  const data = resp.status === 204 ? null : await resp.json().catch(() => null)
   if (!resp.ok) {
     if (resp.status === 401 && path !== '/auth/login') onUnauthorized()
+    if (resp.status === 403 && apiCode(data) === 'password_change_required') onPasswordChangeRequired()
     const msg = (data as { error?: { message?: string } })?.error?.message ?? resp.statusText
     throw new Error(msg)
   }
@@ -217,10 +252,27 @@ export const api = {
   replaceCredentials: (projectId: string, token: string) =>
     req<RepositoryStatus>('PUT', `/projects/${projectId}/credentials`, { token }),
   members: (projectId: string) => req<Member[] | null>('GET', `/projects/${projectId}/members`),
-  addMember: (projectId: string, login: string) =>
-    req('POST', `/projects/${projectId}/members`, { login }),
+  addMember: (projectId: string, login: string, role: Role = 'member') =>
+    req('POST', `/projects/${projectId}/members`, { login, role }),
+  setMemberRole: (projectId: string, login: string, role: Role) =>
+    req('PATCH', `/projects/${projectId}/members/${login}`, { role }),
   removeMember: (projectId: string, login: string) =>
     req('DELETE', `/projects/${projectId}/members/${login}`),
+  // Управление приложением: пользователи установки (только администратор).
+  users: () => req<User[] | null>('GET', '/users'),
+  createUser: (input: { login: string; name: string; password: string; admin: boolean }) =>
+    req<User>('POST', '/users', input),
+  patchUser: (id: string, patch: { name?: string; disabled?: boolean; admin?: boolean }) =>
+    req<User>('PATCH', `/users/${id}`, patch),
+  resetPassword: (id: string) => req<{ password: string }>('POST', `/users/${id}/password/reset`),
+  // Профиль: своя смена пароля и свои токены.
+  changePassword: (current: string, next: string) =>
+    req<void>('POST', '/auth/password', { current, new: next }),
+  tokens: () => req<AccessToken[] | null>('GET', '/tokens'),
+  createToken: (name: string, expiresAt?: string) =>
+    req<{ token: AccessToken; secret: string }>('POST', '/tokens',
+      { name, expires_at: expiresAt ?? null }),
+  deleteToken: (id: string) => req('DELETE', `/tokens/${id}`),
   epics: (projectId: string) => req<Epic[] | null>('GET', `/projects/${projectId}/epics`),
   createEpic: (projectId: string, title: string, goal: string) =>
     req<Epic>('POST', `/projects/${projectId}/epics`, { title, goal }),
@@ -280,7 +332,10 @@ export function subscribe(projectId: string, handlers: {
 }): () => void {
   const es = new EventSource(`/api/v1/stream?project=${projectId}`)
   const evTypes = ['task.status', 'epic.progress', 'session.step', 'task.assign', 'task.review_passed', 'epic.decomposed', 'attention.new', 'attention.claimed', 'deploy.status', 'environment.config',
-    'project.repository', 'project.settings']
+    'project.repository', 'project.settings',
+    // Состав и роли участников: страница настроек должна показывать
+    // актуальные права, а не ждать перезагрузки.
+    'project.member_added', 'project.member_removed', 'project.member_role_changed']
   for (const t of evTypes) {
     es.addEventListener(t, (m) => handlers.onEvent(JSON.parse((m as MessageEvent).data)))
   }
