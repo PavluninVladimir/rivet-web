@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api, stColor, type EpicView, type Runner, type Task, type UsageRow } from '../api/client'
+import { api, errCode, stColor, type EpicView, type Runner, type Task, type UsageRow } from '../api/client'
 import { Dag, type DagFilter } from '../components/Dag'
 import { TaskDrawer } from '../components/TaskDrawer'
 import { CtxBar, fmtCost, fmtDuration, fmtTokens, StBadge } from '../components/ui'
@@ -36,7 +36,14 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
 
   const act = (fn: () => Promise<unknown>) => async () => {
     setErr('')
-    try { await fn(); refresh() } catch (e) { setErr(String(e)) }
+    try { await fn(); refresh() } catch (e) {
+      // Модель не настроена или ключ отклонён: подсказываем, где это чинится
+      // (api-contract add-operations-management).
+      const code = errCode(e)
+      const hint = code === 'no_planner' || code === 'planner_invalid'
+        ? ' Администратор задаёт ключ модели в разделе «Управление приложением» → «Модели».' : ''
+      setErr(String(e) + hint)
+    }
   }
 
   if (!epic) return <div className="page">{err || 'Загрузка…'}</div>

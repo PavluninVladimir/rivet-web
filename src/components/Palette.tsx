@@ -27,7 +27,7 @@ export function Palette({ onClose }: { onClose: () => void }) {
       if (!projectId) return
       const [epics, runners] = await Promise.all([api.epics(projectId), api.runners()])
       const all: Item[] = []
-      for (const v of ['projects', 'epics', 'tasks', 'runners', 'activity', 'profile'] as const) {
+      for (const v of ['projects', 'epics', 'tasks', 'runners', 'activity', 'usage', 'profile'] as const) {
         all.push({
           key: `view-${v}`, label: `Перейти: ${v}`, hint: 'раздел',
           go: () => nav({ view: v }),

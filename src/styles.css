@@ -326,3 +326,22 @@ textarea.answer { width: 100%; min-height: 64px; background: var(--term-bg); bor
 .wiz-steps { display: flex; gap: 12px; margin: 4px 0 10px; }
 .wiz-step { font: 500 11px var(--font-mono); letter-spacing: .04em; color: var(--muted); }
 .wiz-step.active { color: var(--fg); border-bottom: 2px solid var(--c-run); padding-bottom: 2px; }
+
+/* ─── эксплуатация: вкладки, сводка usage, состояние ─────────────────── */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.tabs .tab { padding: 7px 12px; font-size: 12.5px; font-weight: 500; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs .tab:hover { color: var(--fg); }
+.tabs .tab.on { color: var(--fg); border-bottom-color: var(--accent); }
+.stat-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.mini-stat { border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; background: var(--surface); }
+.mini-stat .v { font: 600 18px var(--font-mono); color: var(--fg); }
+.mini-stat .v em { font: 500 11px var(--font-mono); color: var(--muted); font-style: normal; margin-left: 3px; }
+.mini-stat .l { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.status-grid { display: grid; grid-template-columns: 140px 90px 1fr; gap: 6px 14px; font-size: 12.5px; align-items: baseline; }
+.status-grid .st-dot { display: inline-flex; align-items: center; gap: 6px; font: 500 11px var(--font-mono); text-transform: uppercase; }
+.status-grid .st-dot::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.set-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.set-row .lbl { display: flex; flex-direction: column; gap: 2px; min-width: 180px; }
+.set-row .lbl b { font-size: 12.5px; font-weight: 600; }
+.set-row .lbl span { font-size: 11px; color: var(--muted); }
+.set-row .ctl { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
