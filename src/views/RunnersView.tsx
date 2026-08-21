@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type Runner } from '../api/client'
-import { CtxBar, StBadge } from '../components/ui'
+import { CtxBar, fmtAgo, StBadge } from '../components/ui'
 import { useStore } from '../store'
 
-export function RunnersView() {
-  const { tick } = useStore()
+// Представление Runner'ов открыто всем (спека runners «Список runner'ов»);
+// регистрация — выпуск токена в разделе управления и запуск на хосте, поэтому
+// кнопка добавления ведёт на вкладку токенов (design, сверка с прототипом).
+export function RunnersView({ admin }: { admin: boolean }) {
+  const { tick, nav } = useStore()
   const [runners, setRunners] = useState<Runner[]>([])
 
   const refresh = useCallback(() => {
@@ -21,10 +24,15 @@ export function RunnersView() {
     <div className="page">
       <div className="page-head">
         <h1>Runner’ы</h1>
-        <span className="sub">{runners.filter(r => r.Status !== 'offline').length} online</span>
+        <span className="sub">{runners.filter(r => r.Status !== 'offline').length} online · {runners.filter(r => r.Status === 'offline').length} offline</span>
+        {admin && (
+          <div className="right">
+            <button className="btn" onClick={() => nav({ view: 'app-management', tab: 'runners' })}>Добавить runner</button>
+          </div>
+        )}
       </div>
       <table className="tbl">
-        <thead><tr><th>ID</th><th>Агент</th><th>Хост</th><th>Capabilities</th><th>Контекст</th><th>Статус</th><th></th></tr></thead>
+        <thead><tr><th>ID</th><th>Агент</th><th>Хост</th><th>Capabilities</th><th>Контекст</th><th>Статус</th><th>Последний сигнал</th><th></th></tr></thead>
         <tbody>
           {runners.map(r => (
             <tr key={r.ID}>
@@ -34,8 +42,9 @@ export function RunnersView() {
               <td className="mono muted">{r.Capabilities.join(', ')}</td>
               <td><CtxBar pct={r.CtxPct} /></td>
               <td><StBadge s={r.Status} />{r.Draining && <span className="muted" style={{ marginLeft: 6, fontSize: 10.5 }}>drain</span>}</td>
+              <td className="muted" title={r.LastSeen}>{fmtAgo(r.LastSeen)}</td>
               <td style={{ textAlign: 'right' }}>
-                <button className="btn sm" onClick={() => toggle(r)}>
+                <button className="btn sm" disabled={!admin} title={admin ? '' : 'только администратор'} onClick={() => toggle(r)}>
                   {r.Draining ? 'Вернуть в ротацию' : 'Вывести из ротации'}
                 </button>
               </td>

@@ -2,10 +2,14 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { api, subscribe, type Attention, type Event, type Project } from './api/client'
 
 // Маршрут — hash-навигация: #/epics, #/epic/<id>, #/task/<id> поверх epic и т.п.
+// Вкладки раздела «Управление приложением» адресуемы: #/app-management/<tab>.
+export const APP_TABS = ['users', 'runners', 'models', 'usage', 'audit', 'status'] as const
+export type AppTab = typeof APP_TABS[number]
+
 export type Route =
   | { view: 'projects' } | { view: 'epics' } | { view: 'tasks' }
-  | { view: 'runners' } | { view: 'activity' }
-  | { view: 'app-management' } | { view: 'profile' }
+  | { view: 'runners' } | { view: 'activity' } | { view: 'usage' }
+  | { view: 'app-management'; tab: AppTab } | { view: 'profile' }
   | { view: 'epic'; id: string; taskId?: string }
   | { view: 'project-settings'; id: string }
 
@@ -16,14 +20,18 @@ function parseHash(): Route {
     return c === 'task' && d ? { view: 'epic', id: b, taskId: d } : { view: 'epic', id: b }
   }
   if (a === 'project' && b && c === 'settings') return { view: 'project-settings', id: b }
+  if (a === 'app-management') {
+    return { view: 'app-management', tab: (APP_TABS as readonly string[]).includes(b) ? b as AppTab : 'users' }
+  }
   if (a === 'projects' || a === 'tasks' || a === 'runners' || a === 'activity'
-    || a === 'app-management' || a === 'profile') return { view: a }
+    || a === 'usage' || a === 'profile') return { view: a }
   return { view: 'epics' }
 }
 
 export function routeHash(r: Route): string {
   if (r.view === 'epic') return r.taskId ? `#/epic/${r.id}/task/${r.taskId}` : `#/epic/${r.id}`
   if (r.view === 'project-settings') return `#/project/${r.id}/settings`
+  if (r.view === 'app-management') return `#/app-management/${r.tab}`
   return `#/${r.view}`
 }
 

@@ -8,6 +8,7 @@ import { ProjectSettings } from './views/ProjectSettings'
 import { TasksView } from './views/TasksView'
 import { RunnersView } from './views/RunnersView'
 import { ActivityView } from './views/ActivityView'
+import { UsageView } from './views/UsageView'
 import { AppManagement } from './views/AppManagement'
 import { PasswordGate, Profile } from './views/Profile'
 import { Login } from './components/Login'
@@ -19,6 +20,7 @@ const NAV: { view: Route['view']; label: string }[] = [
   { view: 'tasks', label: 'Задачи' },
   { view: 'runners', label: 'Runner’ы' },
   { view: 'activity', label: 'Активность' },
+  { view: 'usage', label: 'Usage' },
 ]
 
 function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
@@ -60,7 +62,7 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
         {user.admin && (
           <nav style={{ marginTop: 6 }}>
             <button className={'nav-item' + (route.view === 'app-management' ? ' active' : '')}
-              onClick={() => nav({ view: 'app-management' })}>
+              onClick={() => nav({ view: 'app-management', tab: 'users' })}>
               Управление
             </button>
           </nav>
@@ -110,13 +112,14 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
           {/* Раздел установки — только администратору: прямой переход по
               адресу показывает отказ, а не данные (спека web). */}
           {route.view === 'app-management' && (user.admin
-            ? <AppManagement me={user} />
+            ? <AppManagement me={user} tab={route.tab} />
             : <div className="page"><span className="muted">Раздел доступен только администратору установки.</span></div>)}
           {route.view === 'epics' && <EpicsView />}
           {route.view === 'epic' && <EpicDashboard key={route.id} epicId={route.id} taskId={route.taskId} />}
           {route.view === 'tasks' && <TasksView />}
-          {route.view === 'runners' && <RunnersView />}
+          {route.view === 'runners' && <RunnersView admin={user.admin} />}
           {route.view === 'activity' && <ActivityView />}
+          {route.view === 'usage' && <UsageView />}
         </div>
       </div>
 

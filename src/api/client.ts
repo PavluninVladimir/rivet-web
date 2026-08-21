@@ -26,6 +26,9 @@ export interface Epic {
 // показывается как «—», не как 0.
 export interface UsageRow {
   key: string
+  // Название проекта, Epic или задачи для соответствующих группировок
+  // (api-contract add-operations-management); для runner'а и модели = key.
+  label?: string
   tokens_in: number | null
   tokens_out: number | null
   cost_usd: number | null
@@ -207,6 +210,22 @@ function apiCode(data: unknown): string {
   return (data as { error?: { code?: string } })?.error?.code ?? ''
 }
 
+// ApiError несёт машиночитаемый код конверта ошибки (no_planner,
+// planner_invalid, no_secret_key…): консоль подбирает подсказку по нему.
+export class ApiError extends Error {
+  code: string
+  status: number
+  constructor(message: string, code: string, status: number) {
+    super(message)
+    this.code = code
+    this.status = status
+  }
+}
+
+export function errCode(e: unknown): string {
+  return e instanceof ApiError ? e.code : ''
+}
+
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   // Аутентификация — httpOnly-cookie сессии, браузер шлёт её сам (same-origin).
   const resp = await fetch(`/api/v1${path}`, {
@@ -220,7 +239,7 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
     if (resp.status === 401 && path !== '/auth/login') onUnauthorized()
     if (resp.status === 403 && apiCode(data) === 'password_change_required') onPasswordChangeRequired()
     const msg = (data as { error?: { message?: string } })?.error?.message ?? resp.statusText
-    throw new Error(msg)
+    throw new ApiError(msg, apiCode(data), resp.status)
   }
   return data as T
 }
@@ -303,21 +322,76 @@ export const api = {
   claim: (id: string) => req('POST', `/attention/${id}/claim`),
   runners: () => req<Runner[] | null>('GET', '/runners'),
   drain: (id: string, on: boolean) => req('POST', `/runners/${id}/${on ? 'drain' : 'undrain'}`),
-  events: (q: { project?: string; epic?: string; task?: string; cursor?: number }) => {
+  events: (q: { project?: string; epic?: string; task?: string; type?: string; cursor?: number; limit?: number; scope?: 'installation' }) => {
     const p = new URLSearchParams()
     if (q.project) p.set('project', q.project)
     if (q.epic) p.set('epic', q.epic)
     if (q.task) p.set('task', q.task)
+    if (q.type) p.set('type', q.type)
     if (q.cursor) p.set('cursor', String(q.cursor))
+    if (q.limit) p.set('limit', String(q.limit))
+    if (q.scope) p.set('scope', q.scope)
     return req<Event[] | null>('GET', `/events?${p}`)
   },
-  usage: (groupBy: string, period?: { from?: string; to?: string }) => {
+  usage: (groupBy: string, period?: { from?: string; to?: string }, scope?: 'installation') => {
     const p = new URLSearchParams({ group_by: groupBy })
     if (period?.from) p.set('from', period.from)
     if (period?.to) p.set('to', period.to)
+    if (scope) p.set('scope', scope)
     return req<UsageRow[] | null>('GET', `/usage?${p}`)
   },
+  // Эксплуатация установки (api-contract add-operations-management), только администратору.
+  systemStatus: () => req<SystemStatus>('GET', '/system/status'),
+  runnerTokens: () => req<RunnerToken[]>('GET', '/runner-tokens'),
+  createRunnerToken: (name: string, expires_at?: string) =>
+    req<{ token: RunnerToken; secret: string }>('POST', '/runner-tokens', { name, expires_at }),
+  revokeRunnerToken: (id: string) => req<void>('DELETE', `/runner-tokens/${id}`),
+  models: () => req<{ source: PlannerSource; providers: LLMProvider[] }>('GET', '/system/models'),
+  putModel: (provider: string, patch: { key?: string; model?: string; active?: boolean }) =>
+    req<LLMProvider>('PUT', `/system/models/${provider}`, patch),
+  checkModel: (provider: string) => req<LLMProvider>('POST', `/system/models/${provider}/check`),
+  deleteModel: (provider: string) => req<void>('DELETE', `/system/models/${provider}`),
 }
+
+// ─── эксплуатация установки ─────────────────────────────────────────────
+
+export type ComponentStatus = 'ok' | 'degraded' | 'down'
+export type PlannerSource = 'db' | 'env' | 'none'
+
+export interface SystemComponent {
+  name: 'database' | 'blob' | 'secrets' | 'planner' | 'runners'
+  status: ComponentStatus
+  detail: string
+  data?: Record<string, unknown>
+}
+
+export interface SystemStatus {
+  status: ComponentStatus
+  version: string
+  protocol_version: string
+  started_at: string
+  components: SystemComponent[]
+}
+
+// Токен регистрации runner'ов: секрет есть только в ответе создания.
+export interface RunnerToken {
+  id: string; name: string; prefix: string
+  created_at: string; created_by: string
+  expires_at: string | null; last_used_at: string | null; revoked_at: string | null
+}
+
+export interface LLMProvider {
+  provider: 'anthropic' | 'deepseek'
+  key_prefix: string; model: string; active: boolean
+  state: 'ok' | 'invalid' | 'unchecked'
+  checked_at: string | null; check_detail: string
+  updated_at: string; updated_by: string
+}
+
+export const LLM_PROVIDERS: { id: LLMProvider['provider']; label: string; defaultModel: string }[] = [
+  { id: 'anthropic', label: 'Anthropic', defaultModel: 'claude-opus-5' },
+  { id: 'deepseek', label: 'DeepSeek', defaultModel: 'deepseek-v4-flash' },
+]
 
 export interface LogChunk { task_id: string; data: string }
 export interface DeployLogChunk { deploy_id: string; data: string }
