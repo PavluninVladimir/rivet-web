@@ -1,21 +1,23 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, errCode, LLM_PROVIDERS, type Event, type LLMProvider, type PlannerSource, type RunnerToken, type SystemStatus, type User } from '../api/client'
 import { fmtAgo, fmtDate, SecretOnce, statusColor, Tabs, timeShort } from '../components/ui'
+import { InstallationPolicyPanel } from '../components/PolicyPanel'
 import { useStore, type AppTab } from '../store'
 import { UsageView } from './UsageView'
 
 // Раздел «Управление приложением» (спека web): настройки уровня установки,
-// адресуемые вкладки #/app-management/<tab>. Политики (пресеты, лимиты)
-// приходят третьим change'ом раздела.
+// адресуемые вкладки #/app-management/<tab>. Вкладка «Политики» — место
+// прототиповского Settings (orchestrator policy): пресеты установки.
 
 const TABS: { id: AppTab; label: string }[] = [
   { id: 'users', label: 'Пользователи' }, { id: 'runners', label: 'Runner’ы' },
-  { id: 'models', label: 'Модели' }, { id: 'usage', label: 'Usage' },
+  { id: 'models', label: 'Модели' }, { id: 'policies', label: 'Политики' },
+  { id: 'usage', label: 'Usage' },
   { id: 'audit', label: 'Аудит' }, { id: 'status', label: 'Состояние' },
 ]
 
 export function AppManagement({ me, tab }: { me: User; tab: AppTab }) {
-  const { nav } = useStore()
+  const { nav, refreshProjects } = useStore()
   return (
     <div className="page">
       <div className="page-head">
@@ -26,6 +28,7 @@ export function AppManagement({ me, tab }: { me: User; tab: AppTab }) {
       {tab === 'users' && <UsersTab me={me} />}
       {tab === 'runners' && <RunnerTokensTab />}
       {tab === 'models' && <ModelsTab />}
+      {tab === 'policies' && <InstallationPolicyPanel onSaved={refreshProjects} />}
       {tab === 'usage' && <UsageView scope="installation" defaultGroup="project" title="Usage установки" sub="все проекты, метеринг установки" />}
       {tab === 'audit' && <AuditTab />}
       {tab === 'status' && <StatusTab />}

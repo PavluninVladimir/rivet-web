@@ -1,0 +1,269 @@
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { api, type Overrides, type PolicyVersion, type Presets, type ProjectPolicy } from '../api/client'
+import { fmtDate, fmtTokens } from './ui'
+
+// Политики конвейера пресетами (спека web «Политики в консоли», change
+// add-policy-presets). Строки set-row с переключателями и числовыми полями
+// по прототиповскому Settings (orchestrator policy); сверх прототипа —
+// пути, требующие человека, разрешение автопубликации, хэш версии и
+// история (их требует спека аудита). «Escalate blocked tasks» и «Notify»
+// из прототипа не делаются (design, сверка с прототипом).
+
+type PresetKey = keyof Presets
+
+const ROWS: { key: PresetKey; label: string; hint: string }[] = [
+  { key: 'auto_merge', label: 'Авто-merge после review', hint: 'мержить PR, когда review и проверки пройдены' },
+  { key: 'human_review_paths', label: 'Пути, требующие человека', hint: 'PR с такими файлами ждёт подтверждения: infra/**, **/*.sql, deploy/prod/*' },
+  { key: 'attempt_limit', label: 'Лимит попыток', hint: 'задача проваливается после N неуспешных циклов' },
+  { key: 'review_limit', label: 'Лимит отказов review', hint: 'эскалация человеку после N отказов review' },
+  { key: 'daily_token_budget', label: 'Дневной бюджет токенов', hint: 'пауза планирования при превышении, пусто — без ограничения' },
+  { key: 'auto_publish', label: 'Автопубликация после merge', hint: 'разрешить окружениям с автозапуском публиковаться' },
+]
+
+export function shortHash(h: string | undefined | null): string {
+  return h ? h.slice(0, 12) : '—'
+}
+
+// Переключатель по прототипу (.sw / .sw.on).
+export function Switch({ on, disabled, onChange }: { on: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button type="button" className={'sw' + (on ? ' on' : '')} disabled={disabled}
+      aria-pressed={on} onClick={() => onChange(!on)} />
+  )
+}
+
+function PathsInput({ value, disabled, onChange }: { value: string[]; disabled?: boolean; onChange: (v: string[]) => void }) {
+  return (
+    <input placeholder="infra/**, **/*.sql" style={{ width: 260 }} disabled={disabled}
+      value={value.join(', ')}
+      onChange={e => onChange(e.target.value.split(',').map(s => s.trim()).filter(Boolean))} />
+  )
+}
+
+function NumInput({ value, disabled, width = 72, min = 1, onChange, placeholder }: {
+  value: number | null; disabled?: boolean; width?: number; min?: number; placeholder?: string
+  onChange: (v: number | null) => void
+}) {
+  return (
+    <input type="number" min={min} style={{ width }} disabled={disabled} placeholder={placeholder}
+      value={value ?? ''}
+      onChange={e => onChange(e.target.value === '' ? null : Number(e.target.value))} />
+  )
+}
+
+// Контрол одного пресета: значение и обработчик без привязки к уровню.
+function PresetControl({ k, value, disabled, onChange }: {
+  k: PresetKey; value: Presets[PresetKey]; disabled?: boolean
+  onChange: (v: Presets[PresetKey]) => void
+}) {
+  switch (k) {
+    case 'auto_merge':
+    case 'auto_publish':
+      return <Switch on={Boolean(value)} disabled={disabled} onChange={onChange} />
+    case 'human_review_paths':
+      return <PathsInput value={(value as string[]) ?? []} disabled={disabled} onChange={onChange} />
+    case 'daily_token_budget':
+      return <NumInput value={value as number | null} disabled={disabled} width={120} min={0}
+        placeholder="без лимита" onChange={onChange} />
+    default:
+      return <NumInput value={value as number} disabled={disabled} onChange={v => onChange(Math.max(1, v ?? 1))} />
+  }
+}
+
+function fmtValue(k: PresetKey, v: Presets[PresetKey]): string {
+  if (k === 'auto_merge' || k === 'auto_publish') return v ? 'вкл' : 'выкл'
+  if (k === 'human_review_paths') return (v as string[]).length ? (v as string[]).join(', ') : 'нет'
+  if (k === 'daily_token_budget') return v == null ? 'без лимита' : fmtTokens(v as number)
+  return String(v)
+}
+
+function VersionHistory({ versions }: { versions: PolicyVersion[] }) {
+  const [open, setOpen] = useState(false)
+  if (!versions.length) return null
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button className="btn sm" onClick={() => setOpen(o => !o)}>
+        {open ? 'Скрыть историю' : `История версий (${versions.length})`}
+      </button>
+      {open && (
+        <div className="sess-list" style={{ marginTop: 6 }}>
+          {versions.map(v => (
+            <div className="sess-row" key={v.id} title={JSON.stringify(v.content)}>
+              <span className="mono">v{v.version}</span>
+              <span className="mono muted">{shortHash(v.hash)}</span>
+              <span className="sess-agent">{v.created_by}</span>
+              <span className="muted">{fmtDate(v.created_at)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function useBanner() {
+  const [err, setErr] = useState('')
+  const [note, setNote] = useState('')
+  const banner: ReactNode = (
+    <>
+      {err && <div style={{ color: 'var(--c-block)', fontSize: 12, marginBottom: 8 }}>{err}</div>}
+      {note && <div style={{ color: 'var(--c-done)', fontSize: 12, marginBottom: 8 }}>{note}</div>}
+    </>
+  )
+  return { banner, setErr, setNote }
+}
+
+// ─── пресеты установки (вкладка «Политики» раздела управления) ──────────
+
+export function InstallationPolicyPanel({ onSaved }: { onSaved?: () => void } = {}) {
+  const [presets, setPresets] = useState<Presets | null>(null)
+  const [version, setVersion] = useState<PolicyVersion | null>(null)
+  const [versions, setVersions] = useState<PolicyVersion[]>([])
+  const [dirty, setDirty] = useState(false)
+  const { banner, setErr, setNote } = useBanner()
+
+  const refresh = useCallback(() => {
+    api.systemPolicy().then(p => { setPresets(p.presets); setVersion(p.version); setDirty(false) }).catch(e => setErr(String(e)))
+    api.systemPolicyVersions().then(v => setVersions(v ?? [])).catch(() => {})
+  }, [setErr])
+  useEffect(refresh, [refresh])
+
+  if (!presets) return <>{banner}</>
+  const set = (k: PresetKey) => (v: Presets[PresetKey]) => { setPresets({ ...presets, [k]: v }); setDirty(true) }
+  const save = async () => {
+    setErr(''); setNote('')
+    try {
+      const r = await api.putSystemPolicy(presets)
+      setPresets(r.presets); setVersion(r.version); setDirty(false)
+      setNote(`сохранена версия ${r.version?.version} (${shortHash(r.version?.hash)})`)
+      api.systemPolicyVersions().then(v => setVersions(v ?? [])).catch(() => {})
+      onSaved?.()
+    } catch (e) { setErr(String(e)) }
+  }
+
+  return (
+    <>
+      {banner}
+      <div className="dw-sec">
+        <h3>Политики конвейера</h3>
+        <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
+          Значения по умолчанию для всех проектов; владелец проекта может переопределить каждое в настройках проекта.
+          Каждое сохранение создаёт новую версию, решения движка ссылаются на её хэш.
+        </div>
+        <div className="panel" style={{ maxWidth: 720 }}>
+          {ROWS.map(r => (
+            <div className="set-row" key={r.key}>
+              <div className="lbl"><b>{r.label}</b><span>{r.hint}</span></div>
+              <div className="ctl">
+                <PresetControl k={r.key} value={presets[r.key]} onChange={set(r.key)} />
+              </div>
+            </div>
+          ))}
+          <div className="set-row" style={{ border: 0 }}>
+            <div className="lbl">
+              <b>Активная версия</b>
+              <span>{version
+                ? <>v{version.version} · <span className="mono">{shortHash(version.hash)}</span> · {version.created_by} · {fmtDate(version.created_at)}</>
+                : 'версий нет — действуют значения по умолчанию'}</span>
+            </div>
+            <div className="ctl">
+              <button className="btn sm primary" disabled={!dirty} onClick={save}>Сохранить версию</button>
+            </div>
+          </div>
+        </div>
+        <VersionHistory versions={versions} />
+      </div>
+    </>
+  )
+}
+
+// ─── секция «Политики» в настройках проекта ──────────────────────────────
+
+export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: string; isOwner: boolean; tick: number }) {
+  const [pp, setPP] = useState<ProjectPolicy | null>(null)
+  const [overrides, setOverrides] = useState<Overrides | null>(null)
+  const [versions, setVersions] = useState<PolicyVersion[]>([])
+  const [dirty, setDirty] = useState(false)
+  const { banner, setErr, setNote } = useBanner()
+
+  const refresh = useCallback(() => {
+    api.projectPolicy(projectId).then(p => {
+      setPP(p)
+      // Правки владельца не затираются фоновым обновлением.
+      setOverrides(cur => (cur && dirty) ? cur : p.overrides)
+    }).catch(e => setErr(String(e)))
+    api.projectPolicyVersions(projectId).then(v => setVersions(v ?? [])).catch(() => {})
+  }, [projectId, dirty, setErr])
+  useEffect(refresh, [refresh, tick])
+
+  if (!pp || !overrides) return <div className="dw-sec"><h3>Политики</h3>{banner}</div>
+
+  const setOv = (k: PresetKey, v: Overrides[PresetKey]) => { setOverrides({ ...overrides, [k]: v }); setDirty(true) }
+  // Значение строки в форме: переопределение, если задано, иначе действующее.
+  // Бюджет 0 в переопределении — «без ограничения», в поле показывается пустым.
+  const shown = (k: PresetKey): Presets[PresetKey] => {
+    const v = overrides[k] !== null && overrides[k] !== undefined ? (overrides[k] as Presets[PresetKey]) : pp.effective[k]
+    return k === 'daily_token_budget' && v === 0 ? null : v
+  }
+  const save = async () => {
+    setErr(''); setNote('')
+    try {
+      const r = await api.putProjectPolicy(projectId, overrides)
+      setPP(r); setOverrides(r.overrides); setDirty(false)
+      setNote(`сохранена версия проекта ${r.version?.version} (${shortHash(r.version?.hash)})`)
+      api.projectPolicyVersions(projectId).then(v => setVersions(v ?? [])).catch(() => {})
+    } catch (e) { setErr(String(e)) }
+  }
+
+  return (
+    <div className="dw-sec">
+      <h3>Политики</h3>
+      {banner}
+      <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
+        Пресеты наследуются от установки; владелец может переопределить любой и вернуть наследование.
+        Действующая политика: <span className="mono">{shortHash(pp.effective_hash)}</span>
+        {pp.version ? <> · версия проекта v{pp.version.version}</> : ' · переопределений нет'}
+        {pp.installation_version ? <> · установка v{pp.installation_version.version}</> : ' · установка по умолчанию'}
+      </div>
+      <div className="panel" style={{ maxWidth: 760 }}>
+        {ROWS.map(r => {
+          const inherited = overrides[r.key] === null || overrides[r.key] === undefined
+          return (
+            <div className="set-row" key={r.key}>
+              <div className="lbl">
+                <b>{r.label}
+                  <span className="chip" style={{ marginLeft: 8 }}>
+                    <span className="n">{inherited ? 'наследуется' : 'переопределено'}</span>
+                  </span>
+                </b>
+                <span>{r.hint}{inherited && <> · действует: {fmtValue(r.key, pp.effective[r.key])}</>}</span>
+              </div>
+              <div className="ctl">
+                {isOwner && (
+                  <label className="row muted" style={{ gap: 6, fontSize: 12 }}>
+                    <input type="checkbox" style={{ width: 'auto' }} checked={!inherited}
+                      onChange={e => setOv(r.key, e.target.checked
+                        ? (r.key === 'daily_token_budget' && pp.effective[r.key] == null ? 0 : pp.effective[r.key])
+                        : null)} />
+                    переопределить
+                  </label>
+                )}
+                <PresetControl k={r.key} value={shown(r.key)} disabled={!isOwner || inherited}
+                  onChange={v => setOv(r.key, r.key === 'daily_token_budget' && v == null ? 0 : v)} />
+              </div>
+            </div>
+          )
+        })}
+        {isOwner && (
+          <div className="set-row" style={{ border: 0 }}>
+            <div className="lbl"><b>Сохранить</b><span>создаёт новую версию политики проекта</span></div>
+            <div className="ctl">
+              <button className="btn sm primary" disabled={!dirty} onClick={save}>Сохранить версию</button>
+            </div>
+          </div>
+        )}
+      </div>
+      <VersionHistory versions={versions} />
+    </div>
+  )
+}

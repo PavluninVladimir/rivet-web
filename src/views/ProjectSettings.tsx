@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type Check, type Member, type Project, type RepositoryStatus, type User } from '../api/client'
+import { api, budgetPaused, type Check, type Member, type Project, type RepositoryStatus, type User } from '../api/client'
 import { Environments } from '../components/Environments'
+import { ProjectPolicySection } from '../components/PolicyPanel'
+import { fmtDate, fmtTokens } from '../components/ui'
 import { useStore } from '../store'
 
 // Страница настроек проекта (спека web «Страница настроек проекта»):
@@ -164,6 +166,28 @@ export function ProjectSettings({ projectId, user }: { projectId: string; user: 
             </button>
           </div>
         )}
+      </div>
+
+      <ProjectPolicySection projectId={projectId} isOwner={isOwner} tick={tick} />
+
+      <div className="dw-sec">
+        <h3>Бюджет токенов</h3>
+        {project.budget ? (
+          <div className="meta-grid">
+            <div className="kv"><span>дневной лимит</span>
+              <b>{project.budget.daily_tokens == null ? 'без ограничения' : fmtTokens(project.budget.daily_tokens)}</b></div>
+            <div className="kv"><span>засчитано сегодня (UTC)</span><b>{fmtTokens(project.budget.used_today)}</b></div>
+            <div className="kv"><span>планирование</span>
+              <b style={{ color: budgetPaused(project.budget) ? 'var(--c-block)' : undefined }}>
+                {budgetPaused(project.budget)
+                  ? `на паузе: бюджет ${project.budget.paused_scope === 'installation' ? 'установки' : 'проекта'} исчерпан, до ${fmtDate(project.budget.paused_until)}`
+                  : 'идёт'}
+              </b></div>
+          </div>
+        ) : <span className="muted">нет данных</span>}
+        <div className="muted" style={{ fontSize: 11.5, marginTop: 6 }}>
+          В бюджет засчитываются только сообщённые токены. Выполняющиеся стадии на паузе дорабатываются, новые не назначаются до начала следующих суток.
+        </div>
       </div>
 
       <Environments projectId={projectId} isAdmin={user.admin} />

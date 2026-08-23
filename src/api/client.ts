@@ -12,6 +12,9 @@ export interface Task {
   Status: TaskStatus; Estimate: number
   Capabilities: string[]; Criteria: Criterion[] | null; Deps: string[] | null
   AttemptUsed: number; AttemptLimit: number
+  // Отказы review с последнего решения человека; лимит — из политики
+  // проекта (api-contract add-policy-presets).
+  ReviewRejections: number
   RunnerID: string; Branch: string; PRURL: string; BlockReason: string
   Created: string; Updated: string
 }
@@ -53,6 +56,66 @@ export interface Project {
   repo_path: string
   default_branch: string
   web_url: string
+  // Дневной бюджет токенов (api-contract add-policy-presets): лимит из
+  // действующей политики, засчитано сегодня (UTC), пауза планирования до.
+  budget?: BudgetState
+}
+
+export interface BudgetState {
+  daily_tokens: number | null
+  used_today: number
+  paused_until: string | null
+  paused_scope?: 'project' | 'installation'
+}
+
+// Пауза по бюджету действует, пока не наступили следующие сутки: событие
+// о снятии паузы не приходит, поэтому срок проверяется на клиенте.
+export function budgetPaused(b: BudgetState | undefined, now = Date.now()): boolean {
+  return !!b?.paused_until && new Date(b.paused_until).getTime() > now
+}
+
+// ─── политики конвейера (api-contract add-policy-presets) ───────────────
+
+// Полный документ пресетов (установка и действующая политика проекта).
+export interface Presets {
+  auto_merge: boolean
+  human_review_paths: string[]
+  attempt_limit: number
+  review_limit: number
+  daily_token_budget: number | null // null — без ограничения
+  auto_publish: boolean
+}
+
+// Переопределения проекта: null — наследуется от установки;
+// daily_token_budget: 0 — переопределено на «без ограничения».
+export interface Overrides {
+  auto_merge: boolean | null
+  human_review_paths: string[] | null
+  attempt_limit: number | null
+  review_limit: number | null
+  daily_token_budget: number | null
+  auto_publish: boolean | null
+}
+
+export interface PolicyVersion {
+  id: string
+  scope: 'installation' | 'project'
+  project_id: string | null
+  version: number
+  hash: string
+  content: Presets | Overrides
+  created_at: string
+  created_by: string
+}
+
+export interface InstallationPolicy { version: PolicyVersion | null; presets: Presets }
+
+export interface ProjectPolicy {
+  effective: Presets
+  effective_hash: string
+  overrides: Overrides
+  version: PolicyVersion | null
+  installation_version: PolicyVersion | null
 }
 
 export interface Check { name: string; cmd: string }
@@ -104,6 +167,9 @@ export interface Runner {
 export interface Event {
   ID: number; TS: string; ActorKind: string; ActorID: string
   Type: string; ProjectID: string; EpicID: string; TaskID: string; Text: string
+  // Структурированные данные события (версия политики, причина отложенного
+  // merge и т.п.); отсутствует, если событие их не несёт.
+  Payload?: Record<string, unknown>
 }
 
 export interface Attention {
@@ -302,6 +368,7 @@ export const api = {
   addTask: (epicId: string, t: { title: string; description: string; criteria: string[]; deps: string[] }) =>
     req<Task>('POST', `/epics/${epicId}/tasks`, t),
   task: (id: string) => req<{ task: Task; timeline: Event[] | null }>('GET', `/tasks/${id}`),
+  patchTask: (id: string, patch: { attempt_limit: number }) => req<Task>('PATCH', `/tasks/${id}`, patch),
   taskSessions: (id: string) => req<Session[]>('GET', `/tasks/${id}/sessions`),
   sessionTranscript: (id: string) => reqText(`/sessions/${id}/transcript`),
   environments: (projectId: string) => req<Environment[]>('GET', `/projects/${projectId}/environments`),
@@ -351,6 +418,14 @@ export const api = {
     req<LLMProvider>('PUT', `/system/models/${provider}`, patch),
   checkModel: (provider: string) => req<LLMProvider>('POST', `/system/models/${provider}/check`),
   deleteModel: (provider: string) => req<void>('DELETE', `/system/models/${provider}`),
+  // Политики конвейера: пресеты установки (администратор) и переопределения
+  // проекта (owner пишет, участник читает).
+  systemPolicy: () => req<InstallationPolicy>('GET', '/system/policy'),
+  putSystemPolicy: (p: Presets) => req<InstallationPolicy>('PUT', '/system/policy', p),
+  systemPolicyVersions: () => req<PolicyVersion[]>('GET', '/system/policy/versions'),
+  projectPolicy: (projectId: string) => req<ProjectPolicy>('GET', `/projects/${projectId}/policy`),
+  putProjectPolicy: (projectId: string, o: Overrides) => req<ProjectPolicy>('PUT', `/projects/${projectId}/policy`, o),
+  projectPolicyVersions: (projectId: string) => req<PolicyVersion[]>('GET', `/projects/${projectId}/policy/versions`),
 }
 
 // ─── эксплуатация установки ─────────────────────────────────────────────
@@ -409,7 +484,11 @@ export function subscribe(projectId: string, handlers: {
     'project.repository', 'project.settings',
     // Состав и роли участников: страница настроек должна показывать
     // актуальные права, а не ждать перезагрузки.
-    'project.member_added', 'project.member_removed', 'project.member_role_changed']
+    'project.member_added', 'project.member_removed', 'project.member_role_changed',
+    // Решения политик: отложенный merge, отложенная публикация, пауза по
+    // бюджету, активация версии проекта — деталка, настройки и дашборд
+    // обновляются по ним.
+    'task.merge_deferred', 'task.merge_failed', 'deploy.deferred', 'policy.budget_exceeded', 'policy.activated']
   for (const t of evTypes) {
     es.addEventListener(t, (m) => handlers.onEvent(JSON.parse((m as MessageEvent).data)))
   }
