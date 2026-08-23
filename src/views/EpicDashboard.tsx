@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { api, errCode, stColor, type EpicView, type Runner, type Task, type UsageRow } from '../api/client'
+import { api, budgetPaused, errCode, stColor, type EpicView, type Runner, type Task, type UsageRow } from '../api/client'
 import { Dag, type DagFilter } from '../components/Dag'
 import { TaskDrawer } from '../components/TaskDrawer'
-import { CtxBar, fmtCost, fmtDuration, fmtTokens, StBadge } from '../components/ui'
+import { CtxBar, fmtCost, fmtDate, fmtDuration, fmtTokens, StBadge } from '../components/ui'
 import { useStore } from '../store'
 
 const SEG_ORDER = ['done', 'running', 'testing', 'fixing', 'review', 'ready', 'queued', 'blocked', 'failed', 'cancelled']
 
 export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: string }) {
-  const { nav, tick, attention } = useStore()
+  const { nav, tick, attention, projects } = useStore()
   const [epic, setEpic] = useState<EpicView | null>(null)
   const [runners, setRunners] = useState<Runner[]>([])
   const [mode, setMode] = useState<'graph' | 'list'>('graph')
@@ -53,6 +53,9 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
   const online = runners.filter(r => r.Status !== 'offline')
   const usageByTask = new Map<string, UsageRow>((epic.usage ?? []).map(u => [u.key, u]))
   const usageTotal = epic.usage_total
+  // Пауза планирования по дневному бюджету токенов — из DTO проекта
+  // (спека web «Бюджет исчерпан»).
+  const budget = projects.find(p => p.ID === epic.ProjectID)?.budget
 
   return (
     <div className="view-epic">
@@ -97,6 +100,14 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
             ))}
           </div>
         </div>
+        {budget && budgetPaused(budget) && (
+          <div className="budget-pause">
+            Планирование на паузе: {budget.paused_scope === 'installation'
+              ? 'дневной бюджет токенов установки исчерпан'
+              : <>дневной бюджет токенов проекта исчерпан ({fmtTokens(budget.used_today)} из {fmtTokens(budget.daily_tokens)})</>}.
+            {' '}Выполняющиеся стадии дорабатываются, новые назначения возобновятся {fmtDate(budget.paused_until)}.
+          </div>
+        )}
         {err && <div style={{ color: 'var(--c-block)', fontSize: 12, marginTop: 6 }}>{err}</div>}
       </div>
 

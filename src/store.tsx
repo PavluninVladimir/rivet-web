@@ -3,7 +3,7 @@ import { api, subscribe, type Attention, type Event, type Project } from './api/
 
 // Маршрут — hash-навигация: #/epics, #/epic/<id>, #/task/<id> поверх epic и т.п.
 // Вкладки раздела «Управление приложением» адресуемы: #/app-management/<tab>.
-export const APP_TABS = ['users', 'runners', 'models', 'usage', 'audit', 'status'] as const
+export const APP_TABS = ['users', 'runners', 'models', 'policies', 'usage', 'audit', 'status'] as const
 export type AppTab = typeof APP_TABS[number]
 
 export type Route =
@@ -79,6 +79,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }).catch(() => {})
   }, [])
   useEffect(refreshProjects, [refreshProjects])
+  // Пауза по бюджету снимается сама на новых сутках без события: список
+  // проектов перечитывается в ближайший paused_until.
+  useEffect(() => {
+    const next = projects
+      .map(p => p.budget?.paused_until ? new Date(p.budget.paused_until).getTime() : 0)
+      .filter(t => t > Date.now())
+    if (!next.length) return
+    const id = setTimeout(refreshProjects, Math.min(...next) - Date.now() + 1000)
+    return () => clearTimeout(id)
+  }, [projects, refreshProjects])
 
   const refreshAttention = useCallback(() => {
     api.attention().then(a => setAttention(a ?? [])).catch(() => {})
@@ -92,6 +102,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setLastEvent(e)
         setTick(t => t + 1)
         if (e.Type.startsWith('attention') || e.Type === 'task.status' || e.Type === 'deploy.status') refreshAttention()
+        // Бюджет и политика живут в DTO проекта: пауза по бюджету и новая
+        // версия политики должны обновить состояние без перезагрузки.
+        if (e.Type === 'policy.budget_exceeded' || e.Type === 'policy.activated') refreshProjects()
       },
       onLog: (c) => {
         const cur = logsRef.current.get(c.task_id) ?? ''
@@ -105,7 +118,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       onState: setConnected,
     })
-  }, [projectId, refreshAttention])
+  }, [projectId, refreshAttention, refreshProjects])
 
   return (
     <Ctx.Provider value={{

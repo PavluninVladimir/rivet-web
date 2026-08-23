@@ -1,7 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, stColor, type Event, type Session, type Task } from '../api/client'
 import { useStore } from '../store'
+import { shortHash } from './PolicyPanel'
 import { StBadge, attemptStr, fmtDuration, fmtTokens, timeShort } from './ui'
+
+// Merge отложен политикой: последнее task.merge_deferred после последнего
+// task.review_passed (подсказка и кнопка подтверждения в деталке).
+function mergeDeferred(timeline: Event[]): Event | null {
+  let deferred: Event | null = null
+  for (const e of timeline) {
+    if (e.Type === 'task.review_passed') deferred = null
+    if (e.Type === 'task.merge_deferred') deferred = e
+    if (e.Type === 'task.status' && e.Payload?.status === 'done') deferred = null
+  }
+  return deferred
+}
+
+const DEFER_REASON: Record<string, string> = {
+  human_review_path: 'PR меняет пути, требующие человека',
+  policy_file: 'PR меняет файлы политики (.rivet/), нужен ревьюер-человек',
+  files_unknown: 'список изменённых файлов PR получить не удалось',
+}
 
 // Длительность сессии из started_at/ended_at (поля duration в контракте
 // нет); для идущей сессии — от старта до текущего момента.
@@ -33,6 +52,8 @@ export function TaskDrawer({ taskId, onClose, onChanged }: {
   const openSessRef = useRef<string | null>(null)
   const [answer, setAnswer] = useState('')
   const [err, setErr] = useState('')
+  // Редактирование лимита попыток участником (спека web «Политики в консоли»).
+  const [limitEdit, setLimitEdit] = useState<number | null>(null)
   const termRef = useRef<HTMLDivElement>(null)
 
   // История сессий перезапрашивается вместе с задачей на каждом SSE-событии
@@ -45,7 +66,7 @@ export function TaskDrawer({ taskId, onClose, onChanged }: {
     api.taskSessions(taskId).then(s => setSessions(s ?? [])).catch(() => {})
   }, [taskId])
   useEffect(refresh, [refresh, tick])
-  useEffect(() => { setOpenSess(null); openSessRef.current = null; setTranscript(null) }, [taskId])
+  useEffect(() => { setOpenSess(null); openSessRef.current = null; setTranscript(null); setLimitEdit(null) }, [taskId])
 
   const showTranscript = (s: Session) => {
     if (openSess === s.id) { setOpenSess(null); openSessRef.current = null; return }
@@ -70,6 +91,7 @@ export function TaskDrawer({ taskId, onClose, onChanged }: {
 
   if (!task) return null
   const live = ['running', 'testing', 'fixing', 'review'].includes(task.Status)
+  const deferred = task.Status === 'review' ? mergeDeferred(timeline) : null
 
   return (
     <aside id="drawer">
@@ -81,7 +103,7 @@ export function TaskDrawer({ taskId, onClose, onChanged }: {
         </div>
         <h2>{task.Title}</h2>
         <div className="dw-actions">
-          {task.Status === 'review' && task.PRURL &&
+          {task.Status === 'review' && task.PRURL && !deferred &&
             <button className="btn primary sm" onClick={act(() => api.merge(task.ID))}>Merge</button>}
           {task.PRURL &&
             <a className="btn sm" href={task.PRURL} target="_blank" rel="noreferrer">Открыть PR</a>}
@@ -94,6 +116,19 @@ export function TaskDrawer({ taskId, onClose, onChanged }: {
       </div>
 
       <div className="dw-body">
+        {deferred && (
+          <div className="dw-sec">
+            <h3>Merge отложен политикой</h3>
+            <p style={{ fontSize: 12.5, margin: '0 0 8px' }}>
+              {DEFER_REASON[String(deferred.Payload?.reason)] ?? deferred.Text}
+              {Array.isArray(deferred.Payload?.paths) && (deferred.Payload!.paths as string[]).length > 0 && (
+                <> · <span className="mono">{(deferred.Payload!.paths as string[]).join(', ')}</span></>
+              )}
+              {' · политика '}<span className="mono">{shortHash(String(deferred.Payload?.policy_version ?? ''))}</span>
+            </p>
+            {task.PRURL && <button className="btn primary sm" onClick={act(() => api.merge(task.ID))}>Подтвердить merge</button>}
+          </div>
+        )}
         {task.Status === 'blocked' && (
           <div className="dw-sec">
             <h3>Вопрос агента</h3>
@@ -113,7 +148,22 @@ export function TaskDrawer({ taskId, onClose, onChanged }: {
           <h3>Метаданные</h3>
           <div className="meta-grid">
             <div className="kv"><span>runner</span><b>{task.RunnerID || '—'}</b></div>
-            <div className="kv"><span>попытки</span><b>{attemptStr(task.AttemptUsed, task.AttemptLimit)}</b></div>
+            <div className="kv"><span>попытки</span>
+              <b className="row" style={{ gap: 6 }}>
+                {limitEdit === null
+                  ? <>{attemptStr(task.AttemptUsed, task.AttemptLimit)}
+                    {!['done', 'cancelled'].includes(task.Status) &&
+                      <button className="btn sm" title="изменить лимит попыток" onClick={() => setLimitEdit(task.AttemptLimit)}>✎</button>}</>
+                  : <>
+                    <span>{task.AttemptUsed} /</span>
+                    <input type="number" min={Math.max(1, task.AttemptUsed)} style={{ width: 56 }} value={limitEdit}
+                      onChange={e => setLimitEdit(Number(e.target.value))} />
+                    <button className="btn sm primary" disabled={!Number.isInteger(limitEdit) || limitEdit < Math.max(1, task.AttemptUsed)}
+                      onClick={act(async () => { await api.patchTask(task.ID, { attempt_limit: limitEdit }); setLimitEdit(null) })}>OK</button>
+                    <button className="btn sm" onClick={() => setLimitEdit(null)}>✕</button>
+                  </>}
+              </b></div>
+            <div className="kv"><span>отказы review</span><b>{task.ReviewRejections ?? 0}</b></div>
             <div className="kv"><span>ветка</span><b>{task.Branch || '—'}</b></div>
             <div className="kv"><span>оценка</span><b>{task.Estimate}</b></div>
           </div>
@@ -178,7 +228,7 @@ export function TaskDrawer({ taskId, onClose, onChanged }: {
           <div className="tl">
             {timeline.map(e => (
               <div key={e.ID} className={'tl-row'
-                  + (e.Type.includes('denied') || e.Text.includes('заблокирована') ? ' bad' : '')
+                  + (e.Type.includes('denied') || e.Type === 'task.merge_failed' || e.Text.includes('заблокирована') ? ' bad' : '')
                   + (e.Type === 'task.review_passed' ? ' warn' : '')}>
                 <span className="t">{timeShort(e.TS)}</span>
                 <span>{e.Text}</span>
