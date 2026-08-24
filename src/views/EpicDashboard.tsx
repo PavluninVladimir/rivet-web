@@ -2,13 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, budgetPaused, errCode, stColor, type EpicView, type Runner, type Task, type UsageRow } from '../api/client'
 import { Dag, type DagFilter } from '../components/Dag'
 import { TaskDrawer } from '../components/TaskDrawer'
-import { CtxBar, fmtCost, fmtDate, fmtDuration, fmtTokens, StBadge } from '../components/ui'
+import { ClaimControl, CtxBar, fmtCost, fmtDate, fmtDuration, fmtTokens, StBadge } from '../components/ui'
 import { useStore } from '../store'
 
 const SEG_ORDER = ['done', 'running', 'testing', 'fixing', 'review', 'ready', 'queued', 'blocked', 'failed', 'cancelled']
 
 export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: string }) {
-  const { nav, tick, attention, projects } = useStore()
+  const { nav, tick, attention, projects, refreshAttention } = useStore()
   const [epic, setEpic] = useState<EpicView | null>(null)
   const [runners, setRunners] = useState<Runner[]>([])
   const [mode, setMode] = useState<'graph' | 'list'>('graph')
@@ -121,7 +121,10 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
                 <button key={a.ID} className="att-card" onClick={() => openTask(a.TaskID)}>
                   <div className="att-top"><span className="tid mono">task-{t?.Num ?? '?'}</span><span className="att-reason">{a.Reason}</span></div>
                   <div className="att-msg">{a.Message}</div>
-                  <div className="att-act">Открыть →</div>
+                  <div className="att-act">
+                    <ClaimControl id={a.ID} claimedBy={a.ClaimedBy} onClaimed={refreshAttention} />
+                    {' '}Открыть →
+                  </div>
                 </button>
               )
             })}

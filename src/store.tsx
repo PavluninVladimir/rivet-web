@@ -7,7 +7,7 @@ export const APP_TABS = ['users', 'runners', 'models', 'policies', 'usage', 'aud
 export type AppTab = typeof APP_TABS[number]
 
 export type Route =
-  | { view: 'projects' } | { view: 'epics' } | { view: 'tasks' }
+  | { view: 'projects' } | { view: 'epics' } | { view: 'tasks' } | { view: 'team' }
   | { view: 'runners' } | { view: 'activity' } | { view: 'usage' }
   | { view: 'app-management'; tab: AppTab } | { view: 'profile' }
   | { view: 'epic'; id: string; taskId?: string }
@@ -23,7 +23,7 @@ function parseHash(): Route {
   if (a === 'app-management') {
     return { view: 'app-management', tab: (APP_TABS as readonly string[]).includes(b) ? b as AppTab : 'users' }
   }
-  if (a === 'projects' || a === 'tasks' || a === 'runners' || a === 'activity'
+  if (a === 'projects' || a === 'tasks' || a === 'team' || a === 'runners' || a === 'activity'
     || a === 'usage' || a === 'profile') return { view: a }
   return { view: 'epics' }
 }
@@ -48,6 +48,8 @@ interface Store {
   logs: Map<string, string> // live-лог по задачам (только текущее подключение)
   deployLogs: Map<string, string> // live-лог публикаций по deployment_id
   refreshProjects: () => void
+  // Claim эскалации не порождает события — после него список обновляется явно.
+  refreshAttention: () => void
 }
 
 const Ctx = createContext<Store | null>(null)
@@ -124,7 +126,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={{
       route, nav, projects, projectId, setProjectId,
       attention, connected, tick, lastEvent, logs: logsRef.current,
-      deployLogs: deployLogsRef.current, refreshProjects,
+      deployLogs: deployLogsRef.current, refreshProjects, refreshAttention,
     }}>
       {children}
     </Ctx.Provider>

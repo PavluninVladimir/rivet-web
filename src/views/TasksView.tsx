@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type Epic, type Task } from '../api/client'
-import { StBadge } from '../components/ui'
+import { ClaimControl, StBadge } from '../components/ui'
 import { useStore } from '../store'
 
 // Сквозной список задач проекта + очередь needs attention.
 export function TasksView() {
-  const { projectId, nav, tick, attention } = useStore()
+  const { projectId, nav, tick, attention, refreshAttention } = useStore()
   const [rows, setRows] = useState<{ epic: Epic; task: Task }[]>([])
   const [q, setQ] = useState('')
 
@@ -51,7 +51,10 @@ export function TasksView() {
                       <span className="att-reason">{a.Reason}</span>
                     </div>
                     <div className="att-msg">{a.Message}</div>
-                    <div className="att-act">К окружениям →</div>
+                    <div className="att-act">
+                      <ClaimControl id={a.ID} claimedBy={a.ClaimedBy} onClaimed={refreshAttention} />
+                      {' '}К окружениям →
+                    </div>
                   </button>
                 )
               }
@@ -64,7 +67,10 @@ export function TasksView() {
                     <span className="att-reason">{a.Reason}</span>
                   </div>
                   <div className="att-msg">{a.Message}</div>
-                  <div className="att-act">Открыть →</div>
+                  <div className="att-act">
+                    <ClaimControl id={a.ID} claimedBy={a.ClaimedBy} onClaimed={refreshAttention} />
+                    {' '}Открыть →
+                  </div>
                 </button>
               )
             })}

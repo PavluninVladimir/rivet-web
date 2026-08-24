@@ -1,4 +1,5 @@
-import { stLabel } from '../api/client'
+import { useState } from 'react'
+import { api, stLabel } from '../api/client'
 
 export function StBadge({ s }: { s: string }) {
   return <span className={`st st-${s}`}>{stLabel[s] ?? s.toUpperCase()}</span>
@@ -93,5 +94,39 @@ export function SecretOnce({ title, secret, hint, onHide }: { title: string; sec
       </div>
       <div className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>{hint}</div>
     </div>
+  )
+}
+
+
+// Взятие эскалации в работу (спека team-visibility, add-team-visibility):
+// кнопка на карточке эскалации; после claim видно, кто разбирает.
+// span, не button: карточка сама кнопка, вложенный button невалиден —
+// клавиатура обрабатывается вручную (Enter/Space), повторный клик до
+// ответа не шлёт второй POST, ошибка показывается вместо кнопки.
+export function ClaimControl({ id, claimedBy, onClaimed }: {
+  id: string; claimedBy: string; onClaimed: () => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(false)
+  if (claimedBy) return <span className="muted" style={{ fontSize: 11.5 }}>разбирает {claimedBy}</span>
+  if (failed) return <span className="muted" style={{ fontSize: 11.5 }}>не удалось взять — уже разобрана?</span>
+  const claim = () => {
+    if (busy) return
+    setBusy(true)
+    api.claim(id).then(onClaimed).catch(() => setFailed(true)).finally(() => setBusy(false))
+  }
+  return (
+    <span className={'btn sm' + (busy ? ' muted' : '')} role="button" tabIndex={0}
+      aria-disabled={busy}
+      onClick={e => { e.stopPropagation(); claim() }}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          e.stopPropagation()
+          claim()
+        }
+      }}>
+      Взять в работу
+    </span>
   )
 }
