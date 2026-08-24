@@ -354,3 +354,8 @@ textarea.answer { width: 100%; min-height: 64px; background: var(--term-bg); bor
 .sw.on::after { left: 15px; }
 .sw:disabled { opacity: .5; cursor: default; }
 .budget-pause { margin-top: 8px; padding: 8px 10px; border-radius: 6px; font-size: 12.5px; color: var(--c-block); border: 1px solid color-mix(in oklch, var(--c-block) 45%, transparent); background: color-mix(in oklch, var(--c-block) 10%, transparent); }
+
+/* Затронутые файлы раскрытой сессии и шаги (add-claude-code-adapter):
+   длинные runner-controlled строки не распирают drawer по горизонтали */
+.sess-files { font-size: 11.5px; padding: 4px 8px; border-left: 2px solid var(--border); margin: 2px 0 4px; word-break: break-all; }
+.tl-row > span:last-child { min-width: 0; overflow-wrap: anywhere; }

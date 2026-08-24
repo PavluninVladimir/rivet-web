@@ -162,6 +162,9 @@ export interface Runner {
   Capabilities: string[]; Status: string; TaskID: string
   CtxPct: number | null // null — заполненность контекста неизвестна
   Draining: boolean; LastSeen: string
+  // Адаптер подключения агента и глубина его данных.
+  Adapter: string
+  Depth: 'full' | 'partial' | 'minimal' | string
 }
 
 export interface Event {
@@ -255,10 +258,26 @@ export interface Session {
   agent: string
   model: string
   driver_kind: 'scheduler' | 'user'
+  // Глубина данных подключения и затронутые файлы (api-contract
+  // add-claude-code-adapter): files === null — недоступно для этого
+  // способа подключения, [] — полная глубина без файлов.
+  depth: 'full' | 'partial' | 'minimal' | string
+  files: string[] | null
   tokens: number | null
   started_at: string
   ended_at: string | null
   has_transcript: boolean
+}
+
+// Payload события session.step (подключения полной глубины): инструмент,
+// краткий аргумент, файлы, признак ошибки.
+export interface StepPayload {
+  kind?: 'tool' | 'stop' | 'note' | string
+  tool?: string
+  detail?: string
+  files?: string[]
+  ok?: boolean
+  session_id?: string
 }
 
 // Обработчик 401: консоль уводит на экран входа (спека web
