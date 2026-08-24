@@ -129,6 +129,7 @@ export interface SessionEntry {
   outcome: string
   last_step: string
   files: string[] | null
+  private: boolean
   tokens: number | null
   started_at: string
   ended_at: string | null
@@ -302,6 +303,10 @@ export interface Session {
   prompt: string
   outcome: string
   last_step: string
+  // Сессия человека и приватность (add-user-sessions): у чужой приватной
+  // содержимое пусто, files === null, has_transcript === false.
+  driver_id: string
+  private: boolean
   tokens: number | null
   started_at: string
   ended_at: string | null
@@ -427,6 +432,9 @@ export const api = {
     req<Task>('POST', `/epics/${epicId}/tasks`, t),
   task: (id: string) => req<{ task: Task; timeline: Event[] | null }>('GET', `/tasks/${id}`),
   patchTask: (id: string, patch: { attempt_limit: number }) => req<Task>('PATCH', `/tasks/${id}`, patch),
+  // Сессия доработки с промптом участника (api-contract add-user-sessions).
+  startTaskSession: (id: string, prompt: string, priv: boolean) =>
+    req<{ status: string; session_id: string }>('POST', `/tasks/${id}/sessions`, { prompt, private: priv }),
   taskSessions: (id: string) => req<Session[]>('GET', `/tasks/${id}/sessions`),
   // Реестр активных сессий проекта (без q) и поиск по истории (с q).
   projectSessions: (projectId: string, q?: string) =>

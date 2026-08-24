@@ -24,7 +24,8 @@ function SessionRow({ e, onOpen }: { e: SessionEntry; onOpen: () => void }) {
         <span className="mono muted">task-{e.task_num}</span>
         <span className="sess-stage" style={{ color: stageColor(e.stage) }}>{e.stage.toUpperCase()}</span>
         <span className="sess-agent">{e.task_title}</span>
-        <span className="muted">{e.agent}{e.model ? ` · ${e.model}` : ''}</span>
+        <span className="muted">{e.driver_kind === 'user' ? `водитель: ${e.driver_id} · ` : ''}{e.agent}{e.model ? ` · ${e.model}` : ''}</span>
+        {e.private && <span className="chip" title="содержимое видно только автору"><span className="n">приватная</span></span>}
         {e.depth === 'full' && <span className="chip" title="глубина данных подключения"><span className="n">full</span></span>}
         <span className="mono">{liveDuration(e.started_at, e.ended_at)}</span>
         <span className="mono" title="токены">{fmtTokens(e.tokens)}</span>
@@ -115,6 +116,8 @@ export function TeamView() {
                       <span className="mono muted">{timeShort(e.started_at)}</span>
                       <span className="sess-stage" style={{ color: stageColor(e.stage) }}>{e.stage.toUpperCase()}</span>
                       <span className="sess-agent">{e.task_title}</span>
+                      {e.driver_kind === 'user' && <span className="muted">водитель: {e.driver_id}</span>}
+                      {e.private && <span className="chip" title="содержимое видно только автору"><span className="n">приватная</span></span>}
                       {e.ended_at ? <StBadge s="done" /> : <StBadge s="running" />}
                       <span className="mono" title="токены">{fmtTokens(e.tokens)}</span>
                     </button>
