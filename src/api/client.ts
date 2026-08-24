@@ -431,7 +431,12 @@ export const api = {
   addTask: (epicId: string, t: { title: string; description: string; criteria: string[]; deps: string[] }) =>
     req<Task>('POST', `/epics/${epicId}/tasks`, t),
   task: (id: string) => req<{ task: Task; timeline: Event[] | null }>('GET', `/tasks/${id}`),
-  patchTask: (id: string, patch: { attempt_limit: number }) => req<Task>('PATCH', `/tasks/${id}`, patch),
+  patchTask: (id: string, patch: {
+    attempt_limit?: number
+    // Правка плана (api-contract add-plan-editing): для queued/ready.
+    title?: string; description?: string; criteria?: string[]; deps?: string[]
+  }) => req<Task>('PATCH', `/tasks/${id}`, patch),
+  deleteTask: (id: string) => req<{ status: string }>('DELETE', `/tasks/${id}`),
   // Сессия доработки с промптом участника (api-contract add-user-sessions).
   startTaskSession: (id: string, prompt: string, priv: boolean) =>
     req<{ status: string; session_id: string }>('POST', `/tasks/${id}/sessions`, { prompt, private: priv }),
@@ -558,6 +563,7 @@ export function subscribe(projectId: string, handlers: {
     // бюджету, активация версии проекта — деталка, настройки и дашборд
     // обновляются по ним.
     'task.merge_deferred', 'task.merge_failed', 'deploy.deferred', 'policy.budget_exceeded', 'policy.activated',
+    'task.plan_edited', 'epic.plan_edited',
     // Пересечения работ: реестр «Команды» и timeline задач (add-team-visibility).
     'session.overlap']
   for (const t of evTypes) {
