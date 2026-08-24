@@ -110,6 +110,41 @@ export interface PolicyVersion {
 
 export interface InstallationPolicy { version: PolicyVersion | null; presets: Presets }
 
+// ─── командная видимость (api-contract add-team-visibility) ─────────────
+
+// Запись реестра активных сессий проекта и результата поиска по истории.
+export interface SessionEntry {
+  id: string
+  task_id: string
+  task_num: number
+  task_title: string
+  epic_id: string
+  stage: string
+  driver_kind: 'scheduler' | 'user'
+  driver_id: string
+  agent: string
+  model: string
+  depth: 'full' | 'partial' | 'minimal' | string
+  prompt: string
+  outcome: string
+  last_step: string
+  files: string[] | null
+  tokens: number | null
+  started_at: string
+  ended_at: string | null
+  has_transcript: boolean
+  // Только у активных: null — пересечения недоступны для способа
+  // подключения (минимальная глубина), [] — пересечений нет.
+  overlaps: Overlap[] | null
+}
+
+export interface Overlap {
+  task_id: string
+  task_num: number
+  task_title: string
+  files: string[]
+}
+
 export interface ProjectPolicy {
   effective: Presets
   effective_hash: string
@@ -263,6 +298,10 @@ export interface Session {
   // способа подключения, [] — полная глубина без файлов.
   depth: 'full' | 'partial' | 'minimal' | string
   files: string[] | null
+  // Запрос, итог и последний шаг сессии (add-team-visibility).
+  prompt: string
+  outcome: string
+  last_step: string
   tokens: number | null
   started_at: string
   ended_at: string | null
@@ -389,6 +428,9 @@ export const api = {
   task: (id: string) => req<{ task: Task; timeline: Event[] | null }>('GET', `/tasks/${id}`),
   patchTask: (id: string, patch: { attempt_limit: number }) => req<Task>('PATCH', `/tasks/${id}`, patch),
   taskSessions: (id: string) => req<Session[]>('GET', `/tasks/${id}/sessions`),
+  // Реестр активных сессий проекта (без q) и поиск по истории (с q).
+  projectSessions: (projectId: string, q?: string) =>
+    req<SessionEntry[]>('GET', `/projects/${projectId}/sessions${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   sessionTranscript: (id: string) => reqText(`/sessions/${id}/transcript`),
   environments: (projectId: string) => req<Environment[]>('GET', `/projects/${projectId}/environments`),
   createEnvironment: (projectId: string, e: { name: string; trigger: string; config: EnvConfig }) =>
@@ -507,7 +549,9 @@ export function subscribe(projectId: string, handlers: {
     // Решения политик: отложенный merge, отложенная публикация, пауза по
     // бюджету, активация версии проекта — деталка, настройки и дашборд
     // обновляются по ним.
-    'task.merge_deferred', 'task.merge_failed', 'deploy.deferred', 'policy.budget_exceeded', 'policy.activated']
+    'task.merge_deferred', 'task.merge_failed', 'deploy.deferred', 'policy.budget_exceeded', 'policy.activated',
+    // Пересечения работ: реестр «Команды» и timeline задач (add-team-visibility).
+    'session.overlap']
   for (const t of evTypes) {
     es.addEventListener(t, (m) => handlers.onEvent(JSON.parse((m as MessageEvent).data)))
   }

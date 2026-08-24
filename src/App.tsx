@@ -6,6 +6,7 @@ import { EpicDashboard } from './views/EpicDashboard'
 import { ProjectsView } from './views/ProjectsView'
 import { ProjectSettings } from './views/ProjectSettings'
 import { TasksView } from './views/TasksView'
+import { TeamView } from './views/TeamView'
 import { RunnersView } from './views/RunnersView'
 import { ActivityView } from './views/ActivityView'
 import { UsageView } from './views/UsageView'
@@ -18,6 +19,7 @@ const NAV: { view: Route['view']; label: string }[] = [
   { view: 'projects', label: 'Проекты' },
   { view: 'epics', label: 'Epic’и' },
   { view: 'tasks', label: 'Задачи' },
+  { view: 'team', label: 'Команда' },
   { view: 'runners', label: 'Runner’ы' },
   { view: 'activity', label: 'Активность' },
   { view: 'usage', label: 'Usage' },
@@ -117,6 +119,7 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
           {route.view === 'epics' && <EpicsView />}
           {route.view === 'epic' && <EpicDashboard key={route.id} epicId={route.id} taskId={route.taskId} />}
           {route.view === 'tasks' && <TasksView />}
+          {route.view === 'team' && <TeamView />}
           {route.view === 'runners' && <RunnersView admin={user.admin} />}
           {route.view === 'activity' && <ActivityView />}
           {route.view === 'usage' && <UsageView />}
