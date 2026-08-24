@@ -69,6 +69,10 @@ export function TaskDrawer({ taskId, onClose, onChanged }: {
   const [err, setErr] = useState('')
   // Редактирование лимита попыток участником (спека web «Политики в консоли»).
   const [limitEdit, setLimitEdit] = useState<number | null>(null)
+  // Сессия доработки (спека web «Запуск сессии доработки»).
+  const [sessPrompt, setSessPrompt] = useState('')
+  const [sessPrivate, setSessPrivate] = useState(false)
+  const [sessBusy, setSessBusy] = useState(false)
   const termRef = useRef<HTMLDivElement>(null)
 
   // История сессий перезапрашивается вместе с задачей на каждом SSE-событии
@@ -81,7 +85,10 @@ export function TaskDrawer({ taskId, onClose, onChanged }: {
     api.taskSessions(taskId).then(s => setSessions(s ?? [])).catch(() => {})
   }, [taskId])
   useEffect(refresh, [refresh, tick])
-  useEffect(() => { setOpenSess(null); openSessRef.current = null; setTranscript(null); setLimitEdit(null) }, [taskId])
+  useEffect(() => {
+    setOpenSess(null); openSessRef.current = null; setTranscript(null)
+    setLimitEdit(null); setSessPrompt(''); setSessPrivate(false)
+  }, [taskId])
 
   const showTranscript = (s: Session) => {
     if (openSess === s.id) { setOpenSess(null); openSessRef.current = null; return }
@@ -144,6 +151,32 @@ export function TaskDrawer({ taskId, onClose, onChanged }: {
             {task.PRURL && <button className="btn primary sm" onClick={act(() => api.merge(task.ID))}>Подтвердить merge</button>}
           </div>
         )}
+        {['blocked', 'failed', 'review'].includes(task.Status) && (
+          <div className="dw-sec">
+            <h3>Сессия доработки</h3>
+            <textarea className="answer" placeholder="Промпт агенту: что доработать в ветке задачи…"
+              value={sessPrompt} onChange={e => setSessPrompt(e.target.value)} />
+            <div className="row" style={{ marginTop: 8, gap: 8 }}>
+              <button className="btn primary sm" disabled={!sessPrompt.trim() || sessBusy}
+                onClick={act(async () => {
+                  if (sessBusy) return
+                  setSessBusy(true)
+                  try {
+                    await api.startTaskSession(task.ID, sessPrompt.trim(), sessPrivate)
+                    setSessPrompt('')
+                  } finally { setSessBusy(false) }
+                })}>
+                {sessBusy ? 'Запуск…' : 'Запустить сессию'}
+              </button>
+              <label className="row muted" style={{ gap: 6, fontSize: 12 }}>
+                <input type="checkbox" style={{ width: 'auto' }} checked={sessPrivate}
+                  onChange={e => setSessPrivate(e.target.checked)} />
+                приватная — команда видит только факт
+              </label>
+            </div>
+          </div>
+        )}
+
         {task.Status === 'blocked' && (
           <div className="dw-sec">
             <h3>Вопрос агента</h3>
@@ -221,23 +254,31 @@ export function TaskDrawer({ taskId, onClose, onChanged }: {
                     <span className="sess-stage" style={{ color: stageColor(s.stage) }}>
                       {s.stage.toUpperCase()}
                     </span>
-                    <span className="sess-agent">{s.agent}{s.model ? ` · ${s.model}` : ''}</span>
+                    <span className="sess-agent">{s.agent}{s.model ? ` · ${s.model}` : ''}
+                      {s.driver_kind === 'user' && <span className="muted"> · водитель: {s.driver_id}</span>}</span>
+                    {s.private && <span className="chip" title="содержимое видно только автору"><span className="n">приватная</span></span>}
                     {s.depth === 'full' && <span className="chip" title="глубина данных подключения"><span className="n">full</span></span>}
                     <span className="mono">{sessDuration(s)}</span>
                     <span className="mono" title="токены">{fmtTokens(s.tokens)}</span>
                   </button>
                   {openSess === s.id && (
                     <div className="sess-files muted">
-                      файлы: {s.files === null
-                        ? 'недоступно для этого подключения'
-                        : s.files.length === 0 ? 'нет' : <span className="mono">{s.files.join(', ')}</span>}
+                      файлы: {s.private && s.files === null
+                        ? 'содержимое скрыто приватностью сессии'
+                        : s.files === null
+                          ? 'недоступно для этого подключения'
+                          : s.files.length === 0 ? 'нет' : <span className="mono">{s.files.join(', ')}</span>}
                     </div>
                   )}
                   {openSess === s.id && (
                     transcript === null
                       ? <div className="term sess-term">загрузка…</div>
                       : transcript === ''
-                        ? <div className="term sess-term muted">транскрипт недоступен</div>
+                        ? <div className="term sess-term muted">
+                            {s.private && s.files === null
+                              ? 'содержимое скрыто приватностью сессии'
+                              : 'транскрипт недоступен'}
+                          </div>
                         : <div className="term sess-term">{transcript}</div>
                   )}
                 </div>
