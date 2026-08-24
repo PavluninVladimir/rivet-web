@@ -32,7 +32,7 @@ export function RunnersView({ admin }: { admin: boolean }) {
         )}
       </div>
       <table className="tbl">
-        <thead><tr><th>ID</th><th>Агент</th><th>Хост</th><th>Capabilities</th><th>Контекст</th><th>Статус</th><th>Последний сигнал</th><th></th></tr></thead>
+        <thead><tr><th>ID</th><th>Агент</th><th>Хост</th><th>Capabilities</th><th>Глубина</th><th>Контекст</th><th>Статус</th><th>Последний сигнал</th><th></th></tr></thead>
         <tbody>
           {runners.map(r => (
             <tr key={r.ID}>
@@ -40,6 +40,9 @@ export function RunnersView({ admin }: { admin: boolean }) {
               <td className="muted">{r.Agent}{r.Model ? ` · ${r.Model}` : ''}</td>
               <td className="mono muted">{r.Host}</td>
               <td className="mono muted">{r.Capabilities.join(', ')}</td>
+              <td className="mono muted" title={`адаптер ${r.Adapter || 'wrap'}: глубина данных подключения`}>
+                {r.Depth || 'minimal'}
+              </td>
               <td><CtxBar pct={r.CtxPct} /></td>
               <td><StBadge s={r.Status} />{r.Draining && <span className="muted" style={{ marginLeft: 6, fontSize: 10.5 }}>drain</span>}</td>
               <td className="muted" title={r.LastSeen}>{fmtAgo(r.LastSeen)}</td>

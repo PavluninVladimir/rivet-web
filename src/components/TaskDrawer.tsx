@@ -1,5 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, stColor, type Event, type Session, type Task } from '../api/client'
+import { api, stColor, type Event, type Session, type StepPayload, type Task } from '../api/client'
+
+// stepOf валидирует payload session.step: он runner-controlled, битые типы
+// не должны ронять рендер деталки.
+function stepOf(e: Event): StepPayload | undefined {
+  if (e.Type !== 'session.step' || !e.Payload || typeof e.Payload !== 'object') return undefined
+  const p = e.Payload as Record<string, unknown>
+  const files = Array.isArray(p.files) ? p.files.filter((f): f is string => typeof f === 'string') : undefined
+  return {
+    kind: typeof p.kind === 'string' ? p.kind : undefined,
+    tool: typeof p.tool === 'string' ? p.tool : undefined,
+    detail: typeof p.detail === 'string' ? p.detail : undefined,
+    ok: typeof p.ok === 'boolean' ? p.ok : undefined,
+    files,
+  }
+}
 import { useStore } from '../store'
 import { shortHash } from './PolicyPanel'
 import { StBadge, attemptStr, fmtDuration, fmtTokens, timeShort } from './ui'
@@ -207,9 +222,17 @@ export function TaskDrawer({ taskId, onClose, onChanged }: {
                       {s.stage.toUpperCase()}
                     </span>
                     <span className="sess-agent">{s.agent}{s.model ? ` · ${s.model}` : ''}</span>
+                    {s.depth === 'full' && <span className="chip" title="глубина данных подключения"><span className="n">full</span></span>}
                     <span className="mono">{sessDuration(s)}</span>
                     <span className="mono" title="токены">{fmtTokens(s.tokens)}</span>
                   </button>
+                  {openSess === s.id && (
+                    <div className="sess-files muted">
+                      файлы: {s.files === null
+                        ? 'недоступно для этого подключения'
+                        : s.files.length === 0 ? 'нет' : <span className="mono">{s.files.join(', ')}</span>}
+                    </div>
+                  )}
                   {openSess === s.id && (
                     transcript === null
                       ? <div className="term sess-term">загрузка…</div>
@@ -226,14 +249,29 @@ export function TaskDrawer({ taskId, onClose, onChanged }: {
         <div className="dw-sec">
           <h3>Timeline</h3>
           <div className="tl">
-            {timeline.map(e => (
-              <div key={e.ID} className={'tl-row'
-                  + (e.Type.includes('denied') || e.Type === 'task.merge_failed' || e.Text.includes('заблокирована') ? ' bad' : '')
-                  + (e.Type === 'task.review_passed' ? ' warn' : '')}>
-                <span className="t">{timeShort(e.TS)}</span>
-                <span>{e.Text}</span>
-              </div>
-            ))}
+            {timeline.map(e => {
+              const step = stepOf(e)
+              const bad = e.Type.includes('denied') || e.Type === 'task.merge_failed'
+                || step?.ok === false || e.Text.includes('заблокирована')
+              return (
+                <div key={e.ID} className={'tl-row' + (bad ? ' bad' : '')
+                    + (e.Type === 'task.review_passed' ? ' warn' : '')}>
+                  <span className="t">{timeShort(e.TS)}</span>
+                  {step?.tool ? (
+                    <span>
+                      <span className="chip"><span className="n">{step.tool}</span></span>
+                      {' '}{step.detail || ''}
+                      {(step.files?.length ?? 0) > 0 && (
+                        <span className="mono muted">
+                          {' '}{step.files!.slice(0, 3).join(', ')}{step.files!.length > 3 ? ` +${step.files!.length - 3}` : ''}
+                        </span>
+                      )}
+                      {step.ok === false && ' — ошибка'}
+                    </span>
+                  ) : <span>{e.Text}</span>}
+                </div>
+              )
+            })}
           </div>
         </div>
       </div>
