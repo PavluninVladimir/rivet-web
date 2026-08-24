@@ -72,7 +72,8 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
             {epic.Status === 'paused' && <button className="btn primary" onClick={act(() => api.epicAction(epic.ID, 'resume'))}>Возобновить</button>}
             {['planned', 'paused', 'done'].includes(epic.Status) &&
               <button className="btn" onClick={act(() => api.epicAction(epic.ID, 'archive'))}>Архивировать</button>}
-            <button className="btn" onClick={() => setAdding(true)}>Добавить задачу</button>
+            {!['done', 'archived'].includes(epic.Status) &&
+              <button className="btn" onClick={() => setAdding(true)}>Добавить задачу</button>}
           </div>
         </div>
         <div className="epic-meta-row">
@@ -194,7 +195,8 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
         </aside>
       </div>
 
-      {taskId && <TaskDrawer taskId={taskId} onClose={closeTask} onChanged={refresh} />}
+      {taskId && <TaskDrawer taskId={taskId} onClose={closeTask} onChanged={refresh}
+        epicStatus={epic.Status} epicTasks={tasks} />}
       {adding && <AddTaskModal epicId={epic.ID} tasks={tasks} onClose={() => setAdding(false)} onAdded={refresh} />}
     </div>
   )

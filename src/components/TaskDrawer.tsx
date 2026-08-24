@@ -50,10 +50,14 @@ function stageColor(stage: string): string {
   return `var(${stColor[stage === 'fix' ? 'fixing' : stage] ?? '--muted'})`
 }
 
-export function TaskDrawer({ taskId, onClose, onChanged }: {
+export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }: {
   taskId: string
   onClose: () => void
   onChanged: () => void
+  // Статус Epic и его задачи — для правки плана (add-plan-editing):
+  // удаление доступно в planned, зависимости выбираются из задач Epic.
+  epicStatus?: string
+  epicTasks?: Task[]
 }) {
   const { tick, logs } = useStore()
   const [task, setTask] = useState<Task | null>(null)
@@ -69,6 +73,13 @@ export function TaskDrawer({ taskId, onClose, onChanged }: {
   const [err, setErr] = useState('')
   // Редактирование лимита попыток участником (спека web «Политики в консоли»).
   const [limitEdit, setLimitEdit] = useState<number | null>(null)
+  // Правка плана не начатой задачи (спека web «Правка задачи плана»).
+  const [editing, setEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState('')
+  const [editDesc, setEditDesc] = useState('')
+  const [editCriteria, setEditCriteria] = useState<string[]>([])
+  const [editDeps, setEditDeps] = useState<string[]>([])
+  const [confirmDelete, setConfirmDelete] = useState(false)
   // Сессия доработки (спека web «Запуск сессии доработки»).
   const [sessPrompt, setSessPrompt] = useState('')
   const [sessPrivate, setSessPrivate] = useState(false)
@@ -88,6 +99,7 @@ export function TaskDrawer({ taskId, onClose, onChanged }: {
   useEffect(() => {
     setOpenSess(null); openSessRef.current = null; setTranscript(null)
     setLimitEdit(null); setSessPrompt(''); setSessPrivate(false)
+    setEditing(false); setConfirmDelete(false)
   }, [taskId])
 
   const showTranscript = (s: Session) => {
@@ -113,6 +125,15 @@ export function TaskDrawer({ taskId, onClose, onChanged }: {
 
   if (!task) return null
   const live = ['running', 'testing', 'fixing', 'review'].includes(task.Status)
+  const planEditable = ['queued', 'ready'].includes(task.Status)
+    && !['done', 'archived'].includes(epicStatus ?? '')
+  const startEdit = () => {
+    setEditTitle(task.Title)
+    setEditDesc(task.Description)
+    setEditCriteria((task.Criteria ?? []).map(c => c.text))
+    setEditDeps(task.Deps ?? [])
+    setEditing(true)
+  }
   const deferred = task.Status === 'review' ? mergeDeferred(timeline) : null
 
   return (
@@ -131,6 +152,14 @@ export function TaskDrawer({ taskId, onClose, onChanged }: {
             <a className="btn sm" href={task.PRURL} target="_blank" rel="noreferrer">Открыть PR</a>}
           {task.Status === 'failed' &&
             <button className="btn sm" onClick={act(() => api.retry(task.ID))}>Повторить</button>}
+          {planEditable && !editing &&
+            <button className="btn sm" onClick={startEdit}>Редактировать</button>}
+          {planEditable && epicStatus === 'planned' && (
+            confirmDelete
+              ? <button className="btn sm danger"
+                  onClick={act(async () => { await api.deleteTask(task.ID); onClose() })}>Удалить?</button>
+              : <button className="btn sm" onClick={() => setConfirmDelete(true)}>Удалить</button>
+          )}
           {!['done', 'cancelled'].includes(task.Status) &&
             <button className="btn sm danger" onClick={act(() => api.cancel(task.ID))}>Отменить</button>}
         </div>
@@ -138,6 +167,47 @@ export function TaskDrawer({ taskId, onClose, onChanged }: {
       </div>
 
       <div className="dw-body">
+        {editing && (
+          <div className="dw-sec">
+            <h3>Правка плана</h3>
+            <input placeholder="Название" value={editTitle} onChange={e => setEditTitle(e.target.value)} />
+            <textarea className="answer" placeholder="Описание" style={{ marginTop: 6 }}
+              value={editDesc} onChange={e => setEditDesc(e.target.value)} />
+            <div className="muted" style={{ fontSize: 11.5, margin: '6px 0 2px' }}>Acceptance criteria (отметки сбросятся)</div>
+            {editCriteria.map((c, i) => (
+              <div className="row" key={i} style={{ gap: 6, marginTop: 4 }}>
+                <input value={c} onChange={e => setEditCriteria(editCriteria.map((x, j) => j === i ? e.target.value : x))} />
+                <button className="btn sm" onClick={() => setEditCriteria(editCriteria.filter((_, j) => j !== i))}>✕</button>
+              </div>
+            ))}
+            <button className="btn sm" style={{ marginTop: 6 }}
+              onClick={() => setEditCriteria([...editCriteria, ''])}>Добавить критерий</button>
+            <div className="muted" style={{ fontSize: 11.5, margin: '8px 0 2px' }}>Зависимости</div>
+            {(epicTasks ?? []).filter(t2 => t2.ID !== task.ID && t2.Status !== 'cancelled').map(t2 => (
+              <label className="row" key={t2.ID} style={{ gap: 6, fontSize: 12, marginTop: 2 }}>
+                <input type="checkbox" style={{ width: 'auto' }} checked={editDeps.includes(t2.ID)}
+                  onChange={e => setEditDeps(e.target.checked
+                    ? [...editDeps, t2.ID] : editDeps.filter(d => d !== t2.ID))} />
+                <span className="mono muted">task-{t2.Num}</span> {t2.Title}
+              </label>
+            ))}
+            <div className="row" style={{ gap: 8, marginTop: 10 }}>
+              <button className="btn primary sm" disabled={!editTitle.trim()}
+                onClick={act(async () => {
+                  await api.patchTask(task.ID, {
+                    title: editTitle.trim(), description: editDesc,
+                    criteria: editCriteria.map(c => c.trim()).filter(Boolean),
+                    deps: editDeps,
+                  })
+                  setEditing(false)
+                })}>
+                Сохранить
+              </button>
+              <button className="btn sm" onClick={() => setEditing(false)}>Отмена</button>
+            </div>
+          </div>
+        )}
+
         {deferred && (
           <div className="dw-sec">
             <h3>Merge отложен политикой</h3>
