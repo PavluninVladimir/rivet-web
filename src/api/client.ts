@@ -609,7 +609,7 @@ export function subscribe(projectId: string, handlers: {
     // бюджету, активация версии проекта — деталка, настройки и дашборд
     // обновляются по ним.
     'task.merge_deferred', 'task.merge_failed', 'deploy.deferred', 'policy.budget_exceeded', 'policy.activated',
-    'policy.decision',
+    'policy.decision', 'task.checks_external', 'task.review_external', 'task.pr_closed',
     'task.plan_edited', 'epic.plan_edited', 'epic.budget_exceeded',
     // Пересечения работ: реестр «Команды» и timeline задач (add-team-visibility).
     'session.overlap']
