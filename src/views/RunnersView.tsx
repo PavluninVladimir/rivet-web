@@ -40,7 +40,7 @@ export function RunnersView({ admin }: { admin: boolean }) {
               <td className="muted">{r.Agent}{r.Model ? ` · ${r.Model}` : ''}</td>
               <td className="mono muted">{r.Host}</td>
               <td className="mono muted">{r.Capabilities.join(', ')}</td>
-              <td className="mono muted" title={`адаптер ${r.Adapter || 'wrap'}: глубина данных подключения`}>
+              <td className="mono muted" title={`адаптер ${r.Adapter || 'wrap'}: глубина данных подключения; обратный канал контекста: ${r.ContextChannel ? 'есть' : 'нет'}`}>
                 {r.Depth || 'minimal'}
               </td>
               <td><CtxBar pct={r.CtxPct} /></td>
