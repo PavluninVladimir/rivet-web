@@ -9,7 +9,11 @@ export function ActivityView() {
 
   const refresh = useCallback(() => {
     if (!projectId) return
-    api.events({ project: projectId }).then(e => setEvents((e ?? []).slice().reverse())).catch(() => {})
+    // Новые сверху по времени события, а не по порядку записи: события
+    // импортированной истории несут исходные даты (add-history-import).
+    api.events({ project: projectId, latest: true })
+      .then(e => setEvents((e ?? []).slice().sort((a, b) => (b.TS < a.TS ? -1 : b.TS > a.TS ? 1 : b.ID - a.ID))))
+      .catch(() => {})
   }, [projectId])
   useEffect(refresh, [refresh, tick])
 
