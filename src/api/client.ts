@@ -223,6 +223,9 @@ export interface Runner {
   // Адаптер подключения агента и глубина его данных.
   Adapter: string
   Depth: 'full' | 'partial' | 'minimal' | string
+  // Доводит ли адаптер контекст от Rivet до работающего агента
+  // (обратный канал); без него система контекст ему не шлёт.
+  ContextChannel: boolean
 }
 
 export interface Event {
@@ -337,6 +340,13 @@ export interface Session {
 
 // Payload события session.step (подключения полной глубины): инструмент,
 // краткий аргумент, файлы, признак ошибки.
+// Payload события session.overlap: доставлено ли предупреждение самому
+// агенту и почему нет (спека web «Доставка предупреждения агенту видна»).
+export interface OverlapPayload {
+  delivered?: boolean
+  delivery_reason?: 'no_channel' | 'runner_offline' | 'no_runner' | string
+}
+
 export interface StepPayload {
   kind?: 'tool' | 'stop' | 'note' | string
   tool?: string

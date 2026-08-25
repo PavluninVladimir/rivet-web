@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, stColor, type Event, type Session, type StepPayload, type Task } from '../api/client'
+import { api, stColor, type Event, type OverlapPayload, type Session, type StepPayload, type Task } from '../api/client'
 
 // stepOf валидирует payload session.step: он runner-controlled, битые типы
 // не должны ронять рендер деталки.
@@ -15,6 +15,22 @@ function stepOf(e: Event): StepPayload | undefined {
     files,
   }
 }
+// overlapTail — хвост строки пересечения работ: доставлено ли
+// предупреждение самому агенту (спека web «Доставка предупреждения агенту
+// видна»). Payload старых событий полей доставки не несёт — хвоста нет.
+function overlapTail(e: Event): string {
+  if (e.Type !== 'session.overlap' || !e.Payload || typeof e.Payload !== 'object') return ''
+  const p = e.Payload as OverlapPayload
+  if (typeof p.delivered !== 'boolean') return ''
+  if (p.delivered) return ' — агент предупреждён'
+  const why: Record<string, string> = {
+    no_channel: 'адаптер без обратного канала',
+    runner_offline: 'runner недоступен',
+    no_runner: 'стадия уже завершилась',
+  }
+  return ' — агент не предупреждён: ' + (why[p.delivery_reason ?? ''] ?? 'причина неизвестна')
+}
+
 import { useStore } from '../store'
 import { shortHash } from './PolicyPanel'
 import { StBadge, attemptStr, fmtDuration, fmtTokens, timeShort } from './ui'
@@ -379,7 +395,7 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
                       )}
                       {step.ok === false && ' — ошибка'}
                     </span>
-                  ) : <span>{e.Text}</span>}
+                  ) : <span>{e.Text}<span className="muted">{overlapTail(e)}</span></span>}
                 </div>
               )
             })}
