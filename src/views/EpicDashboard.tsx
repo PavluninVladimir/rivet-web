@@ -17,6 +17,8 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
   const [showCP, setShowCP] = useState(false)
   const [adding, setAdding] = useState(false)
   const [err, setErr] = useState('')
+  // Бюджет Epic (add-cost-transparency): черновик поля, null — не редактируется.
+  const [budgetEdit, setBudgetEdit] = useState<string | null>(null)
 
   const refresh = useCallback(() => {
     api.epic(epicId).then(setEpic).catch(e => setErr(String(e)))
@@ -56,6 +58,24 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
   // Пауза планирования по дневному бюджету токенов — из DTO проекта
   // (спека web «Бюджет исчерпан»).
   const budget = projects.find(p => p.ID === epic.ProjectID)?.budget
+  const est = epic.estimate
+  const estStr = est?.available
+    ? `${fmtTokens(est.tokens_min ?? 0)}–${fmtTokens(est.tokens_max ?? 0)} tok`
+      + (est.cost_min != null && est.cost_max != null ? ` (~${fmtCost(est.cost_min)}–${fmtCost(est.cost_max)})` : '')
+      + ` · по ${est.sample_tasks} задачам ${est.based_on === 'project' ? 'проекта' : 'установки'}`
+    : est?.reason ?? ''
+  const saveBudget = act(async () => {
+    const v = (budgetEdit ?? '').trim()
+    if (v !== '') {
+      const n = Number(v)
+      // NaN/Infinity в JSON превратились бы в null и сняли бы бюджет.
+      if (!Number.isSafeInteger(n) || n < 1) throw new Error('бюджет — целое число токенов не меньше 1')
+      await api.patchEpic(epic.ID, { token_budget: n })
+    } else {
+      await api.patchEpic(epic.ID, { token_budget: null })
+    }
+    setBudgetEdit(null)
+  })
 
   return (
     <div className="view-epic">
@@ -85,6 +105,26 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
             })}
           </div>
           <span className="sub">{counts['done'] ?? 0} / {tasks.length} задач · взвешено по оценке</span>
+          {tasks.length > 0 && (
+            <span className="sub" title="Оценка стоимости плана по истории usage">
+              оценка: {estStr}
+            </span>
+          )}
+          <span className="sub row" style={{ gap: 6 }} title="Бюджет Epic в токенах; пусто — без бюджета">
+            бюджет:{' '}
+            {budgetEdit === null
+              ? <>
+                  <b>{epic.TokenBudget != null ? fmtTokens(epic.TokenBudget) : 'нет'}</b>
+                  {epic.budget && epic.TokenBudget != null && <> · израсходовано {fmtTokens(epic.budget.used)}</>}
+                  <button className="btn sm" onClick={() => setBudgetEdit(epic.TokenBudget != null ? String(epic.TokenBudget) : '')}>✎</button>
+                </>
+              : <>
+                  <input type="number" min={1} style={{ width: 120 }} placeholder="без бюджета"
+                    value={budgetEdit} onChange={e => setBudgetEdit(e.target.value)} />
+                  <button className="btn sm primary" onClick={saveBudget}>OK</button>
+                  <button className="btn sm" onClick={() => setBudgetEdit(null)}>✕</button>
+                </>}
+          </span>
           {usageTotal && (
             <span className="sub mono" title="Суммарный usage Epic: токены вход/выход · стоимость · время">
               {fmtTokens(usageTotal.tokens_in)} / {fmtTokens(usageTotal.tokens_out)} tok
@@ -101,6 +141,12 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
             ))}
           </div>
         </div>
+        {epic.budget?.exhausted && (
+          <div className="budget-pause">
+            Бюджет Epic исчерпан ({fmtTokens(epic.budget.used)} из {fmtTokens(epic.TokenBudget)}):
+            новые стадии не назначаются, выполняющиеся дорабатываются. Поднимите или снимите бюджет, чтобы продолжить.
+          </div>
+        )}
         {budget && budgetPaused(budget) && (
           <div className="budget-pause">
             Планирование на паузе: {budget.paused_scope === 'installation'
