@@ -22,7 +22,27 @@ export interface Task {
 export interface Epic {
   ID: string; ProjectID: string; Title: string; Goal: string
   Status: 'planned' | 'running' | 'paused' | 'done' | 'archived'
+  // Бюджет Epic в токенах; null — без бюджета (add-cost-transparency).
+  TokenBudget: number | null
   Created: string
+}
+
+// Оценка стоимости плана по истории usage (api-contract add-cost-transparency).
+export interface CostEstimate {
+  available: boolean
+  reason?: string
+  tokens_min?: number
+  tokens_max?: number
+  cost_min?: number | null
+  cost_max?: number | null
+  based_on?: 'project' | 'installation'
+  sample_tasks?: number
+}
+
+export interface EpicBudget {
+  tokens: number | null
+  used: number
+  exhausted: boolean
 }
 
 // Usage-агрегат (api-contract add-usage-metering): null = данных нет,
@@ -43,6 +63,8 @@ export interface EpicView extends Epic {
   progress: { pct: number; weighted: boolean }
   usage?: UsageRow[] | null      // вклад задач (key = id задачи)
   usage_total?: UsageRow | null  // итог по Epic
+  estimate: CostEstimate
+  budget: EpicBudget
 }
 
 export interface Project {
@@ -426,6 +448,7 @@ export const api = {
     req<Epic>('POST', `/projects/${projectId}/epics`, { title, goal }),
   decompose: (epicId: string) => req<{ tasks: Task[] }>('POST', `/epics/${epicId}/decompose`),
   epic: (id: string) => req<EpicView>('GET', `/epics/${id}`),
+  patchEpic: (id: string, patch: { token_budget: number | null }) => req<Epic>('PATCH', `/epics/${id}`, patch),
   epicAction: (id: string, action: 'start' | 'pause' | 'resume' | 'archive') =>
     req('POST', `/epics/${id}/${action}`),
   addTask: (epicId: string, t: { title: string; description: string; criteria: string[]; deps: string[] }) =>
@@ -563,7 +586,7 @@ export function subscribe(projectId: string, handlers: {
     // бюджету, активация версии проекта — деталка, настройки и дашборд
     // обновляются по ним.
     'task.merge_deferred', 'task.merge_failed', 'deploy.deferred', 'policy.budget_exceeded', 'policy.activated',
-    'task.plan_edited', 'epic.plan_edited',
+    'task.plan_edited', 'epic.plan_edited', 'epic.budget_exceeded',
     // Пересечения работ: реестр «Команды» и timeline задач (add-team-visibility).
     'session.overlap']
   for (const t of evTypes) {
