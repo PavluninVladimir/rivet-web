@@ -180,6 +180,13 @@ export interface Overlap {
   files: string[]
 }
 
+// Источник политики проекта (api-contract add-policy-git-provider).
+export interface PolicySource {
+  kind: 'store' | 'git' | string
+  file: string
+  ref: string
+}
+
 export interface ProjectPolicy {
   effective: Presets
   effective_hash: string
@@ -187,6 +194,7 @@ export interface ProjectPolicy {
   version: PolicyVersion | null
   installation_version: PolicyVersion | null
   engine?: PolicyEngine
+  source?: PolicySource
 }
 
 export interface Check { name: string; cmd: string }
@@ -569,6 +577,8 @@ export const api = {
   projectPolicy: (projectId: string) => req<ProjectPolicy>('GET', `/projects/${projectId}/policy`),
   putProjectPolicy: (projectId: string, o: Overrides) => req<ProjectPolicy>('PUT', `/projects/${projectId}/policy`, o),
   projectPolicyVersions: (projectId: string) => req<PolicyVersion[]>('GET', `/projects/${projectId}/policy/versions`),
+  putProjectPolicySource: (projectId: string, kind: string) =>
+    req<ProjectPolicy>('PUT', `/projects/${projectId}/policy/source`, { kind }),
 }
 
 // ─── эксплуатация установки ─────────────────────────────────────────────
