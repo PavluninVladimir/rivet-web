@@ -24,6 +24,9 @@ export interface Epic {
   Status: 'planned' | 'running' | 'paused' | 'done' | 'archived'
   // Бюджет Epic в токенах; null — без бюджета (add-cost-transparency).
   TokenBudget: number | null
+  // Ключ источника у импортированной истории (add-history-import);
+  // пусто у живых Epic'ов.
+  SourceKey: string
   Created: string
 }
 

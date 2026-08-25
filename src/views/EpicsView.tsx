@@ -36,7 +36,14 @@ export function EpicsView() {
         <tbody>
           {epics.map(e => (
             <tr key={e.ID} className="rowlink" onClick={() => nav({ view: 'epic', id: e.ID })}>
-              <td>{e.Title}</td>
+              <td>
+                {e.Title}
+                {e.SourceKey && (
+                  <span className="chip" style={{ marginLeft: 8 }} title={`импортировано: ${e.SourceKey}`}>
+                    <span className="n">история · {e.Created.slice(0, 10)}</span>
+                  </span>
+                )}
+              </td>
               <td><StBadge s={e.Status} /></td>
               <td className="muted" style={{ maxWidth: 480, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.Goal}</td>
             </tr>
