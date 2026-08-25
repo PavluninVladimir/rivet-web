@@ -214,9 +214,19 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
   if (!pp || !overrides) return <div className="dw-sec"><h3>Политики</h3>{banner}</div>
 
   // Внешний движок: пресеты живут вне Rivet, локальная правка отклоняется
-  // бэкендом — форма показывает значения и не даёт их менять.
+  // бэкендом — форма показывает значения и не даёт их менять. То же самое,
+  // когда источник политики — репозиторий: там её меняют коммитом.
   const external = pp.engine?.mode === 'external'
-  const editable = isOwner && !external
+  const fromGit = pp.source?.kind === 'git'
+  const editable = isOwner && !external && !fromGit
+  const switchSource = async (kind: string) => {
+    setErr(''); setNote('')
+    try {
+      const r = await api.putProjectPolicySource(projectId, kind)
+      setPP(r); setOverrides(r.overrides); setDirty(false)
+      setNote(kind === 'git' ? 'политика читается из репозитория' : 'политика правится в консоли')
+    } catch (e) { setErr(String(e)) }
+  }
   const setOv = (k: PresetKey, v: Overrides[PresetKey]) => { setOverrides({ ...overrides, [k]: v }); setDirty(true) }
   // Значение строки в форме: переопределение, если задано, иначе действующее.
   // Бюджет 0 в переопределении — «без ограничения», в поле показывается пустым.
@@ -247,6 +257,23 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
       {external && (
         <div className="budget-pause" style={{ marginBottom: 8 }}>
           Политики управляются вне Rivet: установка работает с внешним движком, значения показаны только для чтения.
+        </div>
+      )}
+      {!external && (
+        <div className="set-row">
+          <div className="lbl">
+            <b>Источник политики</b>
+            <span>{fromGit
+              ? <>файл <span className="mono">{pp.source?.file}</span> в ветке <span className="mono">{pp.source?.ref}</span>: значения меняются коммитом</>
+              : 'хранилище Rivet: значения правятся здесь'}</span>
+          </div>
+          <div className="ctl">
+            {isOwner && (
+              <button className="btn sm" onClick={() => switchSource(fromGit ? 'store' : 'git')}>
+                {fromGit ? 'Вернуть в консоль' : 'Хранить в репозитории'}
+              </button>
+            )}
+          </div>
         </div>
       )}
       <div className="panel" style={{ maxWidth: 760 }}>
