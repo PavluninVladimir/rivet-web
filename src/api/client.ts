@@ -306,13 +306,18 @@ export interface EnvConfig {
   chart?: string
   release?: string
   values?: Record<string, string>
+  // GitOps (api-contract add-gitops-delivery): репозиторий конфигурации,
+  // файл и ключ, куда пишется версия.
+  repo?: string
+  file?: string
+  key?: string
 }
 
 export interface Environment {
   id: string
   project_id: string
   name: string
-  exec_type: 'ssh' | 'pipeline' | 'k8s' | string
+  exec_type: 'ssh' | 'pipeline' | 'k8s' | 'gitops' | string
   trigger: 'auto' | 'manual'
   config: EnvConfig
   paused: boolean

@@ -84,7 +84,8 @@ export function Environments({ projectId, isAdmin }: { projectId: string; isAdmi
                 <span className="mono muted">{env.trigger}</span>
                 <span className="mono muted" title="тип исполнения">
                   {env.exec_type === 'pipeline' ? 'пайплайн хостинга'
-                    : env.exec_type === 'k8s' ? 'kubernetes' : 'ssh'}
+                    : env.exec_type === 'k8s' ? 'kubernetes'
+                      : env.exec_type === 'gitops' ? 'gitops' : 'ssh'}
                 </span>
                 {env.paused && <span className="env-paused">пауза</span>}
               </div>
@@ -98,7 +99,9 @@ export function Environments({ projectId, isAdmin }: { projectId: string; isAdmi
                     <span className="muted">{timeShort(last.created_at)} · {depDuration(last)}</span>
                     {last.external_url && (
                       <a className="mono" href={last.external_url} target="_blank" rel="noreferrer"
-                        onClick={e => e.stopPropagation()}>прогон ↗</a>
+                        onClick={e => e.stopPropagation()}>
+                        {env.exec_type === 'gitops' ? 'коммит ↗' : 'прогон ↗'}
+                      </a>
                     )}
                   </>
                 ) : <span className="muted">публикаций не было</span>}
@@ -136,7 +139,8 @@ export function Environments({ projectId, isAdmin }: { projectId: string; isAdmi
                       </button>
                       {d.external_url && (
                         <div className="muted" style={{ fontSize: 11.5, padding: '0 8px 4px' }}>
-                          прогон пайплайна: <a href={d.external_url} target="_blank" rel="noreferrer">{d.external_url}</a>
+                          {env.exec_type === 'gitops' ? 'коммит версии' : 'прогон пайплайна'}:{' '}
+                          <a href={d.external_url} target="_blank" rel="noreferrer">{d.external_url}</a>
                         </div>
                       )}
                       {openLog === d.id && (
@@ -184,6 +188,7 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
   // сам Rivet из параметров кластера.
   const external = execType === 'pipeline'
   const k8s = execType === 'k8s'
+  const gitops = execType === 'gitops'
 
   const save = async () => {
     setErr('')
@@ -218,6 +223,7 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
               <option value="ssh">своя (Linux-хост по SSH)</option>
               <option value="k8s">своя (Kubernetes)</option>
               <option value="pipeline">пайплайн хостинга (CI/CD)</option>
+              <option value="gitops">GitOps (коммит версии)</option>
             </select>
           </label>
         )}
@@ -227,6 +233,17 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
               value={cfg.pipeline ?? ''} onChange={e => setCfg({ ...cfg, pipeline: e.target.value })} />
             <input placeholder="Ветка запуска (пусто — базовая ветка проекта)"
               value={cfg.ref ?? ''} onChange={e => setCfg({ ...cfg, ref: e.target.value })} />
+          </>
+        ) : gitops ? (
+          <>
+            <input placeholder="Репозиторий конфигурации (пусто — репозиторий проекта)"
+              value={cfg.repo ?? ''} onChange={e => setCfg({ ...cfg, repo: e.target.value })} />
+            <input placeholder="Ветка коммита (пусто — базовая ветка проекта)"
+              value={cfg.ref ?? ''} onChange={e => setCfg({ ...cfg, ref: e.target.value })} />
+            <input placeholder="Файл с версией (envs/prod/values.yaml)"
+              value={cfg.file ?? ''} onChange={e => setCfg({ ...cfg, file: e.target.value })} />
+            <input placeholder="Ключ YAML (image.tag; пусто — файл целиком)"
+              value={cfg.key ?? ''} onChange={e => setCfg({ ...cfg, key: e.target.value })} />
           </>
         ) : k8s ? (
           <>
@@ -253,7 +270,7 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
         )}
         <input placeholder="URL health-check (verify_url)"
           value={cfg.verify_url ?? ''} onChange={e => setCfg({ ...cfg, verify_url: e.target.value })} />
-        {!external && (
+        {!external && !gitops && (
           <input placeholder="Capability runner'а публикации через запятую (пусто — любой deploy-runner)"
             value={caps} onChange={e => setCaps(e.target.value)} />
         )}
