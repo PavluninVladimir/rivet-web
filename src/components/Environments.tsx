@@ -82,6 +82,9 @@ export function Environments({ projectId, isAdmin }: { projectId: string; isAdmi
               <div className="env-top">
                 <b>{env.name}</b>
                 <span className="mono muted">{env.trigger}</span>
+                <span className="mono muted" title="тип исполнения">
+                  {env.exec_type === 'pipeline' ? 'пайплайн хостинга' : 'ssh'}
+                </span>
                 {env.paused && <span className="env-paused">пауза</span>}
               </div>
               <div className="env-status">
@@ -92,6 +95,10 @@ export function Environments({ projectId, isAdmin }: { projectId: string; isAdmi
                     </span>
                     <span className="mono muted" title={last.version}>{last.version.slice(0, 12)}</span>
                     <span className="muted">{timeShort(last.created_at)} · {depDuration(last)}</span>
+                    {last.external_url && (
+                      <a className="mono" href={last.external_url} target="_blank" rel="noreferrer"
+                        onClick={e => e.stopPropagation()}>прогон ↗</a>
+                    )}
                   </>
                 ) : <span className="muted">публикаций не было</span>}
               </div>
@@ -126,6 +133,11 @@ export function Environments({ projectId, isAdmin }: { projectId: string; isAdmi
                         <span className="mono">{timeShort(d.created_at)}</span>
                         <span className="mono">{depDuration(d)}</span>
                       </button>
+                      {d.external_url && (
+                        <div className="muted" style={{ fontSize: 11.5, padding: '0 8px 4px' }}>
+                          прогон пайплайна: <a href={d.external_url} target="_blank" rel="noreferrer">{d.external_url}</a>
+                        </div>
+                      )}
                       {openLog === d.id && (
                         active(d.status)
                           ? <div className="term sess-term">{deployLogs.get(d.id) || 'ожидание вывода…'}</div>
@@ -162,14 +174,18 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
 }) {
   const [name, setName] = useState(env?.name ?? '')
   const [trigger, setTrigger] = useState<string>(env?.trigger ?? 'manual')
+  const [execType, setExecType] = useState<string>(env?.exec_type ?? 'ssh')
   const [cfg, setCfg] = useState<EnvConfig>(env?.config ?? { deploy_cmd: '' })
   const [err, setErr] = useState('')
+  // Внешний пайплайн исполняет хостинг: команд и хоста у него нет,
+  // Verify — проверка URL со стороны Rivet.
+  const external = execType === 'pipeline'
 
   const save = async () => {
     setErr('')
     try {
       if (env) await api.patchEnvironment(env.id, { name, trigger, config: cfg })
-      else await api.createEnvironment(projectId, { name, trigger, config: cfg })
+      else await api.createEnvironment(projectId, { name, trigger, exec_type: execType, config: cfg })
       onSaved()
     } catch (e) { setErr(String(e)) }
   }
@@ -190,12 +206,32 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
             <option value="auto">автоматически после merge</option>
           </select>
         </label>
-        <input placeholder="Хост ([user@]host[:port], пусто — локально на runner'е)"
-          value={cfg.host ?? ''} onChange={e => setCfg({ ...cfg, host: e.target.value })} />
-        <input placeholder="Команда доставки (deploy_cmd)"
-          value={cfg.deploy_cmd} onChange={e => setCfg({ ...cfg, deploy_cmd: e.target.value })} />
-        <input placeholder="Команда проверки (verify_cmd)"
-          value={cfg.verify_cmd ?? ''} onChange={e => setCfg({ ...cfg, verify_cmd: e.target.value })} />
+        {!env && (
+          <label className="muted" style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+            Доставка:
+            <select value={execType} onChange={e => setExecType(e.target.value)}>
+              <option value="ssh">своя (Linux-хост по SSH)</option>
+              <option value="pipeline">пайплайн хостинга (CI/CD)</option>
+            </select>
+          </label>
+        )}
+        {external ? (
+          <>
+            <input placeholder="Пайплайн хостинга (для GitHub Actions — файл workflow)"
+              value={cfg.pipeline ?? ''} onChange={e => setCfg({ ...cfg, pipeline: e.target.value })} />
+            <input placeholder="Ветка запуска (пусто — базовая ветка проекта)"
+              value={cfg.ref ?? ''} onChange={e => setCfg({ ...cfg, ref: e.target.value })} />
+          </>
+        ) : (
+          <>
+            <input placeholder="Хост ([user@]host[:port], пусто — локально на runner'е)"
+              value={cfg.host ?? ''} onChange={e => setCfg({ ...cfg, host: e.target.value })} />
+            <input placeholder="Команда доставки (deploy_cmd)"
+              value={cfg.deploy_cmd ?? ''} onChange={e => setCfg({ ...cfg, deploy_cmd: e.target.value })} />
+            <input placeholder="Команда проверки (verify_cmd)"
+              value={cfg.verify_cmd ?? ''} onChange={e => setCfg({ ...cfg, verify_cmd: e.target.value })} />
+          </>
+        )}
         <input placeholder="URL health-check (verify_url)"
           value={cfg.verify_url ?? ''} onChange={e => setCfg({ ...cfg, verify_url: e.target.value })} />
         {err && <div style={{ color: 'var(--c-block)', fontSize: 12 }}>{err}</div>}

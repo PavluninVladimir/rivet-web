@@ -290,16 +290,21 @@ export interface AccessToken {
 // секретов, настройка — только администратор, запуск — участники.
 export interface EnvConfig {
   host?: string
-  deploy_cmd: string
+  deploy_cmd?: string
   verify_cmd?: string
   verify_url?: string
+  // Внешняя доставка (api-contract add-external-delivery): пайплайн
+  // хостинга, ветка запуска и переменные прогона.
+  pipeline?: string
+  ref?: string
+  vars?: Record<string, string>
 }
 
 export interface Environment {
   id: string
   project_id: string
   name: string
-  exec_type: 'ssh' | string
+  exec_type: 'ssh' | 'pipeline' | string
   trigger: 'auto' | 'manual'
   config: EnvConfig
   paused: boolean
@@ -318,6 +323,9 @@ export interface Deployment {
   runner_id: string
   detail: string
   has_log: boolean
+  // Прогон внешнего пайплайна доставки; пусто у собственной доставки.
+  external_run_id: string
+  external_url: string
   created_at: string
   started_at: string | null
   ended_at: string | null
@@ -492,8 +500,8 @@ export const api = {
     req<SessionEntry[]>('GET', `/projects/${projectId}/sessions${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   sessionTranscript: (id: string) => reqText(`/sessions/${id}/transcript`),
   environments: (projectId: string) => req<Environment[]>('GET', `/projects/${projectId}/environments`),
-  createEnvironment: (projectId: string, e: { name: string; trigger: string; config: EnvConfig }) =>
-    req<Environment>('POST', `/projects/${projectId}/environments`, { ...e, exec_type: 'ssh' }),
+  createEnvironment: (projectId: string, e: { name: string; trigger: string; exec_type: string; config: EnvConfig }) =>
+    req<Environment>('POST', `/projects/${projectId}/environments`, e),
   patchEnvironment: (id: string, e: { name?: string; trigger?: string; config?: EnvConfig }) =>
     req<Environment>('PATCH', `/environments/${id}`, e),
   deleteEnvironment: (id: string) => req('DELETE', `/environments/${id}`),
