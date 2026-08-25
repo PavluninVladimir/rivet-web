@@ -103,7 +103,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       onEvent: (e) => {
         setLastEvent(e)
         setTick(t => t + 1)
-        if (e.Type.startsWith('attention') || e.Type === 'task.status' || e.Type === 'deploy.status') refreshAttention()
+        // policy.decision пишется, когда движок не дал решения: вместе с
+        // ним появляется эскалация уровня проекта, своего события у неё нет.
+        if (e.Type.startsWith('attention') || e.Type === 'task.status'
+          || e.Type === 'deploy.status' || e.Type === 'policy.decision') refreshAttention()
         // Бюджет и политика живут в DTO проекта: пауза по бюджету и новая
         // версия политики должны обновить состояние без перезагрузки.
         if (e.Type === 'policy.budget_exceeded' || e.Type === 'policy.activated') refreshProjects()

@@ -130,7 +130,19 @@ export interface PolicyVersion {
   created_by: string
 }
 
-export interface InstallationPolicy { version: PolicyVersion | null; presets: Presets }
+// Режим и состояние движка политик (api-contract add-policy-engine):
+// external — пресеты управляются вне Rivet.
+export interface PolicyEngine {
+  mode: 'embedded' | 'external' | string
+  state: 'ok' | 'degraded' | string
+  detail: string
+}
+
+export interface InstallationPolicy {
+  version: PolicyVersion | null
+  presets: Presets
+  engine?: PolicyEngine
+}
 
 // ─── командная видимость (api-contract add-team-visibility) ─────────────
 
@@ -174,6 +186,7 @@ export interface ProjectPolicy {
   overrides: Overrides
   version: PolicyVersion | null
   installation_version: PolicyVersion | null
+  engine?: PolicyEngine
 }
 
 export interface Check { name: string; cmd: string }
@@ -541,7 +554,7 @@ export type ComponentStatus = 'ok' | 'degraded' | 'down'
 export type PlannerSource = 'db' | 'env' | 'none'
 
 export interface SystemComponent {
-  name: 'database' | 'blob' | 'secrets' | 'planner' | 'runners'
+  name: 'database' | 'blob' | 'secrets' | 'planner' | 'policy' | 'runners'
   status: ComponentStatus
   detail: string
   data?: Record<string, unknown>
@@ -596,6 +609,7 @@ export function subscribe(projectId: string, handlers: {
     // бюджету, активация версии проекта — деталка, настройки и дашборд
     // обновляются по ним.
     'task.merge_deferred', 'task.merge_failed', 'deploy.deferred', 'policy.budget_exceeded', 'policy.activated',
+    'policy.decision',
     'task.plan_edited', 'epic.plan_edited', 'epic.budget_exceeded',
     // Пересечения работ: реестр «Команды» и timeline задач (add-team-visibility).
     'session.overlap']

@@ -58,6 +58,24 @@ export function TasksView() {
                   </button>
                 )
               }
+              // Эскалация уровня проекта (движок политик недоступен): ни
+              // задачи, ни публикации — карточка ведёт в настройки проекта.
+              if (!a.TaskID) {
+                return (
+                  <button key={a.ID} className="att-card"
+                    onClick={() => nav({ view: 'project-settings', id: a.ProjectID })}>
+                    <div className="att-top">
+                      <span className="tid mono">проект</span>
+                      <span className="att-reason">{a.Reason}</span>
+                    </div>
+                    <div className="att-msg">{a.Message}</div>
+                    <div className="att-act">
+                      <ClaimControl id={a.ID} claimedBy={a.ClaimedBy} onClaimed={refreshAttention} />
+                      {' '}К настройкам →
+                    </div>
+                  </button>
+                )
+              }
               const row = rows.find(r => r.task.ID === a.TaskID)
               return (
                 <button key={a.ID} className="att-card"
