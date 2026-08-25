@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { api, type Overrides, type PolicyVersion, type Presets, type ProjectPolicy } from '../api/client'
+import { api, type Overrides, type PolicyEngine, type PolicyVersion, type Presets, type ProjectPolicy } from '../api/client'
 import { fmtDate, fmtTokens } from './ui'
 
 // Политики конвейера пресетами (спека web «Политики в консоли», change
@@ -117,18 +117,24 @@ function useBanner() {
 
 export function InstallationPolicyPanel({ onSaved }: { onSaved?: () => void } = {}) {
   const [presets, setPresets] = useState<Presets | null>(null)
+  const [engine, setEngine] = useState<PolicyEngine | null>(null)
   const [version, setVersion] = useState<PolicyVersion | null>(null)
   const [versions, setVersions] = useState<PolicyVersion[]>([])
   const [dirty, setDirty] = useState(false)
   const { banner, setErr, setNote } = useBanner()
 
   const refresh = useCallback(() => {
-    api.systemPolicy().then(p => { setPresets(p.presets); setVersion(p.version); setDirty(false) }).catch(e => setErr(String(e)))
+    api.systemPolicy()
+      .then(p => { setPresets(p.presets); setVersion(p.version); setEngine(p.engine ?? null); setDirty(false) })
+      .catch(e => setErr(String(e)))
     api.systemPolicyVersions().then(v => setVersions(v ?? [])).catch(() => {})
   }, [setErr])
   useEffect(refresh, [refresh])
 
   if (!presets) return <>{banner}</>
+  // В external-режиме пресеты живут вне Rivet: показываем значения, но не
+  // даём их менять (спека web «Политики управляются извне»).
+  const external = engine?.mode === 'external'
   const set = (k: PresetKey) => (v: Presets[PresetKey]) => { setPresets({ ...presets, [k]: v }); setDirty(true) }
   const save = async () => {
     setErr(''); setNote('')
@@ -150,12 +156,20 @@ export function InstallationPolicyPanel({ onSaved }: { onSaved?: () => void } = 
           Значения по умолчанию для всех проектов; владелец проекта может переопределить каждое в настройках проекта.
           Каждое сохранение создаёт новую версию, решения движка ссылаются на её хэш.
         </div>
+        {engine && (
+          <div className="budget-pause" style={{ marginBottom: 8 }}>
+            Движок политик: <b>{engine.mode === 'external' ? 'внешний OPA' : 'встроенный'}</b>
+            {' · '}{engine.state === 'ok' ? 'отвечает' : 'не отвечает'}
+            {engine.detail ? <span className="muted"> — {engine.detail}</span> : null}
+            {external && <div className="muted">Пресеты управляются вне Rivet: значения показаны только для чтения.</div>}
+          </div>
+        )}
         <div className="panel" style={{ maxWidth: 720 }}>
           {ROWS.map(r => (
             <div className="set-row" key={r.key}>
               <div className="lbl"><b>{r.label}</b><span>{r.hint}</span></div>
               <div className="ctl">
-                <PresetControl k={r.key} value={presets[r.key]} onChange={set(r.key)} />
+                <PresetControl k={r.key} value={presets[r.key]} disabled={external} onChange={set(r.key)} />
               </div>
             </div>
           ))}
@@ -167,7 +181,8 @@ export function InstallationPolicyPanel({ onSaved }: { onSaved?: () => void } = 
                 : 'версий нет — действуют значения по умолчанию'}</span>
             </div>
             <div className="ctl">
-              <button className="btn sm primary" disabled={!dirty} onClick={save}>Сохранить версию</button>
+              <button className="btn sm primary" disabled={!dirty || external}
+                title={external ? 'политики управляются вне Rivet' : ''} onClick={save}>Сохранить версию</button>
             </div>
           </div>
         </div>
@@ -198,6 +213,10 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
 
   if (!pp || !overrides) return <div className="dw-sec"><h3>Политики</h3>{banner}</div>
 
+  // Внешний движок: пресеты живут вне Rivet, локальная правка отклоняется
+  // бэкендом — форма показывает значения и не даёт их менять.
+  const external = pp.engine?.mode === 'external'
+  const editable = isOwner && !external
   const setOv = (k: PresetKey, v: Overrides[PresetKey]) => { setOverrides({ ...overrides, [k]: v }); setDirty(true) }
   // Значение строки в форме: переопределение, если задано, иначе действующее.
   // Бюджет 0 в переопределении — «без ограничения», в поле показывается пустым.
@@ -225,6 +244,11 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
         {pp.version ? <> · версия проекта v{pp.version.version}</> : ' · переопределений нет'}
         {pp.installation_version ? <> · установка v{pp.installation_version.version}</> : ' · установка по умолчанию'}
       </div>
+      {external && (
+        <div className="budget-pause" style={{ marginBottom: 8 }}>
+          Политики управляются вне Rivet: установка работает с внешним движком, значения показаны только для чтения.
+        </div>
+      )}
       <div className="panel" style={{ maxWidth: 760 }}>
         {ROWS.map(r => {
           const inherited = overrides[r.key] === null || overrides[r.key] === undefined
@@ -239,7 +263,7 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
                 <span>{r.hint}{inherited && <> · действует: {fmtValue(r.key, pp.effective[r.key])}</>}</span>
               </div>
               <div className="ctl">
-                {isOwner && (
+                {editable && (
                   <label className="row muted" style={{ gap: 6, fontSize: 12 }}>
                     <input type="checkbox" style={{ width: 'auto' }} checked={!inherited}
                       onChange={e => setOv(r.key, e.target.checked
@@ -248,13 +272,13 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
                     переопределить
                   </label>
                 )}
-                <PresetControl k={r.key} value={shown(r.key)} disabled={!isOwner || inherited}
+                <PresetControl k={r.key} value={shown(r.key)} disabled={!editable || inherited}
                   onChange={v => setOv(r.key, r.key === 'daily_token_budget' && v == null ? 0 : v)} />
               </div>
             </div>
           )
         })}
-        {isOwner && (
+        {editable && (
           <div className="set-row" style={{ border: 0 }}>
             <div className="lbl"><b>Сохранить</b><span>создаёт новую версию политики проекта</span></div>
             <div className="ctl">

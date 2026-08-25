@@ -379,7 +379,7 @@ function AuditTab() {
 
 const COMPONENT_LABEL: Record<string, string> = {
   database: 'База данных', blob: 'Хранилище транскриптов', secrets: 'Ключ шифрования',
-  planner: 'Модель декомпозиции', runners: 'Runner’ы',
+  planner: 'Модель декомпозиции', policy: 'Движок политик', runners: 'Runner’ы',
 }
 
 function StatusTab() {
