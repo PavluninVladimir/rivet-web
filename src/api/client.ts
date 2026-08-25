@@ -543,8 +543,10 @@ export const api = {
   claim: (id: string) => req('POST', `/attention/${id}/claim`),
   runners: () => req<Runner[] | null>('GET', '/runners'),
   drain: (id: string, on: boolean) => req('POST', `/runners/${id}/${on ? 'drain' : 'undrain'}`),
-  events: (q: { project?: string; epic?: string; task?: string; type?: string; cursor?: number; limit?: number; scope?: 'installation' }) => {
+  events: (q: { project?: string; epic?: string; task?: string; type?: string; cursor?: number; limit?: number; scope?: 'installation'; latest?: boolean }) => {
     const p = new URLSearchParams()
+    // latest — последние события, а не первые по id (лента активности).
+    if (q.latest) p.set('latest', '1')
     if (q.project) p.set('project', q.project)
     if (q.epic) p.set('epic', q.epic)
     if (q.task) p.set('task', q.task)
