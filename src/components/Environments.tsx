@@ -83,7 +83,8 @@ export function Environments({ projectId, isAdmin }: { projectId: string; isAdmi
                 <b>{env.name}</b>
                 <span className="mono muted">{env.trigger}</span>
                 <span className="mono muted" title="тип исполнения">
-                  {env.exec_type === 'pipeline' ? 'пайплайн хостинга' : 'ssh'}
+                  {env.exec_type === 'pipeline' ? 'пайплайн хостинга'
+                    : env.exec_type === 'k8s' ? 'kubernetes' : 'ssh'}
                 </span>
                 {env.paused && <span className="env-paused">пауза</span>}
               </div>
@@ -176,16 +177,20 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
   const [trigger, setTrigger] = useState<string>(env?.trigger ?? 'manual')
   const [execType, setExecType] = useState<string>(env?.exec_type ?? 'ssh')
   const [cfg, setCfg] = useState<EnvConfig>(env?.config ?? { deploy_cmd: '' })
+  const [caps, setCaps] = useState((env?.runner_caps ?? []).join(', '))
   const [err, setErr] = useState('')
   // Внешний пайплайн исполняет хостинг: команд и хоста у него нет,
-  // Verify — проверка URL со стороны Rivet.
+  // Verify — проверка URL со стороны Rivet. У Kubernetes команды собирает
+  // сам Rivet из параметров кластера.
   const external = execType === 'pipeline'
+  const k8s = execType === 'k8s'
 
   const save = async () => {
     setErr('')
     try {
-      if (env) await api.patchEnvironment(env.id, { name, trigger, config: cfg })
-      else await api.createEnvironment(projectId, { name, trigger, exec_type: execType, config: cfg })
+      const runnerCaps = caps.split(',').map(c => c.trim()).filter(Boolean)
+      if (env) await api.patchEnvironment(env.id, { name, trigger, config: cfg, runner_caps: runnerCaps })
+      else await api.createEnvironment(projectId, { name, trigger, exec_type: execType, config: cfg, runner_caps: runnerCaps })
       onSaved()
     } catch (e) { setErr(String(e)) }
   }
@@ -211,6 +216,7 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
             Доставка:
             <select value={execType} onChange={e => setExecType(e.target.value)}>
               <option value="ssh">своя (Linux-хост по SSH)</option>
+              <option value="k8s">своя (Kubernetes)</option>
               <option value="pipeline">пайплайн хостинга (CI/CD)</option>
             </select>
           </label>
@@ -221,6 +227,19 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
               value={cfg.pipeline ?? ''} onChange={e => setCfg({ ...cfg, pipeline: e.target.value })} />
             <input placeholder="Ветка запуска (пусто — базовая ветка проекта)"
               value={cfg.ref ?? ''} onChange={e => setCfg({ ...cfg, ref: e.target.value })} />
+          </>
+        ) : k8s ? (
+          <>
+            <input placeholder="Namespace" value={cfg.namespace ?? ''}
+              onChange={e => setCfg({ ...cfg, namespace: e.target.value })} />
+            <input placeholder="Каталог манифестов в репозитории (deploy/k8s)"
+              value={cfg.manifests ?? ''} onChange={e => setCfg({ ...cfg, manifests: e.target.value })} />
+            <input placeholder="Объект для проверки выката (deployment/api)"
+              value={cfg.workload ?? ''} onChange={e => setCfg({ ...cfg, workload: e.target.value })} />
+            <input placeholder="Или helm-чарт в репозитории (charts/api)"
+              value={cfg.chart ?? ''} onChange={e => setCfg({ ...cfg, chart: e.target.value })} />
+            <input placeholder="Релиз helm" value={cfg.release ?? ''}
+              onChange={e => setCfg({ ...cfg, release: e.target.value })} />
           </>
         ) : (
           <>
@@ -234,6 +253,10 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
         )}
         <input placeholder="URL health-check (verify_url)"
           value={cfg.verify_url ?? ''} onChange={e => setCfg({ ...cfg, verify_url: e.target.value })} />
+        {!external && (
+          <input placeholder="Capability runner'а публикации через запятую (пусто — любой deploy-runner)"
+            value={caps} onChange={e => setCaps(e.target.value)} />
+        )}
         {err && <div style={{ color: 'var(--c-block)', fontSize: 12 }}>{err}</div>}
         <div className="row">
           {env && <button className="btn danger" onClick={del}>Удалить</button>}

@@ -298,16 +298,26 @@ export interface EnvConfig {
   pipeline?: string
   ref?: string
   vars?: Record<string, string>
+  // Kubernetes (api-contract add-k8s-delivery): namespace и либо каталог
+  // манифестов с объектом проверки, либо чарт с релизом и значениями.
+  namespace?: string
+  manifests?: string
+  workload?: string
+  chart?: string
+  release?: string
+  values?: Record<string, string>
 }
 
 export interface Environment {
   id: string
   project_id: string
   name: string
-  exec_type: 'ssh' | 'pipeline' | string
+  exec_type: 'ssh' | 'pipeline' | 'k8s' | string
   trigger: 'auto' | 'manual'
   config: EnvConfig
   paused: boolean
+  // Требуемые capability runner'а публикации помимо deploy.
+  runner_caps: string[]
   last_deployment: Deployment | null
   created_at: string
 }
@@ -500,9 +510,9 @@ export const api = {
     req<SessionEntry[]>('GET', `/projects/${projectId}/sessions${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   sessionTranscript: (id: string) => reqText(`/sessions/${id}/transcript`),
   environments: (projectId: string) => req<Environment[]>('GET', `/projects/${projectId}/environments`),
-  createEnvironment: (projectId: string, e: { name: string; trigger: string; exec_type: string; config: EnvConfig }) =>
+  createEnvironment: (projectId: string, e: { name: string; trigger: string; exec_type: string; config: EnvConfig; runner_caps?: string[] }) =>
     req<Environment>('POST', `/projects/${projectId}/environments`, e),
-  patchEnvironment: (id: string, e: { name?: string; trigger?: string; config?: EnvConfig }) =>
+  patchEnvironment: (id: string, e: { name?: string; trigger?: string; config?: EnvConfig; runner_caps?: string[] }) =>
     req<Environment>('PATCH', `/environments/${id}`, e),
   deleteEnvironment: (id: string) => req('DELETE', `/environments/${id}`),
   deploy: (envId: string) => req<Deployment>('POST', `/environments/${envId}/deploy`),
