@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, stColor, type Event, type OverlapPayload, type Session, type StepPayload, type Task } from '../api/client'
+import { api, stColor, type Event, type OverlapPayload, type Session, type StepPayload, type Task, type StepRun } from '../api/client'
 
 // stepOf валидирует payload session.step: он runner-controlled, битые типы
 // не должны ронять рендер деталки.
@@ -78,6 +78,7 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
   const { tick, logs } = useStore()
   const [task, setTask] = useState<Task | null>(null)
   const [timeline, setTimeline] = useState<Event[]>([])
+  const [stepRuns, setStepRuns] = useState<StepRun[]>([])
   const [sessions, setSessions] = useState<Session[]>([])
   const [openSess, setOpenSess] = useState<string | null>(null)
   // null = загрузка; '' = транскрипт недоступен (нет сохранённого или 404)
@@ -105,9 +106,10 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
   // История сессий перезапрашивается вместе с задачей на каждом SSE-событии
   // (tick растёт в т.ч. на task.status — конец стадии обновляет список).
   const refresh = useCallback(() => {
-    api.task(taskId).then(({ task, timeline }) => {
+    api.task(taskId).then(({ task, timeline, step_runs }) => {
       setTask(task)
       setTimeline(timeline ?? [])
+      setStepRuns(step_runs ?? [])
     }).catch(e => setErr(String(e)))
     api.taskSessions(taskId).then(s => setSessions(s ?? [])).catch(() => {})
   }, [taskId])
@@ -325,6 +327,24 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
           <div className="dw-sec">
             <h3>Live</h3>
             <div className="term" ref={termRef}>{log || 'ожидание вывода…'}</div>
+          </div>
+        )}
+
+        {stepRuns.length > 0 && (
+          <div className="dw-sec">
+            <h3>Участники шага{task?.Step ? ` · ${task.Step}` : ''}</h3>
+            <div className="step-runs">
+              {stepRuns.map(r => (
+                <div key={r.id} className="step-run">
+                  <span className="mono muted">{r.participant}</span>
+                  <span>{r.kind === 'user' ? `человек ${r.user}` : `агент ${r.agent || 'любой'}${r.runner ? ` @ ${r.runner}` : ''}`}</span>
+                  <span className={'chip' + (r.verdict ? ' v-' + r.verdict : '')}><span className="n">{r.verdict || 'ждёт'}</span></span>
+                  {r.by && <span className="muted">{r.by}</span>}
+                  {r.finished_at && <span className="mono muted">{timeShort(r.finished_at)}</span>}
+                  {r.detail && <div className="step-run-detail">{r.detail}</div>}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
