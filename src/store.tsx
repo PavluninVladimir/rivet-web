@@ -8,7 +8,7 @@ export type AppTab = typeof APP_TABS[number]
 
 export type Route =
   | { view: 'projects' } | { view: 'epics' } | { view: 'tasks' } | { view: 'team' }
-  | { view: 'runners' } | { view: 'activity' } | { view: 'usage' }
+  | { view: 'runners' } | { view: 'activity' } | { view: 'usage' } | { view: 'mysteps' }
   | { view: 'app-management'; tab: AppTab } | { view: 'profile' }
   | { view: 'epic'; id: string; taskId?: string }
   | { view: 'project-settings'; id: string }
@@ -24,7 +24,7 @@ function parseHash(): Route {
     return { view: 'app-management', tab: (APP_TABS as readonly string[]).includes(b) ? b as AppTab : 'users' }
   }
   if (a === 'projects' || a === 'tasks' || a === 'team' || a === 'runners' || a === 'activity'
-    || a === 'usage' || a === 'profile') return { view: a }
+    || a === 'usage' || a === 'profile' || a === 'mysteps') return { view: a }
   return { view: 'epics' }
 }
 
@@ -42,6 +42,8 @@ interface Store {
   projectId: string | null
   setProjectId: (id: string) => void
   attention: Attention[]
+  // mySteps — сколько запусков ждёт текущего пользователя (add-process-humans).
+  mySteps: number
   connected: boolean
   tick: number            // растёт на каждом SSE-событии — зависимость для рефетчей
   lastEvent: Event | null
@@ -50,6 +52,7 @@ interface Store {
   refreshProjects: () => void
   // Claim эскалации не порождает события — после него список обновляется явно.
   refreshAttention: () => void
+  refreshMySteps: () => void
 }
 
 const Ctx = createContext<Store | null>(null)
@@ -60,6 +63,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([])
   const [projectId, setProjectId] = useState<string | null>(null)
   const [attention, setAttention] = useState<Attention[]>([])
+  const [mySteps, setMySteps] = useState(0)
   const [connected, setConnected] = useState(false)
   const [tick, setTick] = useState(0)
   const [lastEvent, setLastEvent] = useState<Event | null>(null)
@@ -96,6 +100,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     api.attention().then(a => setAttention(a ?? [])).catch(() => {})
   }, [])
   useEffect(refreshAttention, [refreshAttention])
+  const refreshMySteps = useCallback(() => {
+    api.mySteps().then(s => setMySteps((s ?? []).length)).catch(() => {})
+  }, [])
+  useEffect(refreshMySteps, [refreshMySteps])
 
   useEffect(() => {
     if (!projectId) return
@@ -107,6 +115,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // ним появляется эскалация уровня проекта, своего события у неё нет.
         if (e.Type.startsWith('attention') || e.Type === 'task.status'
           || e.Type === 'deploy.status' || e.Type === 'policy.decision') refreshAttention()
+        if (e.Type === 'task.status' || e.Type === 'task.step' || e.Type === 'task.verdict'
+          || e.Type === 'task.assign') refreshMySteps()
         // Бюджет и политика живут в DTO проекта: пауза по бюджету и новая
         // версия политики должны обновить состояние без перезагрузки.
         if (e.Type === 'policy.budget_exceeded' || e.Type === 'policy.activated') refreshProjects()
@@ -128,8 +138,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{
       route, nav, projects, projectId, setProjectId,
-      attention, connected, tick, lastEvent, logs: logsRef.current,
-      deployLogs: deployLogsRef.current, refreshProjects, refreshAttention,
+      attention, mySteps, connected, tick, lastEvent, logs: logsRef.current,
+      deployLogs: deployLogsRef.current, refreshProjects, refreshAttention, refreshMySteps,
     }}>
       {children}
     </Ctx.Provider>

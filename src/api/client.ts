@@ -17,6 +17,13 @@ export interface Task {
   ReviewRejections: number
   RunnerID: string; Branch: string; PRURL: string; BlockReason: string
   Created: string; Updated: string
+  // Процесс (add-process-model): текущий шаг, хэш процесса, отказы по
+  // шагам, причина ожидания runner'а.
+  Step: string
+  StepEntry: string
+  ProcessHash: string
+  StepAttempts: Record<string, number> | null
+  WaitReason: string
 }
 
 export interface Epic {
@@ -258,6 +265,34 @@ export interface Event {
   // Структурированные данные события (версия политики, причина отложенного
   // merge и т.п.); отсутствует, если событие их не несёт.
   Payload?: Record<string, unknown>
+}
+
+// Запуск участника шага процесса (api-contract add-process-humans).
+export interface StepRun {
+  id: number
+  participant: string
+  kind: 'agent' | 'user'
+  agent: string
+  user: string
+  runner: string
+  verdict: string
+  detail: string
+  by: string
+  finished_at: string | null
+}
+
+// Элемент очереди «мои шаги».
+export interface StepItem {
+  run_id: number
+  task: { id: string; num: number; title: string; status: string; branch: string; pr_url: string }
+  project: { id: string; title: string }
+  epic: { id: string; title: string }
+  step: { id: string; kind: string; title: string }
+  participant: string
+  addressed: string
+  ask: string
+  context: string
+  created_at: string
 }
 
 export interface Attention {
@@ -510,7 +545,11 @@ export const api = {
     req('POST', `/epics/${id}/${action}`),
   addTask: (epicId: string, t: { title: string; description: string; criteria: string[]; deps: string[] }) =>
     req<Task>('POST', `/epics/${epicId}/tasks`, t),
-  task: (id: string) => req<{ task: Task; timeline: Event[] | null }>('GET', `/tasks/${id}`),
+  task: (id: string) => req<{ task: Task; timeline: Event[] | null; step_runs: StepRun[] | null }>('GET', `/tasks/${id}`),
+  // Очередь «мои шаги» и вердикт человека (add-process-humans).
+  mySteps: () => req<StepItem[] | null>('GET', '/me/steps'),
+  verdict: (taskId: string, runId: number, verdict: 'ok' | 'changes' | 'fail', detail: string) =>
+    req<Task>('POST', `/tasks/${taskId}/runs/${runId}/verdict`, { verdict, detail }),
   patchTask: (id: string, patch: {
     attempt_limit?: number
     // Правка плана (api-contract add-plan-editing): для queued/ready.
@@ -638,7 +677,7 @@ export function subscribe(projectId: string, handlers: {
   onState?: (connected: boolean) => void
 }): () => void {
   const es = new EventSource(`/api/v1/stream?project=${projectId}`)
-  const evTypes = ['task.status', 'epic.progress', 'session.step', 'task.assign', 'task.review_passed', 'epic.decomposed', 'attention.new', 'attention.claimed', 'deploy.status', 'environment.config',
+  const evTypes = ['task.status', 'task.step', 'task.verdict', 'task.wait', 'epic.progress', 'session.step', 'task.assign', 'task.review_passed', 'epic.decomposed', 'attention.new', 'attention.claimed', 'deploy.status', 'environment.config',
     'project.repository', 'project.settings',
     // Состав и роли участников: страница настроек должна показывать
     // актуальные права, а не ждать перезагрузки.

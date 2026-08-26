@@ -7,6 +7,7 @@ import { ProjectsView } from './views/ProjectsView'
 import { ProjectSettings } from './views/ProjectSettings'
 import { TasksView } from './views/TasksView'
 import { TeamView } from './views/TeamView'
+import { MyStepsView } from './views/MyStepsView'
 import { RunnersView } from './views/RunnersView'
 import { ActivityView } from './views/ActivityView'
 import { UsageView } from './views/UsageView'
@@ -20,13 +21,14 @@ const NAV: { view: Route['view']; label: string }[] = [
   { view: 'epics', label: 'Epic’и' },
   { view: 'tasks', label: 'Задачи' },
   { view: 'team', label: 'Команда' },
+  { view: 'mysteps', label: 'Мои шаги' },
   { view: 'runners', label: 'Runner’ы' },
   { view: 'activity', label: 'Активность' },
   { view: 'usage', label: 'Usage' },
 ]
 
 function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
-  const { route, nav, attention, connected, projects, projectId, setProjectId } = useStore()
+  const { route, nav, attention, mySteps, connected, projects, projectId, setProjectId } = useStore()
   const [palOpen, setPalOpen] = useState(false)
 
   useEffect(() => {
@@ -58,6 +60,7 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
               onClick={() => nav({ view: n.view } as Route)}>
               {n.label}
               {n.view === 'tasks' && open > 0 && <span className="count warn">{open}</span>}
+              {n.view === 'mysteps' && mySteps > 0 && <span className="count warn">{mySteps}</span>}
             </button>
           ))}
         </nav>
@@ -120,6 +123,7 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
           {route.view === 'epic' && <EpicDashboard key={route.id} epicId={route.id} taskId={route.taskId} />}
           {route.view === 'tasks' && <TasksView />}
           {route.view === 'team' && <TeamView />}
+          {route.view === 'mysteps' && <MyStepsView />}
           {route.view === 'runners' && <RunnersView admin={user.admin} />}
           {route.view === 'activity' && <ActivityView />}
           {route.view === 'usage' && <UsageView />}

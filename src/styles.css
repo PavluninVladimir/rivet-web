@@ -360,3 +360,20 @@ textarea.answer { width: 100%; min-height: 64px; background: var(--term-bg); bor
    длинные runner-controlled строки не распирают drawer по горизонтали */
 .sess-files { font-size: 11.5px; padding: 4px 8px; border-left: 2px solid var(--border); margin: 2px 0 4px; word-break: break-all; }
 .tl-row > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+
+/* Мои шаги (add-process-humans): карточки в стиле «needs attention». */
+.att-head { display: flex; align-items: center; gap: 8px; }
+.att-head .mono { margin-left: auto; }
+.att-task { font: 600 12px var(--font-ui); cursor: pointer; color: var(--fg); }
+.att-task:hover { text-decoration: underline; }
+.step-card .btn { font-size: 11.5px; }
+.step-context { white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto;
+  font: 11px var(--font-mono); color: var(--muted); background: var(--fg-soft); padding: 6px 8px; border-radius: var(--r); }
+.step-text { width: 100%; min-height: 48px; resize: vertical; font: 12px var(--font-ui); color: var(--fg);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 6px 8px; }
+.step-actions { display: flex; gap: 6px; }
+.step-runs { display: flex; flex-direction: column; gap: 6px; }
+.step-run { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; }
+.step-run-detail { flex-basis: 100%; white-space: pre-wrap; word-break: break-word; font: 11px var(--font-mono); color: var(--muted); }
+.chip.v-ok .n { color: var(--c-done, #6c6); }
+.chip.v-changes .n, .chip.v-fail .n { color: var(--c-block); }
