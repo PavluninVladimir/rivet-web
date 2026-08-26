@@ -386,7 +386,8 @@ textarea.answer { width: 100%; min-height: 64px; }
 .proc-title { flex: 1; min-width: 120px; }
 .proc-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .proc-opts label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
-.proc-participants { display: flex; flex-direction: column; gap: 4px; padding-left: 12px; }
+.proc-participants { display: flex; flex-direction: column; gap: 4px; padding-left: 12px; align-items: flex-start; }
+.proc-participants .proc-participant { align-self: stretch; }
 .proc-participant { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .proc-participant input { width: 160px; }
 .proc-section .note { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
