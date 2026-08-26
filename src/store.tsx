@@ -5,13 +5,16 @@ import { api, subscribe, type Attention, type Event, type Project } from './api/
 // Вкладки раздела «Управление приложением» адресуемы: #/app-management/<tab>.
 export const APP_TABS = ['users', 'runners', 'models', 'policies', 'usage', 'audit', 'status'] as const
 export type AppTab = typeof APP_TABS[number]
+// Вкладки настроек проекта: #/project/<id>/settings/<tab> (add-project-settings-tabs).
+export const SETTINGS_TABS = ['general', 'members', 'process', 'policies', 'environments'] as const
+export type SettingsTab = typeof SETTINGS_TABS[number]
 
 export type Route =
   | { view: 'projects' } | { view: 'epics' } | { view: 'tasks' } | { view: 'team' }
   | { view: 'runners' } | { view: 'activity' } | { view: 'usage' } | { view: 'mysteps' }
   | { view: 'app-management'; tab: AppTab } | { view: 'profile' }
   | { view: 'epic'; id: string; taskId?: string }
-  | { view: 'project-settings'; id: string }
+  | { view: 'project-settings'; id: string; tab: SettingsTab }
 
 function parseHash(): Route {
   const h = location.hash.replace(/^#\/?/, '')
@@ -19,7 +22,9 @@ function parseHash(): Route {
   if (a === 'epic' && b) {
     return c === 'task' && d ? { view: 'epic', id: b, taskId: d } : { view: 'epic', id: b }
   }
-  if (a === 'project' && b && c === 'settings') return { view: 'project-settings', id: b }
+  if (a === 'project' && b && c === 'settings') {
+    return { view: 'project-settings', id: b, tab: (SETTINGS_TABS as readonly string[]).includes(d) ? d as SettingsTab : 'general' }
+  }
   if (a === 'app-management') {
     return { view: 'app-management', tab: (APP_TABS as readonly string[]).includes(b) ? b as AppTab : 'users' }
   }
@@ -30,7 +35,7 @@ function parseHash(): Route {
 
 export function routeHash(r: Route): string {
   if (r.view === 'epic') return r.taskId ? `#/epic/${r.id}/task/${r.taskId}` : `#/epic/${r.id}`
-  if (r.view === 'project-settings') return `#/project/${r.id}/settings`
+  if (r.view === 'project-settings') return r.tab === 'general' ? `#/project/${r.id}/settings` : `#/project/${r.id}/settings/${r.tab}`
   if (r.view === 'app-management') return `#/app-management/${r.tab}`
   return `#/${r.view}`
 }

@@ -45,7 +45,7 @@ export function TasksView() {
                 // Окружения живут на странице настроек проекта, туда и ведём.
                 return (
                   <button key={a.ID} className="att-card"
-                    onClick={() => nav({ view: 'project-settings', id: a.ProjectID })}>
+                    onClick={() => nav({ view: 'project-settings', id: a.ProjectID, tab: 'environments' })}>
                     <div className="att-top">
                       <span className="tid mono">deploy</span>
                       <span className="att-reason">{a.Reason}</span>
@@ -63,7 +63,7 @@ export function TasksView() {
               if (!a.TaskID) {
                 return (
                   <button key={a.ID} className="att-card"
-                    onClick={() => nav({ view: 'project-settings', id: a.ProjectID })}>
+                    onClick={() => nav({ view: 'project-settings', id: a.ProjectID, tab: 'policies' })}>
                     <div className="att-top">
                       <span className="tid mono">проект</span>
                       <span className="att-reason">{a.Reason}</span>
