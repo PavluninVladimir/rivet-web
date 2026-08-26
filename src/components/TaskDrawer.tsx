@@ -33,6 +33,7 @@ function overlapTail(e: Event): string {
 
 import { useStore } from '../store'
 import { shortHash } from './PolicyPanel'
+import { Button, Checkbox, Field, FormNote, NumberInput, TextArea, TextInput } from './form'
 import { StBadge, attemptStr, fmtDuration, fmtTokens, timeShort } from './ui'
 
 // Merge отложен политикой: последнее task.merge_deferred после последнего
@@ -136,9 +137,12 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
     termRef.current?.scrollTo({ top: termRef.current.scrollHeight })
   }, [log])
 
+  const [busy, setBusy] = useState(false)
+  const busyRef = useRef(false)
   const act = (fn: () => Promise<unknown>) => async () => {
-    setErr('')
-    try { await fn(); onChanged(); refresh() } catch (e) { setErr(String(e)) }
+    if (busyRef.current) return
+    busyRef.current = true; setErr(''); setBusy(true)
+    try { await fn(); onChanged(); refresh() } catch (e) { setErr(String(e)) } finally { busyRef.current = false; setBusy(false) }
   }
 
   if (!task) return null
@@ -165,63 +169,73 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
         <h2>{task.Title}</h2>
         <div className="dw-actions">
           {task.Status === 'review' && task.PRURL && !deferred &&
-            <button className="btn primary sm" onClick={act(() => api.merge(task.ID))}>Merge</button>}
+            <Button variant="primary" size="sm" busy={busy} onClick={act(() => api.merge(task.ID))}>Merge</Button>}
           {task.PRURL &&
             <a className="btn sm" href={task.PRURL} target="_blank" rel="noreferrer">Открыть PR</a>}
           {task.Status === 'failed' &&
-            <button className="btn sm" onClick={act(() => api.retry(task.ID))}>Повторить</button>}
+            <Button size="sm" busy={busy} onClick={act(() => api.retry(task.ID))}>Повторить</Button>}
           {planEditable && !editing &&
-            <button className="btn sm" onClick={startEdit}>Редактировать</button>}
+            <Button size="sm" onClick={startEdit}>Редактировать</Button>}
           {planEditable && epicStatus === 'planned' && (
             confirmDelete
-              ? <button className="btn sm danger"
-                  onClick={act(async () => { await api.deleteTask(task.ID); onClose() })}>Удалить?</button>
-              : <button className="btn sm" onClick={() => setConfirmDelete(true)}>Удалить</button>
+              ? <Button variant="danger" size="sm" busy={busy}
+                  onClick={act(async () => { await api.deleteTask(task.ID); onClose() })}>Удалить?</Button>
+              : <Button size="sm" onClick={() => setConfirmDelete(true)}>Удалить</Button>
           )}
           {!['done', 'cancelled'].includes(task.Status) &&
-            <button className="btn sm danger" onClick={act(() => api.cancel(task.ID))}>Отменить</button>}
+            <Button variant="danger" size="sm" busy={busy} onClick={act(() => api.cancel(task.ID))}>Отменить</Button>}
         </div>
-        {err && <div style={{ color: 'var(--c-block)', fontSize: 12, marginTop: 8 }}>{err}</div>}
+        {err && <div style={{ marginTop: 8 }}><FormNote err={err} /></div>}
       </div>
 
       <div className="dw-body">
         {editing && (
           <div className="dw-sec">
             <h3>Правка плана</h3>
-            <input placeholder="Название" value={editTitle} onChange={e => setEditTitle(e.target.value)} />
-            <textarea className="answer" placeholder="Описание" style={{ marginTop: 6 }}
-              value={editDesc} onChange={e => setEditDesc(e.target.value)} />
-            <div className="muted" style={{ fontSize: 11.5, margin: '6px 0 2px' }}>Acceptance criteria (отметки сбросятся)</div>
-            {editCriteria.map((c, i) => (
-              <div className="row" key={i} style={{ gap: 6, marginTop: 4 }}>
-                <input value={c} onChange={e => setEditCriteria(editCriteria.map((x, j) => j === i ? e.target.value : x))} />
-                <button className="btn sm" onClick={() => setEditCriteria(editCriteria.filter((_, j) => j !== i))}>✕</button>
+            <div className="f-form">
+              <Field label="Название" error={editTitle.trim() ? undefined : 'Название не может быть пустым'}>
+                {ids => <TextInput ids={ids} placeholder="Название" value={editTitle} onChange={e => setEditTitle(e.target.value)} />}
+              </Field>
+              <Field label="Описание" optional>
+                {ids => <TextArea ids={ids} className="answer" placeholder="Описание" value={editDesc} onChange={e => setEditDesc(e.target.value)} />}
+              </Field>
+              <Field label="Acceptance criteria" hint="отметки сбросятся">
+                {ids => <div className="f-form" style={{ gap: 4 }} role="group" aria-labelledby={ids.id}>
+                  {editCriteria.map((c, i) => (
+                    <div className="row" key={i} style={{ gap: 6 }}>
+                      <TextInput aria-label={`критерий ${i + 1}`} size="sm" style={{ flex: 1 }} value={c} placeholder="критерий приёмки"
+                        onChange={e => setEditCriteria(editCriteria.map((x, j) => j === i ? e.target.value : x))} />
+                      <Button variant="quiet" size="sm" aria-label="убрать критерий" onClick={() => setEditCriteria(editCriteria.filter((_, j) => j !== i))}>✕</Button>
+                    </div>
+                  ))}
+                  <div><Button size="sm" onClick={() => setEditCriteria([...editCriteria, ''])}>Добавить критерий</Button></div>
+                </div>}
+              </Field>
+              {(epicTasks ?? []).some(t2 => t2.ID !== task.ID && t2.Status !== 'cancelled') && (
+                <Field label="Зависимости">
+                  {() => <div className="f-form" style={{ gap: 4 }}>
+                    {(epicTasks ?? []).filter(t2 => t2.ID !== task.ID && t2.Status !== 'cancelled').map(t2 => (
+                      <Checkbox key={t2.ID} checked={editDeps.includes(t2.ID)}
+                        label={<><span className="mono muted">task-{t2.Num}</span> {t2.Title}</>}
+                        onChange={on => setEditDeps(on ? [...editDeps, t2.ID] : editDeps.filter(d => d !== t2.ID))} />
+                    ))}
+                  </div>}
+                </Field>
+              )}
+              <div className="f-actions" style={{ justifyContent: 'flex-start' }}>
+                <Button variant="primary" size="sm" busy={busy} disabled={!editTitle.trim()}
+                  onClick={act(async () => {
+                    await api.patchTask(task.ID, {
+                      title: editTitle.trim(), description: editDesc,
+                      criteria: editCriteria.map(c => c.trim()).filter(Boolean),
+                      deps: editDeps,
+                    })
+                    setEditing(false)
+                  })}>
+                  Сохранить
+                </Button>
+                <Button variant="quiet" size="sm" onClick={() => setEditing(false)}>Отмена</Button>
               </div>
-            ))}
-            <button className="btn sm" style={{ marginTop: 6 }}
-              onClick={() => setEditCriteria([...editCriteria, ''])}>Добавить критерий</button>
-            <div className="muted" style={{ fontSize: 11.5, margin: '8px 0 2px' }}>Зависимости</div>
-            {(epicTasks ?? []).filter(t2 => t2.ID !== task.ID && t2.Status !== 'cancelled').map(t2 => (
-              <label className="row" key={t2.ID} style={{ gap: 6, fontSize: 12, marginTop: 2 }}>
-                <input type="checkbox" style={{ width: 'auto' }} checked={editDeps.includes(t2.ID)}
-                  onChange={e => setEditDeps(e.target.checked
-                    ? [...editDeps, t2.ID] : editDeps.filter(d => d !== t2.ID))} />
-                <span className="mono muted">task-{t2.Num}</span> {t2.Title}
-              </label>
-            ))}
-            <div className="row" style={{ gap: 8, marginTop: 10 }}>
-              <button className="btn primary sm" disabled={!editTitle.trim()}
-                onClick={act(async () => {
-                  await api.patchTask(task.ID, {
-                    title: editTitle.trim(), description: editDesc,
-                    criteria: editCriteria.map(c => c.trim()).filter(Boolean),
-                    deps: editDeps,
-                  })
-                  setEditing(false)
-                })}>
-                Сохранить
-              </button>
-              <button className="btn sm" onClick={() => setEditing(false)}>Отмена</button>
             </div>
           </div>
         )}
@@ -236,16 +250,18 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
               )}
               {' · политика '}<span className="mono">{shortHash(String(deferred.Payload?.policy_version ?? ''))}</span>
             </p>
-            {task.PRURL && <button className="btn primary sm" onClick={act(() => api.merge(task.ID))}>Подтвердить merge</button>}
+            {task.PRURL && <Button variant="primary" size="sm" busy={busy} onClick={act(() => api.merge(task.ID))}>Подтвердить merge</Button>}
           </div>
         )}
         {['blocked', 'failed', 'review'].includes(task.Status) && (
           <div className="dw-sec">
             <h3>Сессия доработки</h3>
-            <textarea className="answer" placeholder="Промпт агенту: что доработать в ветке задачи…"
-              value={sessPrompt} onChange={e => setSessPrompt(e.target.value)} />
-            <div className="row" style={{ marginTop: 8, gap: 8 }}>
-              <button className="btn primary sm" disabled={!sessPrompt.trim() || sessBusy}
+            <Field label="Промпт агенту" hint="что доработать в ветке задачи">
+              {ids => <TextArea ids={ids} className="answer" placeholder="Промпт агенту: что доработать в ветке задачи…"
+                value={sessPrompt} onChange={e => setSessPrompt(e.target.value)} />}
+            </Field>
+            <div className="f-actions" style={{ justifyContent: 'flex-start', marginTop: 8 }}>
+              <Button variant="primary" size="sm" disabled={!sessPrompt.trim()} busy={sessBusy} busyLabel="запуск…"
                 onClick={act(async () => {
                   if (sessBusy) return
                   setSessBusy(true)
@@ -254,13 +270,9 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
                     setSessPrompt('')
                   } finally { setSessBusy(false) }
                 })}>
-                {sessBusy ? 'Запуск…' : 'Запустить сессию'}
-              </button>
-              <label className="row muted" style={{ gap: 6, fontSize: 12 }}>
-                <input type="checkbox" style={{ width: 'auto' }} checked={sessPrivate}
-                  onChange={e => setSessPrivate(e.target.checked)} />
-                приватная — команда видит только факт
-              </label>
+                Запустить сессию
+              </Button>
+              <Checkbox checked={sessPrivate} onChange={setSessPrivate} label={<span className="muted">приватная, команда видит только факт</span>} />
             </div>
           </div>
         )}
@@ -269,13 +281,15 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
           <div className="dw-sec">
             <h3>Вопрос агента</h3>
             <p style={{ fontSize: 12.5, margin: '0 0 8px' }}>{task.BlockReason}</p>
-            <textarea className="answer" placeholder="Ответ / уточнение критериев…"
-              value={answer} onChange={e => setAnswer(e.target.value)} />
+            <Field label="Ответ">
+              {ids => <TextArea ids={ids} className="answer" placeholder="Ответ / уточнение критериев…"
+                value={answer} onChange={e => setAnswer(e.target.value)} />}
+            </Field>
             <div style={{ marginTop: 8 }}>
-              <button className="btn primary sm" disabled={!answer.trim()}
+              <Button variant="primary" size="sm" disabled={!answer.trim()} busy={busy}
                 onClick={act(async () => { await api.answer(task.ID, answer); setAnswer('') })}>
                 Ответить и вернуть в работу
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -289,14 +303,14 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
                 {limitEdit === null
                   ? <>{attemptStr(task.AttemptUsed, task.AttemptLimit)}
                     {!['done', 'cancelled'].includes(task.Status) &&
-                      <button className="btn sm" title="изменить лимит попыток" onClick={() => setLimitEdit(task.AttemptLimit)}>✎</button>}</>
+                      <Button variant="quiet" size="sm" title="изменить лимит попыток" aria-label="изменить лимит попыток" onClick={() => setLimitEdit(task.AttemptLimit)}>✎</Button>}</>
                   : <>
                     <span>{task.AttemptUsed} /</span>
-                    <input type="number" min={Math.max(1, task.AttemptUsed)} style={{ width: 56 }} value={limitEdit}
+                    <NumberInput className="f-sm" aria-label="лимит попыток" min={Math.max(1, task.AttemptUsed)} width={56} value={limitEdit}
                       onChange={e => setLimitEdit(Number(e.target.value))} />
-                    <button className="btn sm primary" disabled={!Number.isInteger(limitEdit) || limitEdit < Math.max(1, task.AttemptUsed)}
-                      onClick={act(async () => { await api.patchTask(task.ID, { attempt_limit: limitEdit }); setLimitEdit(null) })}>OK</button>
-                    <button className="btn sm" onClick={() => setLimitEdit(null)}>✕</button>
+                    <Button variant="primary" size="sm" busy={busy} disabled={!Number.isInteger(limitEdit) || limitEdit < Math.max(1, task.AttemptUsed)}
+                      onClick={act(async () => { await api.patchTask(task.ID, { attempt_limit: limitEdit }); setLimitEdit(null) })}>OK</Button>
+                    <Button variant="quiet" size="sm" aria-label="отмена" onClick={() => setLimitEdit(null)}>✕</Button>
                   </>}
               </b></div>
             <div className="kv"><span>отказы review</span><b>{task.ReviewRejections ?? 0}</b></div>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, type StepItem } from '../api/client'
 import { timeShort } from '../components/ui'
 import { useStore } from '../store'
+import { Button, TextArea } from '../components/form'
 
 // «Мои шаги» (add-process-humans, спека clients/web «Мои шаги в консоли»):
 // запуски участников-людей, ждущие текущего пользователя, с действиями по
@@ -39,12 +40,16 @@ export function MyStepsView() {
     refreshMySteps()
   }
 
+  const [busyId, setBusyId] = useState<number | null>(null)
+  const busyRef = useRef(false)
   const act = async (it: StepItem, verdict: 'ok' | 'changes' | 'fail') => {
     const detail = (text[it.run_id] ?? '').trim()
     if (verdict !== 'ok' && it.step.kind === 'review' && !detail) {
       setErr(prev => ({ ...prev, [it.run_id]: 'замечания обязательны' }))
       return
     }
+    if (busyRef.current) return
+    busyRef.current = true; setBusyId(it.run_id)
     try {
       await api.verdict(it.task.id, it.run_id, verdict, detail)
       drop(it.run_id)
@@ -55,6 +60,8 @@ export function MyStepsView() {
         return
       }
       setErr(prev => ({ ...prev, [it.run_id]: msg }))
+    } finally {
+      busyRef.current = false; setBusyId(null)
     }
   }
 
@@ -77,18 +84,18 @@ export function MyStepsView() {
             {it.task.pr_url && <a className="mono" href={it.task.pr_url} target="_blank" rel="noreferrer">PR: {it.task.pr_url}</a>}
             {!it.task.pr_url && it.task.branch && <div className="mono muted">ветка {it.task.branch}</div>}
             {it.context && <pre className="step-context">{it.context}</pre>}
-            <textarea className="step-text" placeholder={it.step.kind === 'review' ? 'Замечания (обязательны при возврате)' : 'Комментарий'}
+            <TextArea className="step-text" aria-label="замечания" placeholder={it.step.kind === 'review' ? 'Замечания (обязательны при возврате)' : 'Комментарий'}
               value={text[it.run_id] ?? ''} onChange={e => { const v = e.target.value; setText(prev => ({ ...prev, [it.run_id]: v })) }} />
-            {err[it.run_id] && <div className="err">{err[it.run_id]}</div>}
+            {err[it.run_id] && <div className="err f-error" role="alert">{err[it.run_id]}</div>}
             <div className="step-actions">
               {it.step.kind === 'review'
                 ? <>
-                    <button className="btn primary" onClick={() => act(it, 'ok')}>Одобрить</button>
-                    <button className="btn" onClick={() => act(it, 'changes')}>Вернуть с замечаниями</button>
+                    <Button variant="primary" size="sm" busy={busyId === it.run_id} onClick={() => act(it, 'ok')}>Одобрить</Button>
+                    <Button size="sm" busy={busyId === it.run_id} onClick={() => act(it, 'changes')}>Вернуть с замечаниями</Button>
                   </>
                 : <>
-                    <button className="btn primary" onClick={() => act(it, 'ok')}>Готово</button>
-                    <button className="btn" onClick={() => act(it, it.step.kind === 'test' ? 'changes' : 'fail')}>Провал</button>
+                    <Button variant="primary" size="sm" busy={busyId === it.run_id} onClick={() => act(it, 'ok')}>Готово</Button>
+                    <Button variant="danger" size="sm" busy={busyId === it.run_id} onClick={() => act(it, it.step.kind === 'test' ? 'changes' : 'fail')}>Провал</Button>
                   </>}
             </div>
           </div>

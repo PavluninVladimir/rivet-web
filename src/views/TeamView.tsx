@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, stColor, type SessionEntry } from '../api/client'
 import { fmtDuration, fmtTokens, StBadge, timeShort } from '../components/ui'
 import { useStore } from '../store'
+import { FormNote } from '../components/form'
 
 // Представление «Команда» (спека web «Лента команды», add-team-visibility):
 // реестр активных сессий проекта с пересечениями работ и поиск по истории.
@@ -94,7 +95,7 @@ export function TeamView() {
             value={q} onChange={e => setQ(e.target.value)} />
         </div>
       </div>
-      {err && <div style={{ color: 'var(--c-block)', fontSize: 12, marginBottom: 8 }}>{err}</div>}
+      {err && <div style={{ marginBottom: 8 }}><FormNote err={err} /></div>}
 
       {results === null ? (
         <div className="dw-sec">

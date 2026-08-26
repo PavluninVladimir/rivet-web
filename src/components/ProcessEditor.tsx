@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { ProcessDoc, ProcessStep, Participant, Runner } from '../api/client'
+import { Button, NumberInput, TextArea } from './form'
 
 // Редактор процесса (add-process-editor, спека clients/web «Редактор
 // процесса»): шаги карточками по порядку, участники строками, переходы
@@ -82,16 +83,17 @@ export function ProcessEditor({ doc, runners, readOnly, error, onChange }: {
                 <input type="checkbox" checked={!off} disabled={disabled} onChange={e => update(i, { enabled: e.target.checked ? undefined : false })} /> включён
               </label>
               {!disabled && <>
-                <button className="btn sm" title="выше" onClick={() => move(i, -1)} disabled={i === 0}>↑</button>
-                <button className="btn sm" title="ниже" onClick={() => move(i, 1)} disabled={i === doc.steps.length - 1}>↓</button>
-                <button className="btn sm" title="удалить" onClick={() => remove(i)}>✕</button>
+                <Button variant="quiet" size="sm" title="выше" aria-label="выше" onClick={() => move(i, -1)} disabled={i === 0}>↑</Button>
+                <Button variant="quiet" size="sm" title="ниже" aria-label="ниже" onClick={() => move(i, 1)} disabled={i === doc.steps.length - 1}>↓</Button>
+                <Button variant="quiet" size="sm" title="удалить" aria-label="удалить шаг" onClick={() => remove(i)}>✕</Button>
               </>}
             </div>
             {error?.step === s.id && <div className="err">{error.field ? `${error.field}: ` : ''}{error.message}</div>}
 
             {s.kind === 'prompt' && (
               <div className="proc-row">
-                <textarea className="step-text" placeholder="Задание агенту. Пусть закончит строкой VERDICT: OK | CHANGES: … | FAIL: …"
+                <TextArea className="step-text" aria-label="задание агенту" aria-invalid={error?.step === s.id && error.field === 'prompt' ? true : undefined}
+                  placeholder="Задание агенту. Пусть закончит строкой VERDICT: OK | CHANGES: … | FAIL: …"
                   value={s.prompt ?? ''} disabled={disabled} onChange={e => update(i, { prompt: e.target.value })} />
               </div>
             )}
@@ -132,11 +134,11 @@ export function ProcessEditor({ doc, runners, readOnly, error, onChange }: {
                               <option value="member">member</option>
                             </select>}
                       </>}
-                      {!disabled && <button className="btn sm" onClick={() => update(i, { participants: (s.participants ?? []).filter((_, j) => j !== k) })}>✕</button>}
+                      {!disabled && <Button variant="quiet" size="sm" aria-label="убрать участника" onClick={() => update(i, { participants: (s.participants ?? []).filter((_, j) => j !== k) })}>✕</Button>}
                     </div>
                   )
                 })}
-                {!disabled && <button className="btn sm" onClick={() => update(i, { participants: [...(s.participants ?? []), { agent: {} }] })}>+ участник</button>}
+                {!disabled && <Button size="sm" onClick={() => update(i, { participants: [...(s.participants ?? []), { agent: {} }] })}>+ участник</Button>}
               </div>
             )}
 
@@ -155,7 +157,7 @@ export function ProcessEditor({ doc, runners, readOnly, error, onChange }: {
                   </select>
                 </label>
                 <label>проходов
-                  <input type="number" min={1} style={{ width: 56 }} value={s.attempts ?? ''} placeholder="по пресету" disabled={disabled}
+                  <NumberInput className="f-sm" min={1} width={56} value={s.attempts ?? ''} placeholder="по пресету" disabled={disabled}
                     onChange={e => update(i, { attempts: e.target.value ? Number(e.target.value) : undefined })} />
                 </label>
               </div>
@@ -188,7 +190,7 @@ export function ProcessEditor({ doc, runners, readOnly, error, onChange }: {
           <select value={addKind} onChange={e => setAddKind(e.target.value as ProcessStep['kind'])}>
             {KINDS.map(k => <option key={k.kind} value={k.kind}>{k.label}</option>)}
           </select>
-          <button className="btn sm" onClick={add}>+ шаг</button>
+          <Button size="sm" onClick={add}>+ шаг</Button>
         </div>
       )}
     </div>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, stLabel, type Deployment, type EnvConfig, type Environment } from '../api/client'
 import { useStore } from '../store'
 import { fmtDuration, timeShort } from './ui'
+import { Button, Field, FormActions, FormNote, Select, TagsInput, TextInput, errText, useBusy } from './form'
 
 // Блок «Окружения» проекта (спека web «Окружения проекта»):
 // статус последней публикации, запуск, история с логом, resume после
@@ -44,9 +45,11 @@ export function Environments({ projectId, isAdmin }: { projectId: string; isAdmi
     api.deployments(historyEnv).then(setHistory).catch(() => setHistory([]))
   }, [historyEnv, tick])
 
-  const act = (fn: () => Promise<unknown>) => async () => {
-    setErr('')
-    try { await fn(); refresh() } catch (e) { setErr(String(e)) }
+  const [actBusy, setActBusy] = useState<string | null>(null)
+  const act = (key: string, fn: () => Promise<unknown>) => async () => {
+    if (actBusy) return
+    setErr(''); setActBusy(key)
+    try { await fn(); refresh() } catch (e) { setErr(errText(e)) } finally { setActBusy(null) }
   }
 
   const showLog = (d: Deployment) => {
@@ -67,11 +70,11 @@ export function Environments({ projectId, isAdmin }: { projectId: string; isAdmi
         <h1 style={{ fontSize: 15 }}>Окружения</h1>
         {isAdmin && (
           <div className="right">
-            <button className="btn sm" onClick={() => setEditing('new')}>Новое окружение</button>
+            <Button size="sm" onClick={() => setEditing('new')}>Новое окружение</Button>
           </div>
         )}
       </div>
-      {err && <div style={{ color: 'var(--c-block)', fontSize: 12, marginBottom: 8 }}>{err}</div>}
+      {err && <div style={{ marginBottom: 8 }}><FormNote err={err} /></div>}
       {envs.length === 0 && <div className="muted" style={{ fontSize: 12.5 }}>Окружений нет.</div>}
 
       <div className="env-grid">
@@ -114,13 +117,13 @@ export function Environments({ projectId, isAdmin }: { projectId: string; isAdmi
               ) : null}
               <div className="dw-actions" style={{ marginTop: 8 }}>
                 {env.paused
-                  ? <button className="btn sm primary" onClick={act(() => api.resumeEnv(env.id))}>Возобновить</button>
-                  : <button className="btn sm primary" disabled={!!last && active(last.status)}
-                      onClick={act(() => api.deploy(env.id))}>Опубликовать</button>}
-                <button className="btn sm" onClick={() => setHistoryEnv(historyEnv === env.id ? null : env.id)}>
+                  ? <Button variant="primary" size="sm" busy={actBusy === env.id} disabled={!!actBusy && actBusy !== env.id} onClick={act(env.id, () => api.resumeEnv(env.id))}>Возобновить</Button>
+                  : <Button variant="primary" size="sm" busy={actBusy === env.id} disabled={(!!last && active(last.status)) || (!!actBusy && actBusy !== env.id)}
+                      onClick={act(env.id, () => api.deploy(env.id))}>Опубликовать</Button>}
+                <Button size="sm" onClick={() => setHistoryEnv(historyEnv === env.id ? null : env.id)}>
                   История
-                </button>
-                {isAdmin && <button className="btn sm" onClick={() => setEditing(env)}>Настроить</button>}
+                </Button>
+                {isAdmin && <Button size="sm" onClick={() => setEditing(env)}>Настроить</Button>}
               </div>
 
               {historyEnv === env.id && (
@@ -181,105 +184,99 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
   const [trigger, setTrigger] = useState<string>(env?.trigger ?? 'manual')
   const [execType, setExecType] = useState<string>(env?.exec_type ?? 'ssh')
   const [cfg, setCfg] = useState<EnvConfig>(env?.config ?? { deploy_cmd: '' })
-  const [caps, setCaps] = useState((env?.runner_caps ?? []).join(', '))
+  const [caps, setCaps] = useState<string[]>(env?.runner_caps ?? [])
   const [err, setErr] = useState('')
+  const [busy, run] = useBusy()
   // Внешний пайплайн исполняет хостинг: команд и хоста у него нет,
   // Verify — проверка URL со стороны Rivet. У Kubernetes команды собирает
   // сам Rivet из параметров кластера.
   const external = execType === 'pipeline'
   const k8s = execType === 'k8s'
   const gitops = execType === 'gitops'
+  const nameErr = !name.trim() && err ? 'Укажите имя окружения' : undefined
 
-  const save = async () => {
+  const save = () => run(async () => {
     setErr('')
     try {
-      const runnerCaps = caps.split(',').map(c => c.trim()).filter(Boolean)
-      if (env) await api.patchEnvironment(env.id, { name, trigger, config: cfg, runner_caps: runnerCaps })
-      else await api.createEnvironment(projectId, { name, trigger, exec_type: execType, config: cfg, runner_caps: runnerCaps })
+      if (env) await api.patchEnvironment(env.id, { name, trigger, config: cfg, runner_caps: caps })
+      else await api.createEnvironment(projectId, { name, trigger, exec_type: execType, config: cfg, runner_caps: caps })
       onSaved()
-    } catch (e) { setErr(String(e)) }
-  }
-  const del = async () => {
+    } catch (e) { setErr(errText(e)) }
+  })
+  const del = () => run(async () => {
     setErr('')
-    try { await api.deleteEnvironment(env!.id); onSaved() } catch (e) { setErr(String(e)) }
-  }
+    try { await api.deleteEnvironment(env!.id); onSaved() } catch (e) { setErr(errText(e)) }
+  })
+  const text = (label: string, key: keyof EnvConfig, placeholder: string, hint?: string, mono = true) => (
+    <Field label={label} hint={hint}>
+      {ids => <TextInput ids={ids} mono={mono} placeholder={placeholder} value={(cfg[key] as string | undefined) ?? ''}
+        onChange={e => setCfg({ ...cfg, [key]: e.target.value })} />}
+    </Field>
+  )
 
   return (
     <div className="modal-wrap" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
+      <div className="modal f-form" onClick={e => e.stopPropagation()}>
         <h2>{env ? 'Окружение: ' + env.name : 'Новое окружение'}</h2>
-        <input placeholder="Имя (staging, prod…)" value={name} onChange={e => setName(e.target.value)} />
-        <label className="muted" style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-          Запуск:
-          <select value={trigger} onChange={e => setTrigger(e.target.value)}>
-            <option value="manual">вручную</option>
-            <option value="auto">автоматически после merge</option>
-          </select>
-        </label>
-        {!env && (
-          <label className="muted" style={{ fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-            Доставка:
-            <select value={execType} onChange={e => setExecType(e.target.value)}>
-              <option value="ssh">своя (Linux-хост по SSH)</option>
-              <option value="k8s">своя (Kubernetes)</option>
-              <option value="pipeline">пайплайн хостинга (CI/CD)</option>
-              <option value="gitops">GitOps (коммит версии)</option>
-            </select>
-          </label>
-        )}
+        <Field label="Имя" error={nameErr}>
+          {ids => <TextInput ids={ids} placeholder="Имя (staging, prod…)" autoFocus value={name} onChange={e => setName(e.target.value)} />}
+        </Field>
+        <div className="f-grid">
+          <Field label="Запуск">
+            {ids => <Select ids={ids} value={trigger} onChange={e => setTrigger(e.target.value)}>
+              <option value="manual">вручную</option>
+              <option value="auto">автоматически после merge</option>
+            </Select>}
+          </Field>
+          {!env && (
+            <Field label="Доставка">
+              {ids => <Select ids={ids} value={execType} onChange={e => setExecType(e.target.value)}>
+                <option value="ssh">своя (Linux-хост по SSH)</option>
+                <option value="k8s">своя (Kubernetes)</option>
+                <option value="pipeline">пайплайн хостинга (CI/CD)</option>
+                <option value="gitops">GitOps (коммит версии)</option>
+              </Select>}
+            </Field>
+          )}
+        </div>
         {external ? (
           <>
-            <input placeholder="Пайплайн хостинга (для GitHub Actions — файл workflow)"
-              value={cfg.pipeline ?? ''} onChange={e => setCfg({ ...cfg, pipeline: e.target.value })} />
-            <input placeholder="Ветка запуска (пусто — базовая ветка проекта)"
-              value={cfg.ref ?? ''} onChange={e => setCfg({ ...cfg, ref: e.target.value })} />
+            {text('Пайплайн хостинга', 'pipeline', 'Пайплайн хостинга (для GitHub Actions — файл workflow)')}
+            {text('Ветка запуска', 'ref', 'Ветка запуска (пусто — базовая ветка проекта)', 'пусто, если базовая ветка проекта')}
           </>
         ) : gitops ? (
           <>
-            <input placeholder="Репозиторий конфигурации (пусто — репозиторий проекта)"
-              value={cfg.repo ?? ''} onChange={e => setCfg({ ...cfg, repo: e.target.value })} />
-            <input placeholder="Ветка коммита (пусто — базовая ветка проекта)"
-              value={cfg.ref ?? ''} onChange={e => setCfg({ ...cfg, ref: e.target.value })} />
-            <input placeholder="Файл с версией (envs/prod/values.yaml)"
-              value={cfg.file ?? ''} onChange={e => setCfg({ ...cfg, file: e.target.value })} />
-            <input placeholder="Ключ YAML (image.tag; пусто — файл целиком)"
-              value={cfg.key ?? ''} onChange={e => setCfg({ ...cfg, key: e.target.value })} />
+            {text('Репозиторий конфигурации', 'repo', 'Репозиторий конфигурации (пусто — репозиторий проекта)', 'пусто, если репозиторий проекта')}
+            {text('Ветка коммита', 'ref', 'Ветка коммита (пусто — базовая ветка проекта)')}
+            {text('Файл с версией', 'file', 'Файл с версией (envs/prod/values.yaml)')}
+            {text('Ключ YAML', 'key', 'Ключ YAML (image.tag; пусто — файл целиком)', 'пусто, если файл целиком')}
           </>
         ) : k8s ? (
           <>
-            <input placeholder="Namespace" value={cfg.namespace ?? ''}
-              onChange={e => setCfg({ ...cfg, namespace: e.target.value })} />
-            <input placeholder="Каталог манифестов в репозитории (deploy/k8s)"
-              value={cfg.manifests ?? ''} onChange={e => setCfg({ ...cfg, manifests: e.target.value })} />
-            <input placeholder="Объект для проверки выката (deployment/api)"
-              value={cfg.workload ?? ''} onChange={e => setCfg({ ...cfg, workload: e.target.value })} />
-            <input placeholder="Или helm-чарт в репозитории (charts/api)"
-              value={cfg.chart ?? ''} onChange={e => setCfg({ ...cfg, chart: e.target.value })} />
-            <input placeholder="Релиз helm" value={cfg.release ?? ''}
-              onChange={e => setCfg({ ...cfg, release: e.target.value })} />
+            {text('Namespace', 'namespace', 'Namespace')}
+            {text('Каталог манифестов', 'manifests', 'Каталог манифестов в репозитории (deploy/k8s)')}
+            {text('Объект для проверки выката', 'workload', 'Объект для проверки выката (deployment/api)')}
+            {text('Helm-чарт', 'chart', 'Или helm-чарт в репозитории (charts/api)', 'вместо манифестов')}
+            {text('Релиз helm', 'release', 'Релиз helm')}
           </>
         ) : (
           <>
-            <input placeholder="Хост ([user@]host[:port], пусто — локально на runner'е)"
-              value={cfg.host ?? ''} onChange={e => setCfg({ ...cfg, host: e.target.value })} />
-            <input placeholder="Команда доставки (deploy_cmd)"
-              value={cfg.deploy_cmd ?? ''} onChange={e => setCfg({ ...cfg, deploy_cmd: e.target.value })} />
-            <input placeholder="Команда проверки (verify_cmd)"
-              value={cfg.verify_cmd ?? ''} onChange={e => setCfg({ ...cfg, verify_cmd: e.target.value })} />
+            {text('Хост', 'host', "Хост ([user@]host[:port], пусто — локально на runner'е)", "пусто, если команды выполняются на runner'е")}
+            {text('Команда доставки', 'deploy_cmd', 'Команда доставки (deploy_cmd)')}
+            {text('Команда проверки', 'verify_cmd', 'Команда проверки (verify_cmd)')}
           </>
         )}
-        <input placeholder="URL health-check (verify_url)"
-          value={cfg.verify_url ?? ''} onChange={e => setCfg({ ...cfg, verify_url: e.target.value })} />
+        {text('URL health-check', 'verify_url', 'URL health-check (verify_url)')}
         {!external && !gitops && (
-          <input placeholder="Capability runner'а публикации через запятую (пусто — любой deploy-runner)"
-            value={caps} onChange={e => setCaps(e.target.value)} />
+          <Field label="Capabilities runner'а публикации" optional hint="пусто, если подходит любой deploy-runner">
+            {ids => <TagsInput ids={ids} value={caps} onChange={setCaps} placeholder="Capability runner'а публикации через запятую (пусто — любой deploy-runner)" />}
+          </Field>
         )}
-        {err && <div style={{ color: 'var(--c-block)', fontSize: 12 }}>{err}</div>}
-        <div className="row">
-          {env && <button className="btn danger" onClick={del}>Удалить</button>}
-          <button className="btn" style={{ marginLeft: 'auto' }} onClick={onClose}>Отмена</button>
-          <button className="btn primary" onClick={save}>Сохранить</button>
-        </div>
+        <FormActions note={<FormNote err={err || undefined} />}>
+          {env && <Button variant="danger" busy={busy} onClick={del}>Удалить</Button>}
+          <Button variant="quiet" onClick={onClose}>Отмена</Button>
+          <Button variant="primary" busy={busy} busyLabel="сохраняю…" onClick={save}>Сохранить</Button>
+        </FormActions>
       </div>
     </div>
   )

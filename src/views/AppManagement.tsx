@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, errCode, LLM_PROVIDERS, type Event, type LLMProvider, type PlannerSource, type RunnerToken, type SystemStatus, type User } from '../api/client'
 import { fmtAgo, fmtDate, SecretOnce, statusColor, Tabs, timeShort } from '../components/ui'
 import { InstallationPolicyPanel } from '../components/PolicyPanel'
+import { Button, Checkbox, Field, FormActions, FormNote, PasswordInput, Select, TextInput, errText, useBusy } from '../components/form'
 import { useStore, type AppTab } from '../store'
 import { UsageView } from './UsageView'
 
@@ -40,17 +41,13 @@ export function AppManagement({ me, tab }: { me: User; tab: AppTab }) {
 function useActions(refresh: () => void) {
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
-  const act = (fn: () => Promise<unknown>, msg = '') => async () => {
+  const [busy, run] = useBusy()
+  const act = (fn: () => Promise<unknown>, msg = '') => () => run(async () => {
     setErr(''); setNote('')
-    try { await fn(); setNote(msg); refresh() } catch (e) { setErr(String(e)) }
-  }
-  const banner = (
-    <>
-      {err && <div style={{ color: 'var(--c-block)', fontSize: 12, marginBottom: 8 }}>{err}</div>}
-      {note && <div style={{ color: 'var(--c-done)', fontSize: 12, marginBottom: 8 }}>{note}</div>}
-    </>
-  )
-  return { act, banner }
+    try { await fn(); setNote(msg); refresh() } catch (e) { setErr(errText(e)) }
+  })
+  const banner = (err || note) ? <div style={{ marginBottom: 8 }}><FormNote err={err || undefined} ok={note || undefined} /></div> : null
+  return { act, banner, busy }
 }
 
 // ─── Пользователи ───────────────────────────────────────────────────────
@@ -65,7 +62,7 @@ function UsersTab({ me }: { me: User }) {
     api.users().then(u => setUsers(u ?? [])).catch(() => {})
   }, [])
   useEffect(refresh, [refresh])
-  const { act, banner } = useActions(refresh)
+  const { act, banner, busy } = useActions(refresh)
 
   // Последний активный администратор: у него действия «снять права» и
   // «отключить» недоступны, а не отклоняются после нажатия.
@@ -89,52 +86,58 @@ function UsersTab({ me }: { me: User }) {
               <span className="sess-agent">{u.name}</span>
               {u.admin && <span className="chip"><span className="n">админ</span></span>}
               <span className={u.disabled ? 'muted' : ''}>{u.disabled ? 'отключён' : 'активен'}</span>
-              <button className="btn sm" disabled={locked(u)}
+              <Button size="sm" variant="quiet" disabled={locked(u)}
                 title={locked(u) ? 'последний администратор установки' : ''}
                 onClick={act(() => api.patchUser(u.id, { admin: !u.admin }),
                   u.admin ? 'права администратора сняты' : 'права администратора выданы')}>
                 {u.admin ? 'Снять админа' : 'Сделать админом'}
-              </button>
-              <button className="btn sm"
+              </Button>
+              <Button size="sm" variant="quiet"
                 onClick={act(async () => {
                   const { password } = await api.resetPassword(u.id)
                   setOneTime({ login: u.login, password })
                 }, 'пароль сброшен')}>
                 Сбросить пароль
-              </button>
-              <button className="btn sm" disabled={locked(u)}
+              </Button>
+              <Button size="sm" variant={u.disabled ? 'default' : 'danger'} disabled={locked(u)}
                 title={locked(u) ? 'последний администратор установки' : ''}
                 onClick={act(() => api.patchUser(u.id, { disabled: !u.disabled }),
                   u.disabled ? 'пользователь включён' : 'пользователь отключён')}>
                 {u.disabled ? 'Включить' : 'Отключить'}
-              </button>
+              </Button>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="dw-sec">
+      <div className="dw-sec f-form" style={{ maxWidth: 760 }}>
         <h3>Новый пользователь</h3>
-        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-          <input placeholder="Логин" value={form.login}
-            onChange={e => setForm({ ...form, login: e.target.value })} />
-          <input placeholder="Имя" value={form.name}
-            onChange={e => setForm({ ...form, name: e.target.value })} />
-          <input type="password" placeholder="Пароль (от 8 символов)" value={form.password}
-            onChange={e => setForm({ ...form, password: e.target.value })} />
-          <label className="row" style={{ gap: 6, marginRight: 8 }}>
-            <input type="checkbox" style={{ width: 'auto' }} checked={form.admin}
-              onChange={e => setForm({ ...form, admin: e.target.checked })} />
-            администратор
-          </label>
-          <button className="btn sm primary" disabled={!form.login || form.password.length < 8}
+        <div className="f-grid">
+          <Field label="Логин" hint="латиница, цифры, «._-»">
+            {ids => <TextInput ids={ids} mono placeholder="Логин" value={form.login} onChange={e => setForm({ ...form, login: e.target.value })} />}
+          </Field>
+          <Field label="Имя" optional>
+            {ids => <TextInput ids={ids} placeholder="Имя" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />}
+          </Field>
+          <Field label="Пароль" hint="не короче 8 символов; пользователь сменит его при первом входе">
+            {ids => <PasswordInput ids={ids} placeholder="Пароль (от 8 символов)" autoComplete="new-password" value={form.password}
+              onChange={e => setForm({ ...form, password: e.target.value })} />}
+          </Field>
+          <Field label="Права">
+            {() => <div style={{ height: 'var(--f-h)', display: 'flex', alignItems: 'center' }}>
+              <Checkbox checked={form.admin} label="администратор установки" onChange={v => setForm({ ...form, admin: v })} />
+            </div>}
+          </Field>
+        </div>
+        <FormActions>
+          <Button variant="primary" size="sm" busy={busy} disabled={!form.login || form.password.length < 8}
             onClick={act(async () => {
               await api.createUser(form)
               setForm({ login: '', name: '', password: '', admin: false })
             }, 'пользователь создан')}>
             Создать
-          </button>
-        </div>
+          </Button>
+        </FormActions>
         <div className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>
           Вы вошли как {me.login}. Свой пароль и токены — на странице профиля.
         </div>
@@ -168,7 +171,7 @@ function RunnerTokensTab() {
     }).catch(() => {})
   }, [])
   useEffect(refresh, [refresh])
-  const { act, banner } = useActions(refresh)
+  const { act, banner, busy } = useActions(refresh)
 
   // Действующий — не отозван и не просрочен: бэкенд отклоняет и те, и другие.
   const expired = (t: RunnerToken) => !!t.expires_at && new Date(t.expires_at).getTime() <= Date.now()
@@ -187,7 +190,7 @@ function RunnerTokensTab() {
           ? <span className="muted" style={{ fontSize: 11 }}>отозван {fmtDate(t.revoked_at)}</span>
           : expired(t)
             ? <span className="muted" style={{ fontSize: 11 }}>истёк</span>
-            : <button className="btn sm" onClick={act(() => api.revokeRunnerToken(t.id), 'токен отозван: новые подключения по нему отклоняются')}>Отозвать</button>}
+            : <Button size="sm" variant="danger" onClick={act(() => api.revokeRunnerToken(t.id), 'токен отозван: новые подключения по нему отклоняются')}>Отозвать</Button>}
       </td>
     </tr>
   )
@@ -215,21 +218,24 @@ function RunnerTokensTab() {
           </tbody>
         </table>
       </div>
-      <div className="dw-sec">
+      <div className="dw-sec f-form" style={{ maxWidth: 760 }}>
         <h3>Новый токен</h3>
-        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-          <input placeholder="Имя (например, office-fleet)" value={form.name}
-            onChange={e => setForm({ ...form, name: e.target.value })} />
-          <input type="datetime-local" title="срок действия (пусто — бессрочно)" value={form.expires}
-            onChange={e => setForm({ ...form, expires: e.target.value })} />
-          <button className="btn sm primary" disabled={!form.name}
+        <div className="f-grid" style={{ gridTemplateColumns: '1fr auto auto', alignItems: 'end' }}>
+          <Field label="Имя">
+            {ids => <TextInput ids={ids} placeholder="Имя (например, office-fleet)" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />}
+          </Field>
+          <Field label="Срок действия" optional>
+            {ids => <TextInput ids={ids} type="datetime-local" title="срок действия (пусто — бессрочно)" value={form.expires}
+              onChange={e => setForm({ ...form, expires: e.target.value })} />}
+          </Field>
+          <Button variant="primary" busy={busy} disabled={!form.name}
             onClick={act(async () => {
               const res = await api.createRunnerToken(form.name, form.expires ? new Date(form.expires).toISOString() : undefined)
               setCreated({ name: res.token.name, secret: res.secret })
               setForm({ name: '', expires: '' })
             }, 'токен создан')}>
             Создать
-          </button>
+          </Button>
         </div>
         <div className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>
           Запуск runner'а на хосте с рабочими копиями:
@@ -258,7 +264,7 @@ function ModelsTab() {
     api.models().then(r => { setProviders(r.providers ?? []); setSource(r.source) }).catch(() => {})
   }, [])
   useEffect(refresh, [refresh])
-  const { act, banner } = useActions(refresh)
+  const { act, banner, busy } = useActions(refresh)
 
   const save = (id: string, patch: { key?: string; model?: string; active?: boolean }, msg: string) =>
     act(async () => {
@@ -301,21 +307,23 @@ function ModelsTab() {
                 </span>
               </div>
               <div className="ctl">
-                <input type="password" placeholder={p ? 'новый ключ' : 'API-ключ'} style={{ width: 200 }}
-                  value={keys[def.id] ?? ''} onChange={e => setKeys({ ...keys, [def.id]: e.target.value })} />
-                <input placeholder={`модель (${def.defaultModel})`} style={{ width: 180 }}
+                <span style={{ width: 200 }}>
+                  <PasswordInput className="f-sm" placeholder={p ? 'новый ключ' : 'API-ключ'} autoComplete="off" aria-label={`ключ ${def.label}`}
+                    value={keys[def.id] ?? ''} onChange={e => setKeys({ ...keys, [def.id]: e.target.value })} />
+                </span>
+                <TextInput size="sm" mono placeholder={`модель (${def.defaultModel})`} style={{ width: 180 }} aria-label={`модель ${def.label}`}
                   value={modelVal} onChange={e => setModels({ ...models, [def.id]: e.target.value })} />
-                <button className="btn sm primary" disabled={!p && !keys[def.id]}
+                <Button size="sm" variant="primary" busy={busy} disabled={!p && !keys[def.id]}
                   onClick={save(def.id, {
                     ...(keys[def.id] ? { key: keys[def.id] } : {}),
                     ...(modelVal !== (p?.model ?? '') ? { model: modelVal } : {}),
                     ...(!p ? { active: true } : {}),
                   }, 'провайдер сохранён')}>
                   Сохранить
-                </button>
-                {p && !p.active && <button className="btn sm" onClick={save(def.id, { active: true }, `активен ${def.label}`)}>Сделать активным</button>}
-                {p && <button className="btn sm" onClick={act(() => api.checkModel(def.id), 'ключ проверен')}>Проверить</button>}
-                {p && <button className="btn sm" onClick={act(() => api.deleteModel(def.id), 'провайдер удалён')}>Удалить</button>}
+                </Button>
+                {p && !p.active && <Button size="sm" onClick={save(def.id, { active: true }, `активен ${def.label}`)}>Сделать активным</Button>}
+                {p && <Button size="sm" variant="quiet" onClick={act(() => api.checkModel(def.id), 'ключ проверен')}>Проверить</Button>}
+                {p && <Button size="sm" variant="danger" onClick={act(() => api.deleteModel(def.id), 'провайдер удалён')}>Удалить</Button>}
               </div>
             </div>
           )
@@ -347,19 +355,19 @@ function AuditTab() {
       setMore(batch.length === PAGE)
       setEvents(cur => after ? [...cur, ...batch] : batch)
       setErr('')
-    }).catch(e => setErr(String(e)))
+    }).catch(e => setErr(errText(e)))
   }, [type])
   useEffect(() => { load() }, [load])
 
   const last = events[events.length - 1]?.ID
   return (
     <>
-      {err && <div style={{ color: 'var(--c-block)', fontSize: 12, marginBottom: 8 }}>{err}</div>}
-      <div className="row" style={{ gap: 8, marginBottom: 10 }}>
-        <select className="search" value={type} onChange={e => setType(e.target.value)}>
+      {err && <div style={{ marginBottom: 8 }}><FormNote err={err} /></div>}
+      <div className="filters">
+        <Select size="sm" aria-label="тип события" value={type} onChange={e => setType(e.target.value)}>
           {AUDIT_TYPES.map(t => <option key={t} value={t}>{t || 'все типы'}</option>)}
-        </select>
-        <button className="btn sm" onClick={() => load()}>Обновить</button>
+        </Select>
+        <Button size="sm" onClick={() => load()}>Обновить</Button>
         <span className="muted" style={{ fontSize: 11.5 }}>события уровня установки: учётные записи, runner'ы, токены, ключи моделей</span>
       </div>
       {events.map(e => (
@@ -370,7 +378,7 @@ function AuditTab() {
         </div>
       ))}
       {events.length === 0 && <div className="muted">Событий нет.</div>}
-      {more && last && <button className="btn sm" style={{ marginTop: 8 }} onClick={() => load(last)}>Показать ещё</button>}
+      {more && last && <Button size="sm" style={{ marginTop: 8 }} onClick={() => load(last)}>Показать ещё</Button>}
     </>
   )
 }
@@ -386,11 +394,11 @@ function StatusTab() {
   const [st, setSt] = useState<SystemStatus | null>(null)
   const [err, setErr] = useState('')
   const load = useCallback(() => {
-    api.systemStatus().then(s => { setSt(s); setErr('') }).catch(e => setErr(String(e)))
+    api.systemStatus().then(s => { setSt(s); setErr('') }).catch(e => setErr(errText(e)))
   }, [])
   useEffect(load, [load])
 
-  if (err) return <div style={{ color: 'var(--c-block)', fontSize: 12 }}>{err}</div>
+  if (err) return <FormNote err={err} />
   if (!st) return <div className="muted">Загрузка…</div>
   const planner = st.components.find(c => c.name === 'planner')?.data as { source?: string; provider?: string; model?: string } | undefined
   const runners = st.components.find(c => c.name === 'runners')?.data as { online?: number; total?: number } | undefined
@@ -406,7 +414,7 @@ function StatusTab() {
       <div className="dw-sec">
         <div className="row" style={{ marginBottom: 8 }}>
           <h3 style={{ margin: 0 }}>Компоненты</h3>
-          <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={load}>Обновить</button>
+          <Button size="sm" style={{ marginLeft: 'auto' }} onClick={load}>Обновить</Button>
         </div>
         <div className="status-grid">
           {st.components.map(c => (
