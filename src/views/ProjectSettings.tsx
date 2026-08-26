@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, budgetPaused, type Check, type Member, type Project, type RepositoryStatus, type User } from '../api/client'
 import { Environments } from '../components/Environments'
 import { ProjectPolicySection } from '../components/PolicyPanel'
+import { ProjectProcessSection } from '../components/ProcessSection'
 import { fmtDate, fmtTokens } from '../components/ui'
 import { useStore } from '../store'
 
@@ -169,6 +170,7 @@ export function ProjectSettings({ projectId, user }: { projectId: string; user: 
       </div>
 
       <ProjectPolicySection projectId={projectId} isOwner={isOwner} tick={tick} />
+      <ProjectProcessSection projectId={projectId} isOwner={isOwner} tick={tick} />
 
       <div className="dw-sec">
         <h3>Бюджет токенов</h3>

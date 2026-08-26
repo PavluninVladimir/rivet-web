@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { InstallationProcessSection } from './ProcessSection'
+import { DEFAULT_PROCESS } from '../api/client'
 import { api, type Overrides, type PolicyEngine, type PolicyVersion, type Presets, type ProjectPolicy } from '../api/client'
 import { fmtDate, fmtTokens } from './ui'
 
@@ -9,7 +11,7 @@ import { fmtDate, fmtTokens } from './ui'
 // история (их требует спека аудита). «Escalate blocked tasks» и «Notify»
 // из прототипа не делаются (design, сверка с прототипом).
 
-type PresetKey = keyof Presets
+type PresetKey = 'auto_merge' | 'human_review_paths' | 'attempt_limit' | 'review_limit' | 'daily_token_budget' | 'auto_publish'
 
 const ROWS: { key: PresetKey; label: string; hint: string }[] = [
   { key: 'auto_merge', label: 'Авто-merge после review', hint: 'мержить PR, когда review и проверки пройдены' },
@@ -141,7 +143,10 @@ export function InstallationPolicyPanel({ onSaved }: { onSaved?: () => void } = 
     try {
       const r = await api.putSystemPolicy(presets)
       setPresets(r.presets); setVersion(r.version); setDirty(false)
-      setNote(`сохранена версия ${r.version?.version} (${shortHash(r.version?.hash)})`)
+      const saved = `сохранена версия ${r.version?.version} (${shortHash(r.version?.hash)})`
+      setNote(r.violations?.length
+        ? `${saved}; процессы не соответствуют ограничениям: ${r.violations.map(v => `${v.project} (${v.reason})`).join('; ')}`
+        : saved)
       api.systemPolicyVersions().then(v => setVersions(v ?? [])).catch(() => {})
       onSaved?.()
     } catch (e) { setErr(String(e)) }
@@ -173,6 +178,10 @@ export function InstallationPolicyPanel({ onSaved }: { onSaved?: () => void } = 
               </div>
             </div>
           ))}
+        </div>
+        <InstallationProcessSection doc={presets.process ?? DEFAULT_PROCESS} locks={presets.process_locks ?? {}} readOnly={external}
+          onChange={(d, l) => { setPresets(prev => ({ ...(prev ?? presets), process: d, process_locks: Object.keys(l).length ? l : null })); setDirty(true) }} />
+        <div className="dw-sec">
           <div className="set-row" style={{ border: 0 }}>
             <div className="lbl">
               <b>Активная версия</b>

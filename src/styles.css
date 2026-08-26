@@ -377,3 +377,18 @@ textarea.answer { width: 100%; min-height: 64px; background: var(--term-bg); bor
 .step-run-detail { flex-basis: 100%; white-space: pre-wrap; word-break: break-word; font: 11px var(--font-mono); color: var(--muted); }
 .chip.v-ok .n { color: var(--c-done, #6c6); }
 .chip.v-changes .n, .chip.v-fail .n { color: var(--c-block); }
+
+/* Редактор процесса (add-process-editor). */
+.proc-editor { display: flex; flex-direction: column; gap: 8px; }
+.proc-step { border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--r); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.proc-step.off { opacity: .6; border-left-color: var(--muted); }
+.proc-step.has-err { border-color: var(--c-block); }
+.proc-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.proc-id { width: 110px; font: 12px var(--font-mono); }
+.proc-title { flex: 1; min-width: 120px; }
+.proc-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.proc-opts label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+.proc-participants { display: flex; flex-direction: column; gap: 4px; padding-left: 12px; }
+.proc-participant { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.proc-participant input { width: 160px; }
+.proc-section .note { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
