@@ -47,7 +47,7 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
       // (api-contract add-operations-management).
       const code = errCode(e)
       const hint = code === 'no_planner' || code === 'planner_invalid'
-        ? ' Администратор задаёт ключ модели в разделе «Управление приложением» → «Модели».' : ''
+        ? ' Администратор выбирает модель декомпозиции в разделе «Управление приложением» → «Подключения».' : ''
       setErr(String(e) + hint)
     } finally { busyRef.current = false; setBusy(false) }
   }

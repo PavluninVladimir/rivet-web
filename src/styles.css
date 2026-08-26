@@ -434,3 +434,21 @@ textarea.answer { width: 100%; min-height: 64px; }
 .modal-head h2 { margin: 0; }
 .modal .proc-participant > select, .modal .proc-participant > input { width: auto; flex: 1; min-width: 110px; }
 .pg-wrap { width: 100%; }
+
+/* Подключения к моделям (add-model-connections). */
+.conn-list { display: flex; flex-direction: column; gap: 10px; }
+.conn-card { border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; background: var(--surface); }
+.conn-card.off { opacity: .6; }
+.conn-card .head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.conn-card .head b { font-size: 13px; }
+.conn-card .meta { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); }
+.conn-card .meta .mono { color: var(--fg); }
+.conn-card .models { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; font-size: 11.5px; color: var(--muted); }
+.conn-card .actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+.model-rows { display: flex; flex-direction: column; gap: 6px; }
+.model-row { display: grid; grid-template-columns: 1.3fr 1.2fr 76px 76px 84px auto auto; gap: 6px; align-items: center; }
+.model-row .src { font: 10.5px var(--font-mono); color: var(--muted); white-space: nowrap; }
+.model-row.missing .src { color: var(--c-block); }
+.model-rows .hdr { font: 600 10.5px var(--font-mono); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.hdr-row { display: flex; gap: 6px; align-items: end; }
+.hdr-row > * { flex: 1; }
