@@ -112,7 +112,7 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
         </header>
         <div id="viewport">
           {route.view === 'projects' && <ProjectsView />}
-          {route.view === 'project-settings' && <ProjectSettings key={route.id} projectId={route.id} user={user} />}
+          {route.view === 'project-settings' && <ProjectSettings key={route.id} projectId={route.id} tab={route.tab} user={user} />}
           {route.view === 'profile' && <Profile me={user} />}
           {/* Раздел установки — только администратору: прямой переход по
               адресу показывает отказ, а не данные (спека web). */}

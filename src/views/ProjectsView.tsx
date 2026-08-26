@@ -24,7 +24,7 @@ export function ProjectsView() {
               <td className="mono muted">{p.provider}</td>
               <td style={{ textAlign: 'right' }}>
                 <button className="btn sm" onClick={e => {
-                  e.stopPropagation(); setProjectId(p.ID); nav({ view: 'project-settings', id: p.ID })
+                  e.stopPropagation(); setProjectId(p.ID); nav({ view: 'project-settings', id: p.ID, tab: 'general' })
                 }}>Настройки</button>
               </td>
             </tr>
