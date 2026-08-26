@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, type UsageRow } from '../api/client'
 import { fmtCost, fmtDuration, fmtTokens } from '../components/ui'
+import { FormNote } from '../components/form'
 import { useStore } from '../store'
 
 // Представление Usage (спека web «Представление Usage»): сводка за период и
@@ -91,7 +92,7 @@ export function UsageView({ scope, defaultGroup = 'model', title = 'Usage', sub 
           )}
         </div>
       </div>
-      {err && <div style={{ color: 'var(--c-block)', fontSize: 12, marginBottom: 8 }}>{err}</div>}
+      {err && <div style={{ marginBottom: 8 }}><FormNote err={err} /></div>}
       <div className="stat-strip">
         <div className="mini-stat"><div className="v">{fmtTokens(tokens)}</div><div className="l">Токены</div></div>
         <div className="mini-stat"><div className="v">{fmtTokens(tokIn)}<em>in</em></div><div className="l">Входные токены</div></div>

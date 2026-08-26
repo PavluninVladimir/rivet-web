@@ -1,0 +1,1299 @@
+{
+  "version": "1.0.0",
+  "schema_version": 1,
+  "project": {
+    "name": "rivet-web",
+    "is_monorepo": false,
+    "total_files": 24,
+    "entry_points": [
+      "src/App.tsx",
+      "src/main.tsx"
+    ],
+    "tech_stack": [
+      {
+        "name": "React",
+        "version": "19.2.0",
+        "category": "framework"
+      },
+      {
+        "name": "Vite",
+        "version": "7.0.0",
+        "category": "infra"
+      },
+      {
+        "name": "Node.js",
+        "version": null,
+        "category": "language"
+      },
+      {
+        "name": "TypeScript",
+        "version": "5.9.0",
+        "category": "language"
+      }
+    ],
+    "entry_candidates": [
+      "src/App.tsx",
+      "src/main.tsx"
+    ],
+    "graph_mode": "flow"
+  },
+  "nodes": [
+    {
+      "id": "file:.claude/CLAUDE.md",
+      "type": "document",
+      "filePath": ".claude/CLAUDE.md",
+      "language": "markdown",
+      "symbolCount": 0,
+      "lineCount": 104,
+      "complexity": "moderate",
+      "pagerank": 0.020383,
+      "communityId": 4,
+      "tags": [],
+      "summary": "Repository instructions and context for AI coding agents."
+    },
+    {
+      "id": "file:.mcp.json",
+      "type": "config",
+      "filePath": ".mcp.json",
+      "language": "json",
+      "symbolCount": 0,
+      "lineCount": 7,
+      "complexity": "simple",
+      "pagerank": 0.020383,
+      "communityId": 5,
+      "tags": [
+        "config"
+      ],
+      "summary": "Configuration file: .mcp.json."
+    },
+    {
+      "id": "file:README.md",
+      "type": "document",
+      "filePath": "README.md",
+      "language": "markdown",
+      "symbolCount": 0,
+      "lineCount": 17,
+      "complexity": "simple",
+      "pagerank": 0.020383,
+      "communityId": 6,
+      "tags": [],
+      "summary": "Project overview and entry point for new readers."
+    },
+    {
+      "id": "file:index.html",
+      "type": "file",
+      "filePath": "index.html",
+      "language": "html",
+      "symbolCount": 0,
+      "lineCount": 6,
+      "complexity": "simple",
+      "pagerank": 0.020383,
+      "communityId": 3,
+      "tags": [
+        "barrel"
+      ],
+      "summary": "Re-export barrel for root/."
+    },
+    {
+      "id": "file:package.json",
+      "type": "config",
+      "filePath": "package.json",
+      "language": "json",
+      "symbolCount": 0,
+      "lineCount": 11,
+      "complexity": "simple",
+      "pagerank": 0.020383,
+      "communityId": 7,
+      "tags": [
+        "config"
+      ],
+      "summary": "Node package manifest: dependencies, scripts, and metadata."
+    },
+    {
+      "id": "file:src/App.tsx",
+      "type": "file",
+      "filePath": "src/App.tsx",
+      "language": "typescript",
+      "symbolCount": 3,
+      "lineCount": 127,
+      "complexity": "moderate",
+      "pagerank": 0.03641,
+      "communityId": 0,
+      "tags": [
+        "entry_point"
+      ],
+      "summary": "Application module App defining Shell, App.",
+      "primaryOwner": "Vladimir Pavlunin"
+    },
+    {
+      "id": "file:src/api/client.ts",
+      "type": "file",
+      "filePath": "src/api/client.ts",
+      "language": "typescript",
+      "symbolCount": 25,
+      "lineCount": 278,
+      "complexity": "complex",
+      "pagerank": 0.166898,
+      "communityId": 1,
+      "tags": [],
+      "summary": "API module client defining Criterion, Task, Epic.",
+      "primaryOwner": "Vladimir"
+    },
+    {
+      "id": "file:src/components/Dag.tsx",
+      "type": "file",
+      "filePath": "src/components/Dag.tsx",
+      "language": "typescript",
+      "symbolCount": 11,
+      "lineCount": 191,
+      "complexity": "moderate",
+      "pagerank": 0.02367,
+      "communityId": 1,
+      "tags": [],
+      "summary": "UI module Dag defining Layout, layout, criticalPath."
+    },
+    {
+      "id": "file:src/components/Environments.tsx",
+      "type": "file",
+      "filePath": "src/components/Environments.tsx",
+      "language": "typescript",
+      "symbolCount": 5,
+      "lineCount": 258,
+      "complexity": "moderate",
+      "pagerank": 0.025313,
+      "communityId": 0,
+      "tags": [],
+      "summary": "UI module Environments defining depColor, depDuration, active.",
+      "primaryOwner": "Vladimir"
+    },
+    {
+      "id": "file:src/components/Login.tsx",
+      "type": "file",
+      "filePath": "src/components/Login.tsx",
+      "language": "typescript",
+      "symbolCount": 1,
+      "lineCount": 51,
+      "complexity": "simple",
+      "pagerank": 0.023197,
+      "communityId": 0,
+      "tags": [],
+      "summary": "UI module Login defining Login.",
+      "primaryOwner": "Vladimir"
+    },
+    {
+      "id": "file:src/components/Palette.tsx",
+      "type": "file",
+      "filePath": "src/components/Palette.tsx",
+      "language": "typescript",
+      "symbolCount": 2,
+      "lineCount": 85,
+      "complexity": "simple",
+      "pagerank": 0.023197,
+      "communityId": 1,
+      "tags": [],
+      "summary": "UI module Palette defining Item, Palette."
+    },
+    {
+      "id": "file:src/components/TaskDrawer.tsx",
+      "type": "file",
+      "filePath": "src/components/TaskDrawer.tsx",
+      "language": "typescript",
+      "symbolCount": 3,
+      "lineCount": 215,
+      "complexity": "moderate",
+      "pagerank": 0.02367,
+      "communityId": 1,
+      "tags": [],
+      "summary": "UI module TaskDrawer defining TaskDrawer.",
+      "primaryOwner": "Vladimir Pavlunin"
+    },
+    {
+      "id": "file:src/components/ui.tsx",
+      "type": "file",
+      "filePath": "src/components/ui.tsx",
+      "language": "typescript",
+      "symbolCount": 7,
+      "lineCount": 39,
+      "complexity": "moderate",
+      "pagerank": 0.065432,
+      "communityId": 1,
+      "tags": [],
+      "summary": "UI module ui defining StBadge, timeShort, attemptStr.",
+      "primaryOwner": "Vladimir"
+    },
+    {
+      "id": "file:src/main.tsx",
+      "type": "file",
+      "filePath": "src/main.tsx",
+      "language": "typescript",
+      "symbolCount": 0,
+      "lineCount": 3,
+      "complexity": "simple",
+      "pagerank": 0.03771,
+      "communityId": 3,
+      "tags": [
+        "entry_point"
+      ],
+      "summary": "Application module main."
+    },
+    {
+      "id": "file:src/store.tsx",
+      "type": "file",
+      "filePath": "src/store.tsx",
+      "language": "typescript",
+      "symbolCount": 7,
+      "lineCount": 99,
+      "complexity": "moderate",
+      "pagerank": 0.066469,
+      "communityId": 0,
+      "tags": [],
+      "summary": "Application module store defining parseHash, routeHash, Store.",
+      "primaryOwner": "Vladimir Pavlunin"
+    },
+    {
+      "id": "file:src/views/ActivityView.tsx",
+      "type": "file",
+      "filePath": "src/views/ActivityView.tsx",
+      "language": "typescript",
+      "symbolCount": 1,
+      "lineCount": 24,
+      "complexity": "simple",
+      "pagerank": 0.023197,
+      "communityId": 0,
+      "tags": [],
+      "summary": "UI module ActivityView defining ActivityView."
+    },
+    {
+      "id": "file:src/views/EpicDashboard.tsx",
+      "type": "file",
+      "filePath": "src/views/EpicDashboard.tsx",
+      "language": "typescript",
+      "symbolCount": 3,
+      "lineCount": 287,
+      "complexity": "moderate",
+      "pagerank": 0.023197,
+      "communityId": 1,
+      "tags": [],
+      "summary": "UI module EpicDashboard defining EpicDashboard, AddTaskModal.",
+      "primaryOwner": "Vladimir Pavlunin"
+    },
+    {
+      "id": "file:src/views/EpicsView.tsx",
+      "type": "file",
+      "filePath": "src/views/EpicsView.tsx",
+      "language": "typescript",
+      "symbolCount": 1,
+      "lineCount": 65,
+      "complexity": "simple",
+      "pagerank": 0.023197,
+      "communityId": 0,
+      "tags": [],
+      "summary": "UI module EpicsView defining EpicsView."
+    },
+    {
+      "id": "file:src/views/ProjectsView.tsx",
+      "type": "file",
+      "filePath": "src/views/ProjectsView.tsx",
+      "language": "typescript",
+      "symbolCount": 1,
+      "lineCount": 59,
+      "complexity": "simple",
+      "pagerank": 0.023197,
+      "communityId": 0,
+      "tags": [],
+      "summary": "UI module ProjectsView defining ProjectsView.",
+      "primaryOwner": "Vladimir Pavlunin"
+    },
+    {
+      "id": "file:src/views/RunnersView.tsx",
+      "type": "file",
+      "filePath": "src/views/RunnersView.tsx",
+      "language": "typescript",
+      "symbolCount": 1,
+      "lineCount": 46,
+      "complexity": "simple",
+      "pagerank": 0.023197,
+      "communityId": 0,
+      "tags": [],
+      "summary": "UI module RunnersView defining RunnersView.",
+      "primaryOwner": "Vladimir Pavlunin"
+    },
+    {
+      "id": "file:src/views/TasksView.tsx",
+      "type": "file",
+      "filePath": "src/views/TasksView.tsx",
+      "language": "typescript",
+      "symbolCount": 1,
+      "lineCount": 97,
+      "complexity": "simple",
+      "pagerank": 0.023197,
+      "communityId": 0,
+      "tags": [],
+      "summary": "UI module TasksView defining TasksView.",
+      "primaryOwner": "Vladimir Pavlunin"
+    },
+    {
+      "id": "file:test-results/.last-run.json",
+      "type": "config",
+      "filePath": "test-results/.last-run.json",
+      "language": "json",
+      "symbolCount": 0,
+      "lineCount": 1,
+      "complexity": "simple",
+      "pagerank": 0.020383,
+      "communityId": 8,
+      "tags": [
+        "config"
+      ],
+      "summary": "Configuration file: .last-run.json."
+    },
+    {
+      "id": "file:tsconfig.json",
+      "type": "config",
+      "filePath": "tsconfig.json",
+      "language": "json",
+      "symbolCount": 0,
+      "lineCount": 9,
+      "complexity": "simple",
+      "pagerank": 0.020383,
+      "communityId": 9,
+      "tags": [
+        "config"
+      ],
+      "summary": "TypeScript compiler configuration."
+    },
+    {
+      "id": "file:vite.config.ts",
+      "type": "file",
+      "filePath": "vite.config.ts",
+      "language": "typescript",
+      "symbolCount": 0,
+      "lineCount": 8,
+      "complexity": "simple",
+      "pagerank": 0.020383,
+      "communityId": 2,
+      "tags": [],
+      "summary": "Application module vite.config."
+    },
+    {
+      "id": "function:src/api/client.ts:onUnauthorized",
+      "type": "function",
+      "filePath": "src/api/client.ts",
+      "name": "onUnauthorized",
+      "language": "typescript",
+      "tags": [],
+      "summary": ""
+    },
+    {
+      "id": "function:src/api/client.ts:req",
+      "type": "function",
+      "filePath": "src/api/client.ts",
+      "name": "req",
+      "language": "typescript",
+      "tags": [],
+      "summary": ""
+    },
+    {
+      "id": "function:src/api/client.ts:reqText",
+      "type": "function",
+      "filePath": "src/api/client.ts",
+      "name": "reqText",
+      "language": "typescript",
+      "tags": [],
+      "summary": ""
+    },
+    {
+      "id": "function:src/api/client.ts:setOnUnauthorized",
+      "type": "function",
+      "filePath": "src/api/client.ts",
+      "name": "setOnUnauthorized",
+      "language": "typescript",
+      "tags": [],
+      "summary": ""
+    },
+    {
+      "id": "function:src/api/client.ts:subscribe",
+      "type": "function",
+      "filePath": "src/api/client.ts",
+      "name": "subscribe",
+      "language": "typescript",
+      "tags": [],
+      "summary": ""
+    },
+    {
+      "id": "function:src/components/ui.tsx:CtxBar",
+      "type": "function",
+      "filePath": "src/components/ui.tsx",
+      "name": "CtxBar",
+      "language": "typescript",
+      "tags": [],
+      "summary": ""
+    },
+    {
+      "id": "function:src/components/ui.tsx:StBadge",
+      "type": "function",
+      "filePath": "src/components/ui.tsx",
+      "name": "StBadge",
+      "language": "typescript",
+      "tags": [],
+      "summary": ""
+    },
+    {
+      "id": "function:src/components/ui.tsx:attemptStr",
+      "type": "function",
+      "filePath": "src/components/ui.tsx",
+      "name": "attemptStr",
+      "language": "typescript",
+      "tags": [],
+      "summary": ""
+    },
+    {
+      "id": "function:src/components/ui.tsx:fmtCost",
+      "type": "function",
+      "filePath": "src/components/ui.tsx",
+      "name": "fmtCost",
+      "language": "typescript",
+      "tags": [],
+      "summary": ""
+    },
+    {
+      "id": "function:src/components/ui.tsx:fmtDuration",
+      "type": "function",
+      "filePath": "src/components/ui.tsx",
+      "name": "fmtDuration",
+      "language": "typescript",
+      "tags": [],
+      "summary": ""
+    },
+    {
+      "id": "function:src/components/ui.tsx:fmtTokens",
+      "type": "function",
+      "filePath": "src/components/ui.tsx",
+      "name": "fmtTokens",
+      "language": "typescript",
+      "tags": [],
+      "summary": ""
+    },
+    {
+      "id": "function:src/components/ui.tsx:timeShort",
+      "type": "function",
+      "filePath": "src/components/ui.tsx",
+      "name": "timeShort",
+      "language": "typescript",
+      "tags": [],
+      "summary": ""
+    },
+    {
+      "id": "function:src/store.tsx:StoreProvider",
+      "type": "function",
+      "filePath": "src/store.tsx",
+      "name": "StoreProvider",
+      "language": "typescript",
+      "tags": [],
+      "summary": ""
+    },
+    {
+      "id": "function:src/store.tsx:parseHash",
+      "type": "function",
+      "filePath": "src/store.tsx",
+      "name": "parseHash",
+      "language": "typescript",
+      "tags": [],
+      "summary": ""
+    },
+    {
+      "id": "function:src/store.tsx:routeHash",
+      "type": "function",
+      "filePath": "src/store.tsx",
+      "name": "routeHash",
+      "language": "typescript",
+      "tags": [],
+      "summary": ""
+    },
+    {
+      "id": "function:src/store.tsx:useStore",
+      "type": "function",
+      "filePath": "src/store.tsx",
+      "name": "useStore",
+      "language": "typescript",
+      "tags": [],
+      "summary": ""
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:index.html",
+      "target": "file:src/main.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/App.tsx",
+      "target": "file:external:react",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/App.tsx",
+      "target": "file:src/api/client.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/App.tsx",
+      "target": "file:src/components/Login.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/App.tsx",
+      "target": "file:src/components/Palette.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/App.tsx",
+      "target": "file:src/store.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/App.tsx",
+      "target": "file:src/views/ActivityView.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/App.tsx",
+      "target": "file:src/views/EpicDashboard.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/App.tsx",
+      "target": "file:src/views/EpicsView.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/App.tsx",
+      "target": "file:src/views/ProjectsView.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/App.tsx",
+      "target": "file:src/views/RunnersView.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/App.tsx",
+      "target": "file:src/views/TasksView.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/api/client.ts",
+      "target": "function:src/api/client.ts:onUnauthorized",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/api/client.ts",
+      "target": "function:src/api/client.ts:req",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/api/client.ts",
+      "target": "function:src/api/client.ts:reqText",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/api/client.ts",
+      "target": "function:src/api/client.ts:setOnUnauthorized",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/api/client.ts",
+      "target": "function:src/api/client.ts:subscribe",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/Dag.tsx",
+      "target": "file:external:react",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/Dag.tsx",
+      "target": "file:src/api/client.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/Dag.tsx",
+      "target": "file:src/components/ui.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/Environments.tsx",
+      "target": "file:external:react",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/Environments.tsx",
+      "target": "file:src/api/client.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/Environments.tsx",
+      "target": "file:src/components/ui.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/Environments.tsx",
+      "target": "file:src/store.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/Login.tsx",
+      "target": "file:external:react",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/Login.tsx",
+      "target": "file:src/api/client.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/Palette.tsx",
+      "target": "file:external:react",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/Palette.tsx",
+      "target": "file:src/api/client.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/Palette.tsx",
+      "target": "file:src/components/ui.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/Palette.tsx",
+      "target": "file:src/store.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/TaskDrawer.tsx",
+      "target": "file:external:react",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/TaskDrawer.tsx",
+      "target": "file:src/api/client.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/TaskDrawer.tsx",
+      "target": "file:src/components/ui.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/TaskDrawer.tsx",
+      "target": "file:src/store.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/ui.tsx",
+      "target": "file:src/api/client.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/ui.tsx",
+      "target": "function:src/components/ui.tsx:CtxBar",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/ui.tsx",
+      "target": "function:src/components/ui.tsx:StBadge",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/ui.tsx",
+      "target": "function:src/components/ui.tsx:attemptStr",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/ui.tsx",
+      "target": "function:src/components/ui.tsx:fmtCost",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/ui.tsx",
+      "target": "function:src/components/ui.tsx:fmtDuration",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/ui.tsx",
+      "target": "function:src/components/ui.tsx:fmtTokens",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/components/ui.tsx",
+      "target": "function:src/components/ui.tsx:timeShort",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/main.tsx",
+      "target": "file:external:react-dom/client",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/main.tsx",
+      "target": "file:src/App.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/store.tsx",
+      "target": "file:external:react",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/store.tsx",
+      "target": "file:src/api/client.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/store.tsx",
+      "target": "function:src/store.tsx:StoreProvider",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/store.tsx",
+      "target": "function:src/store.tsx:parseHash",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/store.tsx",
+      "target": "function:src/store.tsx:routeHash",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/store.tsx",
+      "target": "function:src/store.tsx:useStore",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/ActivityView.tsx",
+      "target": "file:external:react",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/ActivityView.tsx",
+      "target": "file:src/api/client.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/ActivityView.tsx",
+      "target": "file:src/components/ui.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/ActivityView.tsx",
+      "target": "file:src/store.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/EpicDashboard.tsx",
+      "target": "file:external:react",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/EpicDashboard.tsx",
+      "target": "file:src/api/client.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/EpicDashboard.tsx",
+      "target": "file:src/components/Dag.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/EpicDashboard.tsx",
+      "target": "file:src/components/TaskDrawer.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/EpicDashboard.tsx",
+      "target": "file:src/components/ui.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/EpicDashboard.tsx",
+      "target": "file:src/store.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/EpicsView.tsx",
+      "target": "file:external:react",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/EpicsView.tsx",
+      "target": "file:src/api/client.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/EpicsView.tsx",
+      "target": "file:src/components/ui.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/EpicsView.tsx",
+      "target": "file:src/store.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/ProjectsView.tsx",
+      "target": "file:external:react",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/ProjectsView.tsx",
+      "target": "file:src/api/client.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/ProjectsView.tsx",
+      "target": "file:src/components/Environments.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/ProjectsView.tsx",
+      "target": "file:src/store.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/RunnersView.tsx",
+      "target": "file:external:react",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/RunnersView.tsx",
+      "target": "file:src/api/client.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/RunnersView.tsx",
+      "target": "file:src/components/ui.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/RunnersView.tsx",
+      "target": "file:src/store.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/TasksView.tsx",
+      "target": "file:external:react",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/TasksView.tsx",
+      "target": "file:src/api/client.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/TasksView.tsx",
+      "target": "file:src/components/ui.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:src/views/TasksView.tsx",
+      "target": "file:src/store.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:vite.config.ts",
+      "target": "file:external:@vitejs/plugin-react",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    },
+    {
+      "source": "file:vite.config.ts",
+      "target": "file:external:vite",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 1.0
+    }
+  ],
+  "layers": [
+    {
+      "id": "layer:ui",
+      "name": "UI",
+      "description": "",
+      "nodeIds": [
+        "file:src/components/Dag.tsx",
+        "file:src/components/Environments.tsx",
+        "file:src/components/Login.tsx",
+        "file:src/components/Palette.tsx",
+        "file:src/components/TaskDrawer.tsx",
+        "file:src/components/ui.tsx",
+        "file:src/views/ActivityView.tsx",
+        "file:src/views/EpicDashboard.tsx",
+        "file:src/views/EpicsView.tsx",
+        "file:src/views/ProjectsView.tsx",
+        "file:src/views/RunnersView.tsx",
+        "file:src/views/TasksView.tsx"
+      ],
+      "display_order": 0,
+      "order_basis": "imports"
+    },
+    {
+      "id": "layer:application",
+      "name": "Application",
+      "description": "",
+      "nodeIds": [
+        "file:.mcp.json",
+        "file:README.md",
+        "file:index.html",
+        "file:package.json",
+        "file:src/App.tsx",
+        "file:src/main.tsx",
+        "file:src/store.tsx",
+        "file:test-results/.last-run.json",
+        "file:tsconfig.json",
+        "file:vite.config.ts"
+      ],
+      "display_order": 1,
+      "order_basis": "imports"
+    },
+    {
+      "id": "layer:config",
+      "name": "Config",
+      "description": "",
+      "nodeIds": [
+        "file:.claude/CLAUDE.md"
+      ],
+      "display_order": 2,
+      "order_basis": "imports"
+    },
+    {
+      "id": "layer:api",
+      "name": "API",
+      "description": "",
+      "nodeIds": [
+        "file:src/api/client.ts"
+      ],
+      "display_order": 3,
+      "order_basis": "imports"
+    }
+  ],
+  "tour": [
+    {
+      "order": 1,
+      "target_path": "README.md",
+      "page_type": "repo_overview",
+      "title": "README.md",
+      "depth": 0,
+      "kind": "overview",
+      "reason": "Start here for the end-to-end picture before diving into the code.",
+      "layer_id": "layer:application"
+    },
+    {
+      "order": 2,
+      "target_path": "src/main.tsx",
+      "page_type": "file_page",
+      "title": "main.tsx",
+      "depth": 0,
+      "kind": "code",
+      "reason": "An entry point \u2014 execution and imports fan out from here.",
+      "layer_id": "layer:application"
+    },
+    {
+      "order": 3,
+      "target_path": "src/App.tsx",
+      "page_type": "file_page",
+      "title": "App.tsx",
+      "depth": 0,
+      "kind": "code",
+      "reason": "An entry point \u2014 execution and imports fan out from here.",
+      "layer_id": "layer:application"
+    },
+    {
+      "order": 4,
+      "target_path": "src/store.tsx",
+      "page_type": "file_page",
+      "title": "store.tsx",
+      "depth": 1,
+      "kind": "code",
+      "reason": "Directly used by the entry points above; a core collaborator.",
+      "layer_id": "layer:application"
+    },
+    {
+      "order": 5,
+      "target_path": "src/api/client.ts",
+      "page_type": "file_page",
+      "title": "client.ts",
+      "depth": 1,
+      "kind": "code",
+      "reason": "Directly used by the entry points above; a core collaborator.",
+      "layer_id": "layer:api"
+    },
+    {
+      "order": 6,
+      "target_path": "src/components/Login.tsx",
+      "page_type": "file_page",
+      "title": "Login.tsx",
+      "depth": 1,
+      "kind": "code",
+      "reason": "Directly used by the entry points above; a core collaborator.",
+      "layer_id": "layer:ui"
+    },
+    {
+      "order": 7,
+      "target_path": "src/components/Palette.tsx",
+      "page_type": "file_page",
+      "title": "Palette.tsx",
+      "depth": 1,
+      "kind": "code",
+      "reason": "Directly used by the entry points above; a core collaborator.",
+      "layer_id": "layer:ui"
+    },
+    {
+      "order": 8,
+      "target_path": "src/views/ActivityView.tsx",
+      "page_type": "file_page",
+      "title": "ActivityView.tsx",
+      "depth": 1,
+      "kind": "code",
+      "reason": "Directly used by the entry points above; a core collaborator.",
+      "layer_id": "layer:ui"
+    },
+    {
+      "order": 9,
+      "target_path": "src/views/EpicDashboard.tsx",
+      "page_type": "file_page",
+      "title": "EpicDashboard.tsx",
+      "depth": 1,
+      "kind": "code",
+      "reason": "Directly used by the entry points above; a core collaborator.",
+      "layer_id": "layer:ui"
+    },
+    {
+      "order": 10,
+      "target_path": "src/views/EpicsView.tsx",
+      "page_type": "file_page",
+      "title": "EpicsView.tsx",
+      "depth": 1,
+      "kind": "code",
+      "reason": "Directly used by the entry points above; a core collaborator.",
+      "layer_id": "layer:ui"
+    },
+    {
+      "order": 11,
+      "target_path": "src/views/ProjectsView.tsx",
+      "page_type": "file_page",
+      "title": "ProjectsView.tsx",
+      "depth": 1,
+      "kind": "code",
+      "reason": "Directly used by the entry points above; a core collaborator.",
+      "layer_id": "layer:ui"
+    },
+    {
+      "order": 12,
+      "target_path": "src/views/RunnersView.tsx",
+      "page_type": "file_page",
+      "title": "RunnersView.tsx",
+      "depth": 1,
+      "kind": "code",
+      "reason": "Directly used by the entry points above; a core collaborator.",
+      "layer_id": "layer:ui"
+    }
+  ],
+  "modules": [
+    {
+      "id": "module:src",
+      "name": "UI",
+      "path": "src",
+      "layerId": "layer:ui",
+      "nodeIds": [
+        "file:src/components/Dag.tsx",
+        "file:src/components/Environments.tsx",
+        "file:src/components/Login.tsx",
+        "file:src/components/Palette.tsx",
+        "file:src/components/TaskDrawer.tsx",
+        "file:src/components/ui.tsx",
+        "file:src/views/ActivityView.tsx",
+        "file:src/views/EpicDashboard.tsx",
+        "file:src/views/EpicsView.tsx",
+        "file:src/views/ProjectsView.tsx",
+        "file:src/views/RunnersView.tsx",
+        "file:src/views/TasksView.tsx"
+      ],
+      "wholeLayer": true,
+      "language": "typescript"
+    },
+    {
+      "id": "module:application",
+      "name": "Application",
+      "path": "",
+      "layerId": "layer:application",
+      "nodeIds": [
+        "file:.mcp.json",
+        "file:README.md",
+        "file:index.html",
+        "file:package.json",
+        "file:src/App.tsx",
+        "file:src/main.tsx",
+        "file:src/store.tsx",
+        "file:test-results/.last-run.json",
+        "file:tsconfig.json",
+        "file:vite.config.ts"
+      ],
+      "wholeLayer": true,
+      "language": "json"
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, ApiError, DEFAULT_PROCESS, type ProcessDoc, type ProcessLocks, type Runner } from '../api/client'
 import { ProcessEditor, type EditorError } from './ProcessEditor'
 import { shortHash } from './PolicyPanel'
+import { Button, Checkbox, NumberInput, useBusy } from './form'
 
 // Секция «Процесс» (add-process-editor): в настройках проекта — процесс
 // проекта или унаследованный, редактирование владельцем; на вкладке
@@ -26,6 +27,7 @@ export function ProjectProcessSection({ projectId, isOwner, tick }: { projectId:
   const [runners, setRunners] = useState<Runner[]>([])
   const [err, setErr] = useState<EditorError | null>(null)
   const [note, setNote] = useState('')
+  const [busy, run] = useBusy()
   // dirty в ref: фоновый refresh читает актуальное значение, не перезапускаясь
   // на каждую правку; seq отсекает запоздавшие ответы после сохранения.
   const dirtyRef = useRef(false)
@@ -88,9 +90,9 @@ export function ProjectProcessSection({ projectId, isOwner, tick }: { projectId:
         onChange={d => { setDoc(d); markDirty(true) }} />
       {editable && (
         <div className="proc-row" style={{ marginTop: 8 }}>
-          <button className="btn primary sm" disabled={!dirty} onClick={save}>Сохранить процесс</button>
-          {source === 'project' && <button className="btn sm" onClick={reset}>Вернуться к процессу установки</button>}
-          {dirty && effective && <button className="btn sm" onClick={() => { setDoc(structuredClone(effective)); markDirty(false); setErr(null) }}>Отменить правки</button>}
+          <Button variant="primary" size="sm" busy={busy} disabled={!dirty} onClick={() => run(save)}>Сохранить процесс</Button>
+          {source === 'project' && <Button size="sm" busy={busy} onClick={() => run(reset)}>Вернуться к процессу установки</Button>}
+          {dirty && effective && <Button size="sm" variant="quiet" onClick={() => { setDoc(structuredClone(effective)); markDirty(false); setErr(null) }}>Отменить правки</Button>}
         </div>
       )}
     </div>
@@ -132,14 +134,14 @@ export function InstallationProcessSection({ doc, locks, readOnly, onChange }: {
       <div className="proc-row proc-opts">
         <span className="muted">обязательные шаги:</span>
         {kinds.map(k => (
-          <label key={k}><input type="checkbox" disabled={readOnly} checked={required.has(k)} onChange={e => toggleRequired(k, e.target.checked)} /> {k}</label>
+          <Checkbox key={k} disabled={readOnly} checked={required.has(k)} label={k} onChange={on => toggleRequired(k, on)} />
         ))}
       </div>
       <div className="proc-row proc-opts">
-        <label><input type="checkbox" disabled={readOnly} checked={!!locks.human_review}
-          onChange={e => emit({ ...locks, human_review: e.target.checked })} /> человек на review обязателен</label>
+        <Checkbox disabled={readOnly} checked={!!locks.human_review} label="человек на review обязателен"
+          onChange={on => emit({ ...locks, human_review: on })} />
         <label>минимум участников на review
-          <input type="number" min={1} style={{ width: 56 }} disabled={readOnly} value={locks.min_participants?.review ?? ''}
+          <NumberInput min={1} width={56} disabled={readOnly} value={locks.min_participants?.review ?? ''}
             onChange={e => {
               const mp = { ...(locks.min_participants ?? {}) }
               if (e.target.value) mp.review = Number(e.target.value); else delete mp.review

@@ -4,6 +4,7 @@ import { Environments } from '../components/Environments'
 import { ProjectPolicySection } from '../components/PolicyPanel'
 import { ProjectProcessSection } from '../components/ProcessSection'
 import { fmtDate, fmtTokens } from '../components/ui'
+import { Button, Field, FormActions, FormNote, PasswordInput, TextInput, errText, useBusy } from '../components/form'
 import { useStore } from '../store'
 
 // Страница настроек проекта (спека web «Страница настроек проекта»):
@@ -27,6 +28,7 @@ export function ProjectSettings({ projectId, user }: { projectId: string; user: 
   const [login, setLogin] = useState('')
   const [err, setErr] = useState('')
   const [saved, setSaved] = useState('')
+  const [busy, run] = useBusy()
 
   const refresh = useCallback(() => {
     api.repository(projectId).then(setRepo).catch(() => setRepo(null))
@@ -44,10 +46,10 @@ export function ProjectSettings({ projectId, user }: { projectId: string; user: 
     setChecks(project.Checks ?? [])
   }, [project])
 
-  const act = (fn: () => Promise<unknown>, msg = '') => async () => {
+  const act = (fn: () => Promise<unknown>, msg = '') => () => run(async () => {
     setErr(''); setSaved('')
-    try { await fn(); setSaved(msg); refresh(); refreshProjects() } catch (e) { setErr(String(e)) }
-  }
+    try { await fn(); setSaved(msg); refresh(); refreshProjects() } catch (e) { setErr(errText(e)) }
+  })
 
   if (!project) return <div className="page"><span className="muted">Проект не найден.</span></div>
 
@@ -61,8 +63,7 @@ export function ProjectSettings({ projectId, user }: { projectId: string; user: 
         <h1>Настройки проекта</h1>
         <span className="sub">{project.Name}{isOwner ? '' : ' · только просмотр'}</span>
       </div>
-      {err && <div style={{ color: 'var(--c-block)', fontSize: 12, marginBottom: 8 }}>{err}</div>}
-      {saved && <div style={{ color: 'var(--c-done)', fontSize: 12, marginBottom: 8 }}>{saved}</div>}
+      <div style={{ marginBottom: 8 }}><FormNote err={err || undefined} ok={saved || undefined} /></div>
 
       <div className="dw-sec">
         <h3>Репозиторий</h3>
@@ -82,14 +83,15 @@ export function ProjectSettings({ projectId, user }: { projectId: string; user: 
                 <b>{repo.credential ? `${repo.credential.owner} · ${repo.credential.token_prefix}…` : 'токен установки'}</b></div>
             </div>
             {isOwner && (
-              <div className="row" style={{ marginTop: 8 }}>
-                <input type="password" placeholder="Новый токен доступа"
-                  value={token} onChange={e => setToken(e.target.value)} />
-                <button className="btn sm" disabled={!token}
-                  onClick={act(async () => { await api.replaceCredentials(projectId, token); setToken('') },
-                    'учётные данные заменены')}>
+              <div className="f-grid" style={{ gridTemplateColumns: '1fr auto', alignItems: 'end', marginTop: 8 }}>
+                <Field label="Новый токен доступа" hint="прежние учётные данные заменяются после проверки">
+                  {ids => <PasswordInput ids={ids} placeholder="Новый токен доступа" autoComplete="off"
+                    value={token} onChange={e => setToken(e.target.value)} />}
+                </Field>
+                <Button busy={busy} disabled={!token}
+                  onClick={act(async () => { await api.replaceCredentials(projectId, token); setToken('') }, 'учётные данные заменены')}>
                   Заменить токен
-                </button>
+                </Button>
               </div>
             )}
           </>
@@ -109,29 +111,32 @@ export function ProjectSettings({ projectId, user }: { projectId: string; user: 
           )}
       </div>
 
-      <div className="dw-sec">
+      <div className="dw-sec f-form">
         <h3>Название и проверки</h3>
-        <input placeholder="Название проекта" value={name} disabled={!isOwner}
-          onChange={e => setName(e.target.value)} />
+        <Field label="Название">
+          {ids => <TextInput ids={ids} placeholder="Название проекта" value={name} disabled={!isOwner}
+            onChange={e => setName(e.target.value)} />}
+        </Field>
         {checks.map((c, i) => (
-          <div className="row" key={i} style={{ gap: 8, marginTop: 6 }}>
-            <input placeholder="Имя" value={c.name} disabled={!isOwner}
-              onChange={e => setChecks(checks.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
-            <input placeholder="Команда" value={c.cmd} disabled={!isOwner}
-              onChange={e => setChecks(checks.map((x, j) => j === i ? { ...x, cmd: e.target.value } : x))} />
-            {isOwner && <button className="btn sm" onClick={() => setChecks(checks.filter((_, j) => j !== i))}>✕</button>}
+          <div className="f-grid" key={i} style={{ gridTemplateColumns: '1fr 2fr auto', alignItems: 'end' }}>
+            <Field label={i === 0 ? 'Проверка' : undefined}>
+              {ids => <TextInput ids={ids} placeholder="Имя" value={c.name} disabled={!isOwner}
+                onChange={e => setChecks(checks.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />}
+            </Field>
+            <Field label={i === 0 ? 'Команда' : undefined}>
+              {ids => <TextInput ids={ids} mono placeholder="Команда" value={c.cmd} disabled={!isOwner}
+                onChange={e => setChecks(checks.map((x, j) => j === i ? { ...x, cmd: e.target.value } : x))} />}
+            </Field>
+            {isOwner ? <Button variant="quiet" aria-label="убрать проверку" onClick={() => setChecks(checks.filter((_, j) => j !== i))}>✕</Button> : <span />}
           </div>
         ))}
         {isOwner && (
-          <div className="row" style={{ marginTop: 8 }}>
-            <button className="btn sm" onClick={() => setChecks([...checks, { name: '', cmd: '' }])}>
-              Добавить проверку
-            </button>
-            <button className="btn sm primary" style={{ marginLeft: 'auto' }}
+          <FormActions note={<Button size="sm" onClick={() => setChecks([...checks, { name: '', cmd: '' }])}>Добавить проверку</Button>}>
+            <Button variant="primary" size="sm" busy={busy}
               onClick={act(() => api.patchProject(projectId, { name, checks }), 'настройки сохранены')}>
               Сохранить настройки
-            </button>
-          </div>
+            </Button>
+          </FormActions>
         )}
       </div>
 
@@ -145,26 +150,29 @@ export function ProjectSettings({ projectId, user }: { projectId: string; user: 
               <span className="chip"><span className="n">{m.role}</span></span>
               {isOwner && (
                 <>
-                  <button className="btn sm"
+                  <Button size="sm" variant="quiet"
                     onClick={act(() => api.setMemberRole(projectId, m.login, m.role === 'owner' ? 'member' : 'owner'),
                       'роль изменена')}>
                     {m.role === 'owner' ? 'Снять владельца' : 'Сделать владельцем'}
-                  </button>
-                  <button className="btn sm" onClick={act(() => api.removeMember(projectId, m.login), 'участник удалён')}>
+                  </Button>
+                  <Button size="sm" variant="danger" onClick={act(() => api.removeMember(projectId, m.login), 'участник удалён')}>
                     Удалить
-                  </button>
+                  </Button>
                 </>
               )}
             </div>
           ))}
         </div>
         {isOwner && (
-          <div className="row" style={{ marginTop: 8 }}>
-            <input placeholder="Логин участника" value={login} onChange={e => setLogin(e.target.value)} />
-            <button className="btn sm" disabled={!login}
+          <div className="f-grid" style={{ gridTemplateColumns: '1fr auto', alignItems: 'end', marginTop: 8 }}>
+            <Field label="Новый участник">
+              {ids => <TextInput ids={ids} mono placeholder="Логин участника" value={login} onChange={e => setLogin(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && login) act(async () => { await api.addMember(projectId, login); setLogin('') }, 'участник добавлен')() }} />}
+            </Field>
+            <Button busy={busy} disabled={!login}
               onClick={act(async () => { await api.addMember(projectId, login); setLogin('') }, 'участник добавлен')}>
               Добавить
-            </button>
+            </Button>
           </div>
         )}
       </div>

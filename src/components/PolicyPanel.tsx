@@ -3,6 +3,7 @@ import { InstallationProcessSection } from './ProcessSection'
 import { DEFAULT_PROCESS } from '../api/client'
 import { api, type Overrides, type PolicyEngine, type PolicyVersion, type Presets, type ProjectPolicy } from '../api/client'
 import { fmtDate, fmtTokens } from './ui'
+import { Button, Checkbox, FormNote, NumberInput, Switch, TagsInput, errText } from './form'
 
 // Политики конвейера пресетами (спека web «Политики в консоли», change
 // add-policy-presets). Строки set-row с переключателями и числовыми полями
@@ -26,20 +27,10 @@ export function shortHash(h: string | undefined | null): string {
   return h ? h.slice(0, 12) : '—'
 }
 
-// Переключатель по прототипу (.sw / .sw.on).
-export function Switch({ on, disabled, onChange }: { on: boolean; disabled?: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button type="button" className={'sw' + (on ? ' on' : '')} disabled={disabled}
-      aria-pressed={on} onClick={() => onChange(!on)} />
-  )
-}
+export { Switch }
 
 function PathsInput({ value, disabled, onChange }: { value: string[]; disabled?: boolean; onChange: (v: string[]) => void }) {
-  return (
-    <input placeholder="infra/**, **/*.sql" style={{ width: 260 }} disabled={disabled}
-      value={value.join(', ')}
-      onChange={e => onChange(e.target.value.split(',').map(s => s.trim()).filter(Boolean))} />
-  )
+  return <div style={{ minWidth: 260 }}><TagsInput value={value} disabled={disabled} onChange={onChange} placeholder="infra/**, **/*.sql" /></div>
 }
 
 function NumInput({ value, disabled, width = 72, min = 1, onChange, placeholder }: {
@@ -47,7 +38,7 @@ function NumInput({ value, disabled, width = 72, min = 1, onChange, placeholder 
   onChange: (v: number | null) => void
 }) {
   return (
-    <input type="number" min={min} style={{ width }} disabled={disabled} placeholder={placeholder}
+    <NumberInput min={min} width={width} disabled={disabled} placeholder={placeholder}
       value={value ?? ''}
       onChange={e => onChange(e.target.value === '' ? null : Number(e.target.value))} />
   )
@@ -84,9 +75,9 @@ function VersionHistory({ versions }: { versions: PolicyVersion[] }) {
   if (!versions.length) return null
   return (
     <div style={{ marginTop: 8 }}>
-      <button className="btn sm" onClick={() => setOpen(o => !o)}>
+      <Button size="sm" variant="quiet" onClick={() => setOpen(o => !o)}>
         {open ? 'Скрыть историю' : `История версий (${versions.length})`}
-      </button>
+      </Button>
       {open && (
         <div className="sess-list" style={{ marginTop: 6 }}>
           {versions.map(v => (
@@ -106,12 +97,7 @@ function VersionHistory({ versions }: { versions: PolicyVersion[] }) {
 function useBanner() {
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
-  const banner: ReactNode = (
-    <>
-      {err && <div style={{ color: 'var(--c-block)', fontSize: 12, marginBottom: 8 }}>{err}</div>}
-      {note && <div style={{ color: 'var(--c-done)', fontSize: 12, marginBottom: 8 }}>{note}</div>}
-    </>
-  )
+  const banner: ReactNode = (err || note) ? <div style={{ marginBottom: 8 }}><FormNote err={err || undefined} ok={note || undefined} /></div> : null
   return { banner, setErr, setNote }
 }
 
@@ -128,7 +114,7 @@ export function InstallationPolicyPanel({ onSaved }: { onSaved?: () => void } = 
   const refresh = useCallback(() => {
     api.systemPolicy()
       .then(p => { setPresets(p.presets); setVersion(p.version); setEngine(p.engine ?? null); setDirty(false) })
-      .catch(e => setErr(String(e)))
+      .catch(e => setErr(errText(e)))
     api.systemPolicyVersions().then(v => setVersions(v ?? [])).catch(() => {})
   }, [setErr])
   useEffect(refresh, [refresh])
@@ -149,7 +135,7 @@ export function InstallationPolicyPanel({ onSaved }: { onSaved?: () => void } = 
         : saved)
       api.systemPolicyVersions().then(v => setVersions(v ?? [])).catch(() => {})
       onSaved?.()
-    } catch (e) { setErr(String(e)) }
+    } catch (e) { setErr(errText(e)) }
   }
 
   return (
@@ -190,8 +176,8 @@ export function InstallationPolicyPanel({ onSaved }: { onSaved?: () => void } = 
                 : 'версий нет — действуют значения по умолчанию'}</span>
             </div>
             <div className="ctl">
-              <button className="btn sm primary" disabled={!dirty || external}
-                title={external ? 'политики управляются вне Rivet' : ''} onClick={save}>Сохранить версию</button>
+              <Button size="sm" variant="primary" disabled={!dirty || external}
+                title={external ? 'политики управляются вне Rivet' : ''} onClick={save}>Сохранить версию</Button>
             </div>
           </div>
         </div>
@@ -215,7 +201,7 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
       setPP(p)
       // Правки владельца не затираются фоновым обновлением.
       setOverrides(cur => (cur && dirty) ? cur : p.overrides)
-    }).catch(e => setErr(String(e)))
+    }).catch(e => setErr(errText(e)))
     api.projectPolicyVersions(projectId).then(v => setVersions(v ?? [])).catch(() => {})
   }, [projectId, dirty, setErr])
   useEffect(refresh, [refresh, tick])
@@ -234,7 +220,7 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
       const r = await api.putProjectPolicySource(projectId, kind)
       setPP(r); setOverrides(r.overrides); setDirty(false)
       setNote(kind === 'git' ? 'политика читается из репозитория' : 'политика правится в консоли')
-    } catch (e) { setErr(String(e)) }
+    } catch (e) { setErr(errText(e)) }
   }
   const setOv = (k: PresetKey, v: Overrides[PresetKey]) => { setOverrides({ ...overrides, [k]: v }); setDirty(true) }
   // Значение строки в форме: переопределение, если задано, иначе действующее.
@@ -250,7 +236,7 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
       setPP(r); setOverrides(r.overrides); setDirty(false)
       setNote(`сохранена версия проекта ${r.version?.version} (${shortHash(r.version?.hash)})`)
       api.projectPolicyVersions(projectId).then(v => setVersions(v ?? [])).catch(() => {})
-    } catch (e) { setErr(String(e)) }
+    } catch (e) { setErr(errText(e)) }
   }
 
   return (
@@ -278,9 +264,9 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
           </div>
           <div className="ctl">
             {isOwner && (
-              <button className="btn sm" onClick={() => switchSource(fromGit ? 'store' : 'git')}>
+              <Button size="sm" onClick={() => switchSource(fromGit ? 'store' : 'git')}>
                 {fromGit ? 'Вернуть в консоль' : 'Хранить в репозитории'}
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -300,13 +286,10 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
               </div>
               <div className="ctl">
                 {editable && (
-                  <label className="row muted" style={{ gap: 6, fontSize: 12 }}>
-                    <input type="checkbox" style={{ width: 'auto' }} checked={!inherited}
-                      onChange={e => setOv(r.key, e.target.checked
-                        ? (r.key === 'daily_token_budget' && pp.effective[r.key] == null ? 0 : pp.effective[r.key])
-                        : null)} />
-                    переопределить
-                  </label>
+                  <Checkbox checked={!inherited} label={<span className="muted" style={{ fontSize: 12 }}>переопределить</span>}
+                    onChange={on => setOv(r.key, on
+                      ? (r.key === 'daily_token_budget' && pp.effective[r.key] == null ? 0 : pp.effective[r.key])
+                      : null)} />
                 )}
                 <PresetControl k={r.key} value={shown(r.key)} disabled={!editable || inherited}
                   onChange={v => setOv(r.key, r.key === 'daily_token_budget' && v == null ? 0 : v)} />
@@ -318,7 +301,7 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
           <div className="set-row" style={{ border: 0 }}>
             <div className="lbl"><b>Сохранить</b><span>создаёт новую версию политики проекта</span></div>
             <div className="ctl">
-              <button className="btn sm primary" disabled={!dirty} onClick={save}>Сохранить версию</button>
+              <Button size="sm" variant="primary" disabled={!dirty} onClick={save}>Сохранить версию</Button>
             </div>
           </div>
         )}

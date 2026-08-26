@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { api, stLabel } from '../api/client'
+import { Button } from './form'
 
 export function StBadge({ s }: { s: string }) {
   return <span className={`st st-${s}`}>{stLabel[s] ?? s.toUpperCase()}</span>
@@ -87,10 +88,10 @@ export function SecretOnce({ title, secret, hint, onHide }: { title: string; sec
   return (
     <div className="dw-sec">
       <h3>{title}</h3>
-      <div className="row">
+      <div className="row" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <span className="mono" style={{ wordBreak: 'break-all' }}>{secret}</span>
-        <button className="btn sm" onClick={() => navigator.clipboard?.writeText(secret)}>Скопировать</button>
-        <button className="btn sm" onClick={onHide}>Скрыть</button>
+        <Button size="sm" onClick={() => navigator.clipboard?.writeText(secret)}>Скопировать</Button>
+        <Button size="sm" variant="quiet" onClick={onHide}>Скрыть</Button>
       </div>
       <div className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>{hint}</div>
     </div>

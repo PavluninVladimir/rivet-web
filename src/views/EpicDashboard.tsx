@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, budgetPaused, errCode, stColor, type EpicView, type Runner, type Task, type UsageRow } from '../api/client'
 import { Dag, type DagFilter } from '../components/Dag'
 import { TaskDrawer } from '../components/TaskDrawer'
 import { ClaimControl, CtxBar, fmtCost, fmtDate, fmtDuration, fmtTokens, StBadge } from '../components/ui'
+import { Button, Field, FormActions, FormNote, NumberInput, Select, TextArea, TextInput, errText, useBusy } from '../components/form'
 import { useStore } from '../store'
 
 const SEG_ORDER = ['done', 'running', 'testing', 'fixing', 'review', 'ready', 'queued', 'blocked', 'failed', 'cancelled']
@@ -36,8 +37,11 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
   const openTask = (id: string) => nav({ view: 'epic', id: epicId, taskId: id })
   const closeTask = () => nav({ view: 'epic', id: epicId })
 
+  const [busy, setBusy] = useState(false)
+  const busyRef = useRef(false)
   const act = (fn: () => Promise<unknown>) => async () => {
-    setErr('')
+    if (busyRef.current) return
+    busyRef.current = true; setErr(''); setBusy(true)
     try { await fn(); refresh() } catch (e) {
       // Модель не настроена или ключ отклонён: подсказываем, где это чинится
       // (api-contract add-operations-management).
@@ -45,7 +49,7 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
       const hint = code === 'no_planner' || code === 'planner_invalid'
         ? ' Администратор задаёт ключ модели в разделе «Управление приложением» → «Модели».' : ''
       setErr(String(e) + hint)
-    }
+    } finally { busyRef.current = false; setBusy(false) }
   }
 
   if (!epic) return <div className="page">{err || 'Загрузка…'}</div>
@@ -86,14 +90,14 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
           <StBadge s={epic.Status} />
           <div className="epic-actions">
             {epic.Status === 'planned' && tasks.length === 0 &&
-              <button className="btn" onClick={act(() => api.decompose(epic.ID))}>Декомпозировать</button>}
-            {epic.Status === 'planned' && <button className="btn primary" onClick={act(() => api.epicAction(epic.ID, 'start'))}>Запустить</button>}
-            {epic.Status === 'running' && <button className="btn" onClick={act(() => api.epicAction(epic.ID, 'pause'))}>Пауза</button>}
-            {epic.Status === 'paused' && <button className="btn primary" onClick={act(() => api.epicAction(epic.ID, 'resume'))}>Возобновить</button>}
+              <Button busy={busy} busyLabel="декомпозиция…" onClick={act(() => api.decompose(epic.ID))}>Декомпозировать</Button>}
+            {epic.Status === 'planned' && <Button variant="primary" busy={busy} onClick={act(() => api.epicAction(epic.ID, 'start'))}>Запустить</Button>}
+            {epic.Status === 'running' && <Button busy={busy} onClick={act(() => api.epicAction(epic.ID, 'pause'))}>Пауза</Button>}
+            {epic.Status === 'paused' && <Button variant="primary" busy={busy} onClick={act(() => api.epicAction(epic.ID, 'resume'))}>Возобновить</Button>}
             {['planned', 'paused', 'done'].includes(epic.Status) &&
-              <button className="btn" onClick={act(() => api.epicAction(epic.ID, 'archive'))}>Архивировать</button>}
+              <Button busy={busy} onClick={act(() => api.epicAction(epic.ID, 'archive'))}>Архивировать</Button>}
             {!['done', 'archived'].includes(epic.Status) &&
-              <button className="btn" onClick={() => setAdding(true)}>Добавить задачу</button>}
+              <Button onClick={() => setAdding(true)}>Добавить задачу</Button>}
           </div>
         </div>
         <div className="epic-meta-row">
@@ -116,13 +120,13 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
               ? <>
                   <b>{epic.TokenBudget != null ? fmtTokens(epic.TokenBudget) : 'нет'}</b>
                   {epic.budget && epic.TokenBudget != null && <> · израсходовано {fmtTokens(epic.budget.used)}</>}
-                  <button className="btn sm" onClick={() => setBudgetEdit(epic.TokenBudget != null ? String(epic.TokenBudget) : '')}>✎</button>
+                  <Button variant="quiet" size="sm" aria-label="изменить бюджет" onClick={() => setBudgetEdit(epic.TokenBudget != null ? String(epic.TokenBudget) : '')}>✎</Button>
                 </>
               : <>
-                  <input type="number" min={1} style={{ width: 120 }} placeholder="без бюджета"
+                  <NumberInput className="f-sm" aria-label="бюджет в токенах" min={1} width={120} placeholder="без бюджета"
                     value={budgetEdit} onChange={e => setBudgetEdit(e.target.value)} />
-                  <button className="btn sm primary" onClick={saveBudget}>OK</button>
-                  <button className="btn sm" onClick={() => setBudgetEdit(null)}>✕</button>
+                  <Button variant="primary" size="sm" busy={busy} onClick={saveBudget}>OK</Button>
+                  <Button variant="quiet" size="sm" aria-label="отмена" onClick={() => setBudgetEdit(null)}>✕</Button>
                 </>}
           </span>
           {usageTotal && (
@@ -256,8 +260,11 @@ function AddTaskModal({ epicId, tasks, onClose, onAdded }: {
   const [criteria, setCriteria] = useState('')
   const [deps, setDeps] = useState<string[]>([])
   const [err, setErr] = useState('')
+  const [touched, setTouched] = useState(false)
+  const [busy, run] = useBusy()
 
-  const create = async () => {
+  const create = () => run(async () => {
+    setErr('')
     try {
       await api.addTask(epicId, {
         title, description,
@@ -265,29 +272,38 @@ function AddTaskModal({ epicId, tasks, onClose, onAdded }: {
         deps,
       })
       onAdded(); onClose()
-    } catch (e) { setErr(String(e)) }
-  }
+    } catch (e) { setErr(errText(e)) }
+  })
+  const titleErr = touched && !title.trim() ? 'Укажите название задачи' : undefined
 
   return (
     <div className="modal-wrap" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
+      <div className="modal f-form" onClick={e => e.stopPropagation()}>
         <h2>Новая задача</h2>
-        <input placeholder="Название" value={title} onChange={e => setTitle(e.target.value)} />
-        <textarea placeholder="Описание (самодостаточное — агент не видит остальной план)" rows={4}
-          value={description} onChange={e => setDescription(e.target.value)} />
-        <textarea placeholder="Acceptance criteria — по одному на строку" rows={3}
-          value={criteria} onChange={e => setCriteria(e.target.value)} />
+        <Field label="Название" error={titleErr}>
+          {ids => <TextInput ids={ids} autoFocus placeholder="Название" value={title}
+            onChange={e => setTitle(e.target.value)} onBlur={() => setTouched(true)} />}
+        </Field>
+        <Field label="Описание" hint="самодостаточное: агент не видит остальной план">
+          {ids => <TextArea ids={ids} placeholder="Описание (самодостаточное — агент не видит остальной план)" rows={4}
+            value={description} onChange={e => setDescription(e.target.value)} />}
+        </Field>
+        <Field label="Acceptance criteria" hint="по одному на строку" optional>
+          {ids => <TextArea ids={ids} placeholder="Acceptance criteria — по одному на строку" rows={3}
+            value={criteria} onChange={e => setCriteria(e.target.value)} />}
+        </Field>
         {tasks.length > 0 && (
-          <select multiple size={Math.min(4, tasks.length)} className="search" style={{ width: '100%' }}
-            value={deps} onChange={e => setDeps([...e.target.selectedOptions].map(o => o.value))}>
-            {tasks.map(t => <option key={t.ID} value={t.ID}>task-{t.Num} · {t.Title}</option>)}
-          </select>
+          <Field label="Зависимости" optional hint="Cmd/Ctrl для выбора нескольких">
+            {ids => <Select ids={ids} multiple rows={Math.min(4, tasks.length)}
+              value={deps} onChange={e => setDeps([...e.target.selectedOptions].map(o => o.value))}>
+              {tasks.map(t => <option key={t.ID} value={t.ID}>task-{t.Num} · {t.Title}</option>)}
+            </Select>}
+          </Field>
         )}
-        {err && <div style={{ color: 'var(--c-block)', fontSize: 12 }}>{err}</div>}
-        <div className="row">
-          <button className="btn" onClick={onClose}>Отмена</button>
-          <button className="btn primary" disabled={!title.trim()} onClick={create}>Создать</button>
-        </div>
+        <FormActions note={<FormNote err={err || undefined} />}>
+          <Button variant="quiet" onClick={onClose}>Отмена</Button>
+          <Button variant="primary" busy={busy} busyLabel="создание…" disabled={!title.trim()} onClick={create}>Создать</Button>
+        </FormActions>
       </div>
     </div>
   )
