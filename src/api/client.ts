@@ -108,6 +108,41 @@ export function budgetPaused(b: BudgetState | undefined, now = Date.now()): bool
 
 // ─── политики конвейера (api-contract add-policy-presets) ───────────────
 
+// Документ процесса проекта (api-contract add-process-model/humans/editor).
+export interface Participant {
+  agent?: { kind?: string; model?: string }
+  user?: { login?: string; role?: string }
+}
+export interface ProcessStep {
+  id: string
+  kind: 'code' | 'test' | 'review' | 'merge' | 'deploy' | 'prompt'
+  title?: string
+  enabled?: boolean
+  capabilities?: string[]
+  participants?: Participant[]
+  mode?: 'parallel' | 'sequential'
+  require?: 'all' | 'any'
+  attempts?: number
+  on?: { ok?: string; changes?: string; fail?: string }
+  prompt?: string
+}
+export interface ProcessDoc { steps: ProcessStep[] }
+// Процесс по умолчанию, когда установка его не задавала (равен серверному
+// policy.DefaultProcess): в ответах политики process тогда null.
+export const DEFAULT_PROCESS: ProcessDoc = { steps: [
+  { id: 'code', kind: 'code', title: 'Реализация', participants: [{ agent: {} }] },
+  { id: 'test', kind: 'test', title: 'Проверки', participants: [{ agent: {} }] },
+  { id: 'review', kind: 'review', title: 'Review', participants: [{ agent: {} }] },
+  { id: 'merge', kind: 'merge', title: 'Merge' },
+  { id: 'deploy', kind: 'deploy', title: 'Публикация' },
+] }
+// Ограничения установки на процессы проектов.
+export interface ProcessLocks {
+  required_kinds?: string[]
+  min_participants?: Record<string, number>
+  human_review?: boolean
+}
+
 // Полный документ пресетов (установка и действующая политика проекта).
 export interface Presets {
   auto_merge: boolean
@@ -116,6 +151,8 @@ export interface Presets {
   review_limit: number
   daily_token_budget: number | null // null — без ограничения
   auto_publish: boolean
+  process?: ProcessDoc | null
+  process_locks?: ProcessLocks | null
 }
 
 // Переопределения проекта: null — наследуется от установки;
@@ -127,6 +164,9 @@ export interface Overrides {
   review_limit: number | null
   daily_token_budget: number | null
   auto_publish: boolean | null
+  // Процесс проекта целиком; null — процесс установки. Тело без ключа
+  // процесс не трогает (api-contract add-process-model).
+  process?: ProcessDoc | null
 }
 
 export interface PolicyVersion {
@@ -150,6 +190,8 @@ export interface PolicyEngine {
 
 export interface InstallationPolicy {
   version: PolicyVersion | null
+  // Проекты, чьи процессы не соответствуют ограничениям (после PUT).
+  violations?: { project_id: string; project: string; reason: string }[]
   presets: Presets
   engine?: PolicyEngine
 }
@@ -201,6 +243,7 @@ export interface ProjectPolicy {
   effective: Presets
   effective_hash: string
   overrides: Overrides
+  process_source?: 'project' | 'installation'
   version: PolicyVersion | null
   installation_version: PolicyVersion | null
   engine?: PolicyEngine
@@ -248,6 +291,9 @@ export interface CreateProjectInput {
 
 export interface Runner {
   ID: string; Agent: string; Model: string; Host: string
+  // Модели и стадии протокола, объявленные runner'ом (add-process-model/editor).
+  Models: string[] | null
+  Stages: string[] | null
   Capabilities: string[]; Status: string; TaskID: string
   CtxPct: number | null // null — заполненность контекста неизвестна
   Draining: boolean; LastSeen: string
@@ -458,10 +504,14 @@ function apiCode(data: unknown): string {
 export class ApiError extends Error {
   code: string
   status: number
-  constructor(message: string, code: string, status: number) {
+  // data — тело ответа: у ошибок валидации процесса там step и field
+  // (api-contract add-process-model).
+  data: unknown
+  constructor(message: string, code: string, status: number, data?: unknown) {
     super(message)
     this.code = code
     this.status = status
+    this.data = data
   }
 }
 
@@ -482,7 +532,7 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
     if (resp.status === 401 && path !== '/auth/login') onUnauthorized()
     if (resp.status === 403 && apiCode(data) === 'password_change_required') onPasswordChangeRequired()
     const msg = (data as { error?: { message?: string } })?.error?.message ?? resp.statusText
-    throw new ApiError(msg, apiCode(data), resp.status)
+    throw new ApiError(msg, apiCode(data), resp.status, data)
   }
   return data as T
 }
@@ -619,7 +669,7 @@ export const api = {
   putSystemPolicy: (p: Presets) => req<InstallationPolicy>('PUT', '/system/policy', p),
   systemPolicyVersions: () => req<PolicyVersion[]>('GET', '/system/policy/versions'),
   projectPolicy: (projectId: string) => req<ProjectPolicy>('GET', `/projects/${projectId}/policy`),
-  putProjectPolicy: (projectId: string, o: Overrides) => req<ProjectPolicy>('PUT', `/projects/${projectId}/policy`, o),
+  putProjectPolicy: (projectId: string, o: Partial<Overrides>) => req<ProjectPolicy>('PUT', `/projects/${projectId}/policy`, o),
   projectPolicyVersions: (projectId: string) => req<PolicyVersion[]>('GET', `/projects/${projectId}/policy/versions`),
   putProjectPolicySource: (projectId: string, kind: string) =>
     req<ProjectPolicy>('PUT', `/projects/${projectId}/policy/source`, { kind }),
