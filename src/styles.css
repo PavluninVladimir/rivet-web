@@ -377,17 +377,60 @@ textarea.answer { width: 100%; min-height: 64px; }
 .chip.v-changes .n, .chip.v-fail .n { color: var(--c-block); }
 
 /* Редактор процесса (add-process-editor). */
-.proc-editor { display: flex; flex-direction: column; gap: 8px; }
-.proc-step { border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--r); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
-.proc-step.off { opacity: .6; border-left-color: var(--muted); }
-.proc-step.has-err { border-color: var(--c-block); }
-.proc-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.proc-id { width: 110px; font: 12px var(--font-mono); }
-.proc-title { flex: 1; min-width: 120px; }
 .proc-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .proc-opts label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
-.proc-participants { display: flex; flex-direction: column; gap: 4px; padding-left: 12px; align-items: flex-start; }
-.proc-participants .proc-participant { align-self: stretch; }
 .proc-participant { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.proc-participant input { width: 160px; }
+.proc-participant input { width: 150px; }
 .proc-section .note { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+
+/* Граф процесса (add-process-graph-editor): узлы по хребту, стрелки переходов. */
+.pg-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--r); background: var(--bg); padding: 4px; }
+.pg { display: block; font-family: var(--font-ui); }
+.pg-node { cursor: pointer; }
+.pg-node .pg-box { fill: var(--surface); stroke: var(--border); stroke-width: 1; transition: stroke .12s; }
+.pg-node:hover .pg-box { stroke: color-mix(in oklch, var(--border) 30%, var(--muted)); }
+.pg-node:focus-visible { outline: none; }
+.pg-node:focus-visible .pg-box { stroke: var(--accent); stroke-width: 2; }
+.pg-node.off .pg-box { stroke-dasharray: 4 3; }
+.pg-node.off .pg-card, .pg-node.off .pg-bar { opacity: .5; }
+.pg-node.has-err .pg-box { stroke: var(--f-err); stroke-width: 1.5; }
+.pg-node.dragging { opacity: .75; }
+.pg-card { height: 100%; box-sizing: border-box; padding: 7px 10px 6px 13px; display: flex; flex-direction: column; gap: 2px; color: var(--fg); font-size: 12px; overflow: hidden; }
+.pg-card .k { display: flex; gap: 7px; align-items: center; font: 600 10.5px var(--font-mono); color: var(--muted); }
+.pg-card .k .off-mark { margin-left: auto; font-weight: 400; }
+.pg-card .t { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pg-card .p { display: flex; gap: 8px; font: 11px var(--font-mono); color: var(--muted); white-space: nowrap; overflow: hidden; }
+.pg-card .p .warn { color: var(--c-block); }
+.pg-card .m { margin-top: auto; font: 10px var(--font-mono); color: var(--muted); }
+.pg-edge { cursor: pointer; }
+.pg-edge .hit { fill: none; stroke: transparent; stroke-width: 14; }
+.pg-edge .line { fill: none; stroke-width: 1.4; transition: stroke-width .12s; }
+.pg-edge.ok .line { stroke: var(--c-done); } .pg-arrow.ok { fill: var(--c-done); }
+.pg-edge.changes .line { stroke: var(--c-review); } .pg-arrow.changes { fill: var(--c-review); }
+.pg-edge.fail .line { stroke: var(--c-block); } .pg-arrow.fail { fill: var(--c-block); }
+.pg-arrow { stroke: none; }
+.pg-edge.default .line { stroke-dasharray: 5 4; }
+.pg-edge text { font: 600 10px var(--font-mono); fill: var(--muted); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; }
+.pg-edge.ok text { fill: var(--c-done); } .pg-edge.changes text { fill: var(--c-review); } .pg-edge.fail text { fill: var(--c-block); }
+.pg-edge:hover .line, .pg-edge:focus-visible .line, .pg-edge.hi .line { stroke-width: 2.4; }
+.pg-edge:focus-visible { outline: none; }
+.pg-edge:focus-visible text { text-decoration: underline; }
+.pg.dim-others .pg-edge:not(.hi) { opacity: .3; }
+.pg-cap rect { fill: var(--raised); stroke: var(--border); }
+.pg-cap text { font: 600 10.5px var(--font-mono); fill: var(--muted); text-anchor: middle; dominant-baseline: central; }
+.pg-cap.escalate rect { stroke: color-mix(in oklch, var(--c-block) 60%, transparent); }
+.pg-cap.escalate text { fill: var(--c-block); }
+.pg-gap { cursor: pointer; opacity: .35; transition: opacity .12s; }
+.pg-gap:hover, .pg-gap:focus-visible, .pg-gap.target { opacity: 1; outline: none; }
+.pg-gap circle { fill: var(--raised); stroke: var(--border); }
+.pg-gap:focus-visible circle, .pg-gap.target circle { stroke: var(--accent); fill: var(--accent-soft); }
+.pg-gap text { fill: var(--fg); font: 600 13px var(--font-ui); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.outcome-ok { color: var(--c-done); } .outcome-changes { color: var(--c-review); } .outcome-fail { color: var(--c-block); }
+
+/* Окно у правого края: граф слева остаётся виден. */
+.modal-wrap.side { place-items: center end; padding-right: 24px; }
+.modal.side { width: 520px; max-height: 90vh; overflow: auto; }
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.modal-head h2 { margin: 0; }
+.modal .proc-participant > select, .modal .proc-participant > input { width: auto; flex: 1; min-width: 110px; }
+.pg-wrap { width: 100%; }

@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, ApiError, DEFAULT_PROCESS, type ProcessDoc, type ProcessLocks, type Runner } from '../api/client'
-import { ProcessEditor, type EditorError } from './ProcessEditor'
+import { api, ApiError, DEFAULT_PROCESS, type Member, type ProcessDoc, type ProcessLocks, type Runner } from '../api/client'
+import { ProcessGraph } from './ProcessGraph'
+import type { StepError as EditorError } from './StepModal'
 import { shortHash } from './PolicyPanel'
 import { Button, Checkbox, NumberInput, useBusy } from './form'
 
-// Секция «Процесс» (add-process-editor): в настройках проекта — процесс
-// проекта или унаследованный, редактирование владельцем; на вкладке
-// «Политики» установки — процесс по умолчанию и ограничения.
+// Секция «Процесс» (add-process-editor, add-process-graph-editor): в
+// настройках проекта — процесс проекта или унаследованный графом,
+// редактирование владельцем; на вкладке «Политики» установки — процесс
+// по умолчанию и ограничения.
 
 function parseError(e: unknown): EditorError {
   const msg = e instanceof Error ? e.message : String(e)
@@ -25,6 +27,7 @@ export function ProjectProcessSection({ projectId, isOwner, tick }: { projectId:
   const [doc, setDoc] = useState<ProcessDoc | null>(null)
   const [dirty, setDirty] = useState(false)
   const [runners, setRunners] = useState<Runner[]>([])
+  const [members, setMembers] = useState<Member[]>([])
   const [err, setErr] = useState<EditorError | null>(null)
   const [note, setNote] = useState('')
   const [busy, run] = useBusy()
@@ -47,6 +50,7 @@ export function ProjectProcessSection({ projectId, isOwner, tick }: { projectId:
       setDoc(cur => (cur && dirtyRef.current) ? cur : structuredClone(eff))
     }).catch(e => { if (my === seq.current) setErr(parseError(e)) })
     api.runners().then(r => setRunners(r ?? [])).catch(() => {})
+    api.members(projectId).then(m => setMembers(m ?? [])).catch(() => {})
   }, [projectId])
   useEffect(refresh, [refresh, tick])
 
@@ -86,8 +90,9 @@ export function ProjectProcessSection({ projectId, isOwner, tick }: { projectId:
         {!isOwner && ' · только просмотр'}
       </div>
       {note && <div className="note">{note}</div>}
-      <ProcessEditor doc={doc} runners={runners} readOnly={!editable} error={err}
-        onChange={d => { setDoc(d); markDirty(true) }} />
+      {err && !err.step && <div className="err f-error" role="alert">{err.message}</div>}
+      <ProcessGraph doc={doc} runners={runners} members={members} readOnly={!editable} error={err}
+        onChange={d => { setDoc(d); markDirty(true); setErr(null) }} />
       {editable && (
         <div className="proc-row" style={{ marginTop: 8 }}>
           <Button variant="primary" size="sm" busy={busy} disabled={!dirty} onClick={() => run(save)}>Сохранить процесс</Button>
@@ -129,7 +134,7 @@ export function InstallationProcessSection({ doc, locks, readOnly, onChange }: {
       <div className="muted" style={{ fontSize: 12.5, marginBottom: 6 }}>
         Действует для проектов без собственного процесса.
       </div>
-      <ProcessEditor doc={doc} runners={runners} readOnly={readOnly} onChange={d => onChange(d, locks)} />
+      <ProcessGraph doc={doc} runners={runners} locks={locks} readOnly={readOnly} onChange={d => onChange(d, locks)} />
       <h3 style={{ marginTop: 12 }}>Ограничения на процессы проектов</h3>
       <div className="proc-row proc-opts">
         <span className="muted">обязательные шаги:</span>
