@@ -3,7 +3,7 @@ import { InstallationProcessSection } from './ProcessSection'
 import { DEFAULT_PROCESS } from '../api/client'
 import { api, type Overrides, type PolicyEngine, type PolicyVersion, type Presets, type ProjectPolicy } from '../api/client'
 import { fmtDate, fmtTokens } from './ui'
-import { Button, Checkbox, FormNote, NumberInput, Switch, TagsInput, errText } from './form'
+import { Button, Checkbox, FormNote, NumberInput, Select, Switch, TagsInput, errText } from './form'
 
 // Политики конвейера пресетами (спека web «Политики в консоли», change
 // add-policy-presets). Строки set-row с переключателями и числовыми полями
@@ -293,6 +293,38 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
                 )}
                 <PresetControl k={r.key} value={shown(r.key)} disabled={!editable || inherited}
                   onChange={v => setOv(r.key, r.key === 'daily_token_budget' && v == null ? 0 : v)} />
+              </div>
+            </div>
+          )
+        })}
+        {Object.entries(pp.agent_models ?? {}).filter(([, am]) => am.models.length > 0).map(([id, am]) => {
+          const ov = overrides.agent_models?.[id]
+          const inherited = !ov
+          const refLabel = (m: { connection_id: string; model: string } | null) => m ? `${m.connection_id}/${m.model}` : 'не задана'
+          const setAgent = (v: { connection_id: string; model: string } | null) => {
+            const next = { ...(overrides.agent_models ?? {}) }
+            if (v) next[id] = v; else delete next[id]
+            setOverrides({ ...overrides, agent_models: Object.keys(next).length ? next : null }); setDirty(true)
+          }
+          return (
+            <div className="set-row" key={'agent-' + id} data-agent-model={id}>
+              <div className="lbl">
+                <b>Модель агента {am.name}
+                  <span className="chip" style={{ marginLeft: 8 }}><span className="n">{inherited ? 'наследуется' : 'переопределено'}</span></span>
+                </b>
+                <span>модель по умолчанию участников <span className="mono">{id}</span> без явной модели · действует: <span className="mono">{refLabel(am.effective)}</span></span>
+              </div>
+              <div className="ctl">
+                {editable && (
+                  <Checkbox checked={!inherited} label={<span className="muted" style={{ fontSize: 12 }}>переопределить</span>}
+                    onChange={on => setAgent(on ? (am.installation ?? am.models[0] ?? null) : null)} />
+                )}
+                <Select size="sm" aria-label={`модель агента ${id}`} disabled={!editable || inherited}
+                  value={ov ? `${ov.connection_id}/${ov.model}` : am.installation ? `${am.installation.connection_id}/${am.installation.model}` : ''}
+                  onChange={e => { const m = am.models.find(x => `${x.connection_id}/${x.model}` === e.target.value); if (m) setAgent({ connection_id: m.connection_id, model: m.model }) }}>
+                  {am.models.length === 0 && <option value="">привязок нет</option>}
+                  {am.models.map(m => <option key={`${m.connection_id}/${m.model}`} value={`${m.connection_id}/${m.model}`}>{m.connection_id}/{m.model}</option>)}
+                </Select>
               </div>
             </div>
           )
