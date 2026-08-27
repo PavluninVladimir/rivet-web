@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { Member, Participant, ProcessDoc, ProcessStep, Runner } from '../api/client'
+import { api, type AgentCatalog, type Member, type Participant, type ProcessDoc, type ProcessStep, type Runner } from '../api/client'
 import { Button, Checkbox, Combo, Field, FormActions, FormNote, NumberInput, Select, TextArea, TextInput } from './form'
 import { HAS_PARTICIPANTS, KIND_LABEL, OUTCOMES, defaultTarget, newStepId, type Outcome } from './processLayout'
 
@@ -77,9 +77,20 @@ export function StepModal({ doc, index, isNew, at, runners, members, readOnly, e
     ? structuredClone(source)
     : { id: newStepId(doc, 'review'), kind: 'review', participants: [{ agent: {} }] })
 
-  const agentKinds = useMemo(() => Array.from(new Set(runners.map(r => r.Agent).filter(Boolean))).sort(), [runners])
-  const modelsFor = (kind?: string) => Array.from(new Set(runners
-    .filter(r => !kind || r.Agent === kind).flatMap(r => r.Models ?? []))).sort()
+  // Каталог агентов (add-agent-profiles): профили и агенты вне каталога,
+  // объявленные runner'ами; модели у профиля — его привязки.
+  const [catalog, setCatalog] = useState<AgentCatalog | null>(null)
+  // Свободный ввод агента вне списков (runner ещё не зарегистрирован).
+  const [customKind, setCustomKind] = useState<Record<number, boolean>>({})
+  useEffect(() => { api.agents().then(setCatalog).catch(() => setCatalog({ agents: [], external: [] })) }, [])
+  const profiles = (catalog?.agents ?? []).filter(a => a.enabled)
+  const externalKinds = Array.from(new Set([...(catalog?.external ?? []).map(e => e.id), ...runners.map(r => r.Agent).filter(k => k && !profiles.some(a => a.id === k))])).sort()
+  const profileOf = (kind?: string) => profiles.find(a => a.id === kind)
+  const modelsFor = (kind?: string) => {
+    const prof = profileOf(kind)
+    if (prof && prof.models.length > 0) return Array.from(new Set(prof.models.filter(m => !m.unavailable).map(m => m.model)))
+    return Array.from(new Set(runners.filter(r => !kind || r.Agent === kind).flatMap(r => r.Models ?? []))).sort()
+  }
   const logins = useMemo(() => (members ?? []).map(m => m.login).sort(), [members])
 
   const patch = (p: Partial<ProcessStep>) => setDraft(d => ({ ...d, ...p }))
@@ -158,10 +169,34 @@ export function StepModal({ doc, index, isNew, at, runners, members, readOnly, e
                     <option value="user">человек</option>
                   </Select>
                   {!isUser && <>
-                    <Combo className="f-sm" aria-label="тип агента" options={agentKinds} placeholder="любой агент" value={p.agent?.kind ?? ''} disabled={readOnly}
-                      onChange={e => setPart(k, { agent: { ...p.agent, kind: e.target.value || undefined } })} />
-                    <Combo className="f-sm" aria-label="модель" options={modelsFor(p.agent?.kind)} placeholder="любая модель" value={p.agent?.model ?? ''} disabled={readOnly}
-                      onChange={e => setPart(k, { agent: { ...p.agent, model: e.target.value || undefined } })} />
+                    {customKind[k] || (p.agent?.kind && !profiles.some(a => a.id === p.agent?.kind) && !externalKinds.includes(p.agent.kind))
+                      ? <Combo className="f-sm" aria-label="агент" options={[...profiles.map(a => a.id), ...externalKinds]} placeholder="идентификатор агента" value={p.agent?.kind ?? ''} disabled={readOnly}
+                          aria-invalid={fe(`participants[${k}].agent.kind`) ? true : undefined}
+                          onChange={e => setPart(k, { agent: { ...p.agent, kind: e.target.value || undefined } })} />
+                      : <Select size="sm" aria-label="агент" value={p.agent?.kind ?? ''} disabled={readOnly}
+                          aria-invalid={fe(`participants[${k}].agent.kind`) ? true : undefined}
+                          onChange={e => {
+                            // Смена агента сбрасывает модель: у нового её может не быть.
+                            if (e.target.value === '__custom') { setCustomKind(c => ({ ...c, [k]: true })); setPart(k, { agent: {} }); return }
+                            setPart(k, { agent: { kind: e.target.value || undefined } })
+                          }}>
+                          <option value="">любой агент</option>
+                          {profiles.map(a => <option key={a.id} value={a.id}>{a.name} ({a.id})</option>)}
+                          {externalKinds.length > 0 && <optgroup label="вне каталога">
+                            {externalKinds.map(k2 => <option key={k2} value={k2}>{k2}</option>)}
+                          </optgroup>}
+                          <option value="__custom">другой агент…</option>
+                        </Select>}
+                    {profileOf(p.agent?.kind)?.models.length
+                      ? <Select size="sm" aria-label="модель" value={p.agent?.model ?? ''} disabled={readOnly}
+                          aria-invalid={fe(`participants[${k}].agent.model`) ? true : undefined}
+                          onChange={e => setPart(k, { agent: { ...p.agent, model: e.target.value || undefined } })}>
+                          <option value="">по умолчанию{profileOf(p.agent?.kind)?.default_model ? ` (${profileOf(p.agent?.kind)!.default_model!.model})` : ''}</option>
+                          {modelsFor(p.agent?.kind).map(m => <option key={m} value={m}>{m}</option>)}
+                        </Select>
+                      : <Combo className="f-sm" aria-label="модель" options={modelsFor(p.agent?.kind)} placeholder="любая модель" value={p.agent?.model ?? ''} disabled={readOnly}
+                          aria-invalid={fe(`participants[${k}].agent.model`) ? true : undefined}
+                          onChange={e => setPart(k, { agent: { ...p.agent, model: e.target.value || undefined } })} />}
                   </>}
                   {isUser && <>
                     <Select size="sm" aria-label="как выбирать человека" value={p.user?.login !== undefined ? 'login' : 'role'} disabled={readOnly}
@@ -179,7 +214,11 @@ export function StepModal({ doc, index, isNew, at, runners, members, readOnly, e
                         </Select>}
                   </>}
                   {!readOnly && <Button variant="quiet" size="sm" aria-label="убрать участника"
-                    onClick={() => patch({ participants: parts.filter((_, j) => j !== k) })}>✕</Button>}
+                    onClick={() => {
+                      // Индексы участников сдвигаются: флаг свободного ввода сдвигается вместе с ними.
+                      setCustomKind(c => Object.fromEntries(Object.entries(c).filter(([i]) => Number(i) !== k).map(([i, v]) => [Number(i) > k ? Number(i) - 1 : Number(i), v])))
+                      patch({ participants: parts.filter((_, j) => j !== k) })
+                    }}>✕</Button>}
                 </div>
               )
             })}

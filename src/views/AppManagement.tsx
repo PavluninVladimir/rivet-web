@@ -6,6 +6,7 @@ import { Button, Checkbox, Field, FormActions, FormNote, PasswordInput, Select, 
 import { useStore, type AppTab } from '../store'
 import { UsageView } from './UsageView'
 import { ConnectionsTab } from './ConnectionsTab'
+import { AgentsTab } from './AgentsTab'
 
 // Раздел «Управление приложением» (спека web): настройки уровня установки,
 // адресуемые вкладки #/app-management/<tab>. Вкладка «Политики» — место
@@ -13,7 +14,7 @@ import { ConnectionsTab } from './ConnectionsTab'
 
 const TABS: { id: AppTab; label: string }[] = [
   { id: 'users', label: 'Пользователи' }, { id: 'runners', label: 'Runner’ы' },
-  { id: 'connections', label: 'Подключения' }, { id: 'policies', label: 'Политики' },
+  { id: 'agents', label: 'Агенты' }, { id: 'connections', label: 'Подключения' }, { id: 'policies', label: 'Политики' },
   { id: 'usage', label: 'Usage' },
   { id: 'audit', label: 'Аудит' }, { id: 'status', label: 'Состояние' },
 ]
@@ -29,6 +30,7 @@ export function AppManagement({ me, tab }: { me: User; tab: AppTab }) {
       <Tabs tabs={TABS} active={tab} onChange={t => nav({ view: 'app-management', tab: t })} />
       {tab === 'users' && <UsersTab me={me} />}
       {tab === 'runners' && <RunnerTokensTab />}
+      {tab === 'agents' && <AgentsTab />}
       {tab === 'connections' && <ConnectionsTab />}
       {tab === 'policies' && <InstallationPolicyPanel onSaved={refreshProjects} />}
       {tab === 'usage' && <UsageView scope="installation" defaultGroup="project" title="Usage установки" sub="все проекты, метеринг установки" />}
@@ -258,7 +260,8 @@ function RunnerTokensTab() {
 
 const AUDIT_TYPES = ['', 'user.bootstrap', 'user.created', 'user.admin_changed', 'user.state_changed', 'user.password_reset',
   'runner.registered', 'runner_token.created', 'runner_token.revoked',
-  'connection.created', 'connection.updated', 'connection.deleted', 'connection.key_replaced', 'connection.checked', 'connection.discovered', 'planner.model_changed']
+  'connection.created', 'connection.updated', 'connection.deleted', 'connection.key_replaced', 'connection.checked', 'connection.discovered', 'planner.model_changed',
+  'agent.created', 'agent.updated', 'agent.deleted', 'runner.secrets_delivered']
 
 function AuditTab() {
   const [events, setEvents] = useState<Event[]>([])

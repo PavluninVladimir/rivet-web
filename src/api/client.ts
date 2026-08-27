@@ -167,6 +167,8 @@ export interface Overrides {
   // Процесс проекта целиком; null — процесс установки. Тело без ключа
   // процесс не трогает (api-contract add-process-model).
   process?: ProcessDoc | null
+  // Модели по умолчанию агентов для проекта (add-agent-profiles).
+  agent_models?: Record<string, AgentModelRef> | null
 }
 
 export interface PolicyVersion {
@@ -239,10 +241,15 @@ export interface PolicySource {
   ref: string
 }
 
+export interface AgentModelView {
+  name: string; installation: AgentModelRef | null; effective: AgentModelRef | null
+  source: 'installation' | 'project'; models: AgentModelRef[]
+}
 export interface ProjectPolicy {
   effective: Presets
   effective_hash: string
   overrides: Overrides
+  agent_models?: Record<string, AgentModelView>
   process_source?: 'project' | 'installation'
   version: PolicyVersion | null
   installation_version: PolicyVersion | null
@@ -303,7 +310,36 @@ export interface Runner {
   // Доводит ли адаптер контекст от Rivet до работающего агента
   // (обратный канал); без него система контекст ему не шлёт.
   ContextChannel: boolean
+  // Профиль агента из каталога и защищённость канала (add-agent-profiles).
+  Catalog: boolean
+  Secure: boolean
+  ProfileName: string
+  DeclaredModels: string[] | null
 }
+
+// Профиль агента (api-contract add-agent-profiles).
+export interface AgentModelRef { connection_id: string; model: string; unavailable?: boolean }
+export interface EnvVar { name: string; value: string }
+export type SecretsMode = 'never' | 'secure' | 'always'
+export interface AgentProfile {
+  id: string; name: string; adapter: 'claude-code' | 'wrap'; command: string
+  capabilities: string[]; models: AgentModelRef[]; default_model: AgentModelRef | null
+  env?: EnvVar[]; args?: string[]; secrets: SecretsMode; enabled: boolean
+  runners: number; preset: boolean; updated_at: string; updated_by: string
+}
+export interface ExternalAgent { id: string; models: string[]; runners: number }
+export interface AgentCatalog { agents: AgentProfile[]; external: ExternalAgent[] }
+export interface AgentInput {
+  name: string; adapter: 'claude-code' | 'wrap'; command?: string; capabilities?: string[]
+  models?: AgentModelRef[]; default_model?: AgentModelRef | null; env?: EnvVar[]; args?: string[]
+  secrets?: SecretsMode; enabled?: boolean
+}
+export const SECRETS_MODES: { id: SecretsMode; label: string; hint: string }[] = [
+  { id: 'never', label: 'никогда', hint: 'агент берёт ключи из окружения хоста runner’а' },
+  { id: 'secure', label: 'по защищённому каналу', hint: 'ключи уходят runner’у только по TLS или с той же машины' },
+  { id: 'always', label: 'всегда', hint: 'ключи уходят любому runner’у с этим агентом' },
+]
+export const PLACEHOLDERS = ['{{key}}', '{{base_url}}', '{{model}}', '{{connection_id}}', '{{header:Имя}}']
 
 export interface Event {
   ID: number; TS: string; ActorKind: string; ActorID: string
@@ -667,6 +703,11 @@ export const api = {
     req<{ connection: ModelConnection; added: string[]; missing: string[] }>('POST', `/system/connections/${id}/discover`),
   putConnectionModels: (id: string, models: ModelEntry[]) =>
     req<ModelConnection>('PUT', `/system/connections/${id}/models`, { models }),
+  // Каталог агентов (api-contract add-agent-profiles).
+  agents: () => req<AgentCatalog>('GET', '/agents'),
+  systemAgents: () => req<AgentCatalog>('GET', '/system/agents'),
+  putAgent: (id: string, input: AgentInput) => req<AgentProfile>('PUT', `/system/agents/${id}`, input),
+  deleteAgent: (id: string) => req<void>('DELETE', `/system/agents/${id}`),
   planner: () => req<PlannerView>('GET', '/system/planner'),
   putPlanner: (pm: { connection_id?: string; model?: string }) => req<PlannerView>('PUT', '/system/planner', pm),
   // Политики конвейера: пресеты установки (администратор) и переопределения

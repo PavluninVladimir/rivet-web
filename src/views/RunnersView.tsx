@@ -37,7 +37,12 @@ export function RunnersView({ admin }: { admin: boolean }) {
           {runners.map(r => (
             <tr key={r.ID}>
               <td className="id">{r.ID}</td>
-              <td className="muted">{r.Agent}{r.Model ? ` · ${r.Model}` : ''}</td>
+              <td className="muted">
+                {r.ProfileName ? <>{r.ProfileName} <span className="mono">{r.Agent}</span></> : r.Agent}
+                {r.Models?.length ? <span className="mono"> · {r.Models.join(', ')}</span> : r.Model ? <span className="mono"> · {r.Model}</span> : null}
+                {!r.Catalog && <span className="chip" style={{ marginLeft: 6 }} title="профиля в каталоге агентов нет: модели и окружение runner’а свои"><span className="n">вне каталога</span></span>}
+                {r.Catalog && !r.Secure && <span className="chip" style={{ marginLeft: 6 }} title="канал без TLS и не с этой машины: секреты подключений runner’у не уходят"><span className="n">канал не защищён</span></span>}
+              </td>
               <td className="mono muted">{r.Host}</td>
               <td className="mono muted">{r.Capabilities.join(', ')}</td>
               <td className="mono muted" title={`адаптер ${r.Adapter || 'wrap'}: глубина данных подключения; обратный канал контекста: ${r.ContextChannel ? 'есть' : 'нет'}`}>
