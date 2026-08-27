@@ -108,7 +108,7 @@ function AgentModal({ agent, connections, onClose, onSaved }: { agent?: AgentPro
   const [name, setName] = useState(agent?.name ?? '')
   const [adapter, setAdapter] = useState<'claude-code' | 'wrap'>(agent?.adapter ?? 'wrap')
   const [command, setCommand] = useState(agent?.command ?? '')
-  const [caps, setCaps] = useState<string[]>(agent?.capabilities ?? ['coding'])
+  const [caps, setCaps] = useState<string[]>(agent?.capabilities ?? [])
   const [models, setModels] = useState<AgentModelRef[]>(agent?.models.map(m => ({ connection_id: m.connection_id, model: m.model })) ?? [])
   const [def, setDef] = useState<AgentModelRef | null>(agent?.default_model ?? null)
   const [env, setEnv] = useState<EnvVar[]>(agent?.env ?? PRESET_ENV.wrap.env)
