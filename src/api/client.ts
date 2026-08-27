@@ -658,11 +658,17 @@ export const api = {
   createRunnerToken: (name: string, expires_at?: string) =>
     req<{ token: RunnerToken; secret: string }>('POST', '/runner-tokens', { name, expires_at }),
   revokeRunnerToken: (id: string) => req<void>('DELETE', `/runner-tokens/${id}`),
-  models: () => req<{ source: PlannerSource; providers: LLMProvider[] }>('GET', '/system/models'),
-  putModel: (provider: string, patch: { key?: string; model?: string; active?: boolean }) =>
-    req<LLMProvider>('PUT', `/system/models/${provider}`, patch),
-  checkModel: (provider: string) => req<LLMProvider>('POST', `/system/models/${provider}/check`),
-  deleteModel: (provider: string) => req<void>('DELETE', `/system/models/${provider}`),
+  // Подключения к моделям и модель декомпозиции (api-contract add-model-connections).
+  connections: () => req<ModelConnection[]>('GET', '/system/connections'),
+  putConnection: (id: string, input: ConnectionInput) => req<ModelConnection>('PUT', `/system/connections/${id}`, input),
+  deleteConnection: (id: string) => req<void>('DELETE', `/system/connections/${id}`),
+  checkConnection: (id: string) => req<ModelConnection>('POST', `/system/connections/${id}/check`),
+  discoverModels: (id: string) =>
+    req<{ connection: ModelConnection; added: string[]; missing: string[] }>('POST', `/system/connections/${id}/discover`),
+  putConnectionModels: (id: string, models: ModelEntry[]) =>
+    req<ModelConnection>('PUT', `/system/connections/${id}/models`, { models }),
+  planner: () => req<PlannerView>('GET', '/system/planner'),
+  putPlanner: (pm: { connection_id?: string; model?: string }) => req<PlannerView>('PUT', '/system/planner', pm),
   // Политики конвейера: пресеты установки (администратор) и переопределения
   // проекта (owner пишет, участник читает).
   systemPolicy: () => req<InstallationPolicy>('GET', '/system/policy'),
@@ -678,7 +684,7 @@ export const api = {
 // ─── эксплуатация установки ─────────────────────────────────────────────
 
 export type ComponentStatus = 'ok' | 'degraded' | 'down'
-export type PlannerSource = 'db' | 'env' | 'none'
+export type PlannerSource = 'catalog' | 'env' | 'none'
 
 export interface SystemComponent {
   name: 'database' | 'blob' | 'secrets' | 'planner' | 'policy' | 'runners'
@@ -702,17 +708,34 @@ export interface RunnerToken {
   expires_at: string | null; last_used_at: string | null; revoked_at: string | null
 }
 
-export interface LLMProvider {
-  provider: 'anthropic' | 'deepseek'
-  key_prefix: string; model: string; active: boolean
-  state: 'ok' | 'invalid' | 'unchecked'
-  checked_at: string | null; check_detail: string
-  updated_at: string; updated_by: string
+// Подключение к провайдеру, агрегатору или локальному серверу моделей.
+export type ConnectionKind = 'vendor' | 'aggregator' | 'local'
+export type ConnectionAPI = 'anthropic' | 'openai'
+export interface ConnHeader { name: string; value?: string; secret: boolean }
+export interface ModelEntry {
+  id: string; label: string
+  input_price?: number; output_price?: number; context_window?: number
+  source: 'discovered' | 'manual'; hidden: boolean; missing: boolean
 }
-
-export const LLM_PROVIDERS: { id: LLMProvider['provider']; label: string; defaultModel: string }[] = [
-  { id: 'anthropic', label: 'Anthropic', defaultModel: 'claude-opus-5' },
-  { id: 'deepseek', label: 'DeepSeek', defaultModel: 'deepseek-v4-flash' },
+export interface ModelConnection {
+  id: string; name: string; kind: ConnectionKind; api: ConnectionAPI; base_url: string
+  key_prefix: string; has_key: boolean; headers: ConnHeader[]; models: ModelEntry[]
+  enabled: boolean; state: 'ok' | 'invalid' | 'unchecked'
+  checked_at: string | null; check_detail: string; updated_at: string; updated_by: string
+}
+export interface ConnectionInput {
+  name: string; kind: ConnectionKind; api: ConnectionAPI; base_url: string
+  key?: string; headers?: { name: string; value?: string; secret: boolean }[]; enabled?: boolean
+}
+export interface PlannerView {
+  source: PlannerSource; connection_id?: string; model?: string; state?: string; detail?: string
+}
+export const CONNECTION_KINDS: { id: ConnectionKind; label: string }[] = [
+  { id: 'vendor', label: 'вендор' }, { id: 'aggregator', label: 'агрегатор' }, { id: 'local', label: 'локальный сервер' },
+]
+export const CONNECTION_APIS: { id: ConnectionAPI; label: string; hint: string }[] = [
+  { id: 'anthropic', label: 'Anthropic', hint: 'Messages API, base URL https://api.anthropic.com' },
+  { id: 'openai', label: 'OpenAI-совместимый', hint: 'chat completions: OpenAI, DeepSeek, OpenRouter, LiteLLM, LM Studio, Ollama' },
 ]
 
 export interface LogChunk { task_id: string; data: string }

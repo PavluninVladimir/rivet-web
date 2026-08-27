@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, errCode, LLM_PROVIDERS, type Event, type LLMProvider, type PlannerSource, type RunnerToken, type SystemStatus, type User } from '../api/client'
+import { api, type Event, type RunnerToken, type SystemStatus, type User } from '../api/client'
 import { fmtAgo, fmtDate, SecretOnce, statusColor, Tabs, timeShort } from '../components/ui'
 import { InstallationPolicyPanel } from '../components/PolicyPanel'
 import { Button, Checkbox, Field, FormActions, FormNote, PasswordInput, Select, TextInput, errText, useBusy } from '../components/form'
 import { useStore, type AppTab } from '../store'
 import { UsageView } from './UsageView'
+import { ConnectionsTab } from './ConnectionsTab'
 
 // Раздел «Управление приложением» (спека web): настройки уровня установки,
 // адресуемые вкладки #/app-management/<tab>. Вкладка «Политики» — место
@@ -12,7 +13,7 @@ import { UsageView } from './UsageView'
 
 const TABS: { id: AppTab; label: string }[] = [
   { id: 'users', label: 'Пользователи' }, { id: 'runners', label: 'Runner’ы' },
-  { id: 'models', label: 'Модели' }, { id: 'policies', label: 'Политики' },
+  { id: 'connections', label: 'Подключения' }, { id: 'policies', label: 'Политики' },
   { id: 'usage', label: 'Usage' },
   { id: 'audit', label: 'Аудит' }, { id: 'status', label: 'Состояние' },
 ]
@@ -28,7 +29,7 @@ export function AppManagement({ me, tab }: { me: User; tab: AppTab }) {
       <Tabs tabs={TABS} active={tab} onChange={t => nav({ view: 'app-management', tab: t })} />
       {tab === 'users' && <UsersTab me={me} />}
       {tab === 'runners' && <RunnerTokensTab />}
-      {tab === 'models' && <ModelsTab />}
+      {tab === 'connections' && <ConnectionsTab />}
       {tab === 'policies' && <InstallationPolicyPanel onSaved={refreshProjects} />}
       {tab === 'usage' && <UsageView scope="installation" defaultGroup="project" title="Usage установки" sub="все проекты, метеринг установки" />}
       {tab === 'audit' && <AuditTab />}
@@ -38,7 +39,7 @@ export function AppManagement({ me, tab }: { me: User; tab: AppTab }) {
 }
 
 // Общий помощник действий: ошибка и заметка над вкладкой.
-function useActions(refresh: () => void) {
+export function useActions(refresh: () => void) {
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [busy, run] = useBusy()
@@ -253,94 +254,11 @@ function RunnerTokensTab() {
   )
 }
 
-// ─── Модели ─────────────────────────────────────────────────────────────
-
-function ModelsTab() {
-  const [providers, setProviders] = useState<LLMProvider[]>([])
-  const [source, setSource] = useState<PlannerSource>('none')
-  const [keys, setKeys] = useState<Record<string, string>>({})
-  const [models, setModels] = useState<Record<string, string>>({})
-  const refresh = useCallback(() => {
-    api.models().then(r => { setProviders(r.providers ?? []); setSource(r.source) }).catch(() => {})
-  }, [])
-  useEffect(refresh, [refresh])
-  const { act, banner, busy } = useActions(refresh)
-
-  const save = (id: string, patch: { key?: string; model?: string; active?: boolean }, msg: string) =>
-    act(async () => {
-      try {
-        await api.putModel(id, patch)
-        setKeys(k => ({ ...k, [id]: '' }))
-      } catch (e) {
-        if (errCode(e) === 'no_secret_key') {
-          throw new Error('Ключ шифрования установки (RIVET_SECRET_KEY) не задан: ключи моделей сохранить нельзя. Задайте его в окружении rivetd и перезапустите.')
-        }
-        throw e
-      }
-    }, msg)
-
-  const stateLabel = (p: LLMProvider) => p.state === 'ok' ? 'в порядке' : p.state === 'invalid' ? 'неверен' : 'не проверен'
-  const stateColor = (p: LLMProvider) => p.state === 'ok' ? 'var(--c-done)' : p.state === 'invalid' ? 'var(--c-block)' : 'var(--c-review)'
-
-  return (
-    <>
-      {banner}
-      <div className="dw-sec">
-        <h3>Модель для декомпозиции Epic</h3>
-        <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
-          {source === 'db' && 'Активный провайдер задан здесь и применяется без перезапуска.'}
-          {source === 'env' && 'В базе активного провайдера нет: используется ключ из окружения установки (запасной источник). Сохраните ключ здесь, чтобы управлять им из консоли.'}
-          {source === 'none' && 'Модель не настроена ни здесь, ни в окружении: декомпозиция Epic отвечает отказом «модель не настроена».'}
-        </div>
-        {LLM_PROVIDERS.map(def => {
-          const p = providers.find(x => x.provider === def.id)
-          const modelVal = models[def.id] ?? p?.model ?? ''
-          return (
-            <div className="set-row" key={def.id}>
-              <div className="lbl">
-                <b>{def.label}{p?.active && <span className="chip" style={{ marginLeft: 8 }}><span className="n">активен</span></span>}</b>
-                <span>
-                  {p
-                    ? <>ключ <span className="mono">{p.key_prefix || '••••'}…</span> · <span style={{ color: stateColor(p) }}>{stateLabel(p)}</span>
-                      {p.check_detail && <> · {p.check_detail}</>} · проверен {fmtDate(p.checked_at)} · изменил {p.updated_by}</>
-                    : 'ключ не сохранён'}
-                </span>
-              </div>
-              <div className="ctl">
-                <span style={{ width: 200 }}>
-                  <PasswordInput className="f-sm" placeholder={p ? 'новый ключ' : 'API-ключ'} autoComplete="off" aria-label={`ключ ${def.label}`}
-                    value={keys[def.id] ?? ''} onChange={e => setKeys({ ...keys, [def.id]: e.target.value })} />
-                </span>
-                <TextInput size="sm" mono placeholder={`модель (${def.defaultModel})`} style={{ width: 180 }} aria-label={`модель ${def.label}`}
-                  value={modelVal} onChange={e => setModels({ ...models, [def.id]: e.target.value })} />
-                <Button size="sm" variant="primary" busy={busy} disabled={!p && !keys[def.id]}
-                  onClick={save(def.id, {
-                    ...(keys[def.id] ? { key: keys[def.id] } : {}),
-                    ...(modelVal !== (p?.model ?? '') ? { model: modelVal } : {}),
-                    ...(!p ? { active: true } : {}),
-                  }, 'провайдер сохранён')}>
-                  Сохранить
-                </Button>
-                {p && !p.active && <Button size="sm" onClick={save(def.id, { active: true }, `активен ${def.label}`)}>Сделать активным</Button>}
-                {p && <Button size="sm" variant="quiet" onClick={act(() => api.checkModel(def.id), 'ключ проверен')}>Проверить</Button>}
-                {p && <Button size="sm" variant="danger" onClick={act(() => api.deleteModel(def.id), 'провайдер удалён')}>Удалить</Button>}
-              </div>
-            </div>
-          )
-        })}
-        <div className="muted" style={{ fontSize: 11.5, marginTop: 8 }}>
-          Ключ хранится зашифрованным и повторно не показывается. При сохранении он проверяется запросом списка моделей у провайдера.
-          {source === 'none' && !providers.length && <> Если ключа шифрования установки нет, сохранение ответит подсказкой.</>}
-        </div>
-      </div>
-    </>
-  )
-}
-
 // ─── Аудит ──────────────────────────────────────────────────────────────
 
 const AUDIT_TYPES = ['', 'user.bootstrap', 'user.created', 'user.admin_changed', 'user.state_changed', 'user.password_reset',
-  'runner.registered', 'runner_token.created', 'runner_token.revoked', 'llm_provider.updated', 'llm_provider.removed']
+  'runner.registered', 'runner_token.created', 'runner_token.revoked',
+  'connection.created', 'connection.updated', 'connection.deleted', 'connection.key_replaced', 'connection.checked', 'connection.discovered', 'planner.model_changed']
 
 function AuditTab() {
   const [events, setEvents] = useState<Event[]>([])
@@ -400,7 +318,7 @@ function StatusTab() {
 
   if (err) return <FormNote err={err} />
   if (!st) return <div className="muted">Загрузка…</div>
-  const planner = st.components.find(c => c.name === 'planner')?.data as { source?: string; provider?: string; model?: string } | undefined
+  const planner = st.components.find(c => c.name === 'planner')?.data as { source?: string; connection_id?: string; model?: string } | undefined
   const runners = st.components.find(c => c.name === 'runners')?.data as { online?: number; total?: number } | undefined
   return (
     <>
@@ -409,7 +327,7 @@ function StatusTab() {
         <div className="mini-stat"><div className="v">{st.version}</div><div className="l">Версия сборки</div></div>
         <div className="mini-stat"><div className="v">v{st.protocol_version}</div><div className="l">Протокол runner’ов</div></div>
         <div className="mini-stat"><div className="v">{runners?.online ?? 0}<em>/ {runners?.total ?? 0}</em></div><div className="l">Runner’ы в сети</div></div>
-        <div className="mini-stat"><div className="v" style={{ fontSize: 13 }}>{planner?.source === 'none' ? '—' : `${planner?.provider}`}<em>{planner?.source === 'env' ? 'окружение' : planner?.source === 'db' ? 'консоль' : ''}</em></div><div className="l">Модель: {planner?.model || 'не настроена'}</div></div>
+        <div className="mini-stat"><div className="v" style={{ fontSize: 13 }}>{planner?.source === 'none' ? '—' : `${planner?.connection_id}`}<em>{planner?.source === 'env' ? 'окружение' : planner?.source === 'catalog' ? 'каталог' : ''}</em></div><div className="l">Модель: {planner?.model || 'не настроена'}</div></div>
       </div>
       <div className="dw-sec">
         <div className="row" style={{ marginBottom: 8 }}>

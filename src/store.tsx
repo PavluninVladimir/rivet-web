@@ -3,7 +3,7 @@ import { api, subscribe, type Attention, type Event, type Project } from './api/
 
 // Маршрут — hash-навигация: #/epics, #/epic/<id>, #/task/<id> поверх epic и т.п.
 // Вкладки раздела «Управление приложением» адресуемы: #/app-management/<tab>.
-export const APP_TABS = ['users', 'runners', 'models', 'policies', 'usage', 'audit', 'status'] as const
+export const APP_TABS = ['users', 'runners', 'connections', 'policies', 'usage', 'audit', 'status'] as const
 export type AppTab = typeof APP_TABS[number]
 // Вкладки настроек проекта: #/project/<id>/settings/<tab> (add-project-settings-tabs).
 export const SETTINGS_TABS = ['general', 'members', 'process', 'policies', 'environments'] as const
@@ -26,7 +26,9 @@ function parseHash(): Route {
     return { view: 'project-settings', id: b, tab: (SETTINGS_TABS as readonly string[]).includes(d) ? d as SettingsTab : 'general' }
   }
   if (a === 'app-management') {
-    return { view: 'app-management', tab: (APP_TABS as readonly string[]).includes(b) ? b as AppTab : 'users' }
+    // Старый адрес вкладки «Модели» ведёт на «Подключения» (add-model-connections).
+    const tab = b === 'models' ? 'connections' : b
+    return { view: 'app-management', tab: (APP_TABS as readonly string[]).includes(tab) ? tab as AppTab : 'users' }
   }
   if (a === 'projects' || a === 'tasks' || a === 'team' || a === 'runners' || a === 'activity'
     || a === 'usage' || a === 'profile' || a === 'mysteps') return { view: a }
