@@ -1,0 +1,355 @@
+import { useCallback, useEffect, useState } from 'react'
+import { api, type Event, type RunnerToken, type SystemStatus, type User } from '../api/client'
+import { fmtAgo, fmtDate, SecretOnce, statusColor, Tabs, timeShort } from '../components/ui'
+import { InstallationPolicyPanel } from '../components/PolicyPanel'
+import { Button, Checkbox, Field, FormActions, FormNote, PasswordInput, Select, TextInput, errText, useBusy } from '../components/form'
+import { useStore, type AppTab } from '../store'
+import { UsageView } from './UsageView'
+import { ConnectionsTab } from './ConnectionsTab'
+import { AgentsTab } from './AgentsTab'
+
+// Раздел «Управление приложением» (спека web): настройки уровня установки,
+// адресуемые вкладки #/app-management/<tab>. Вкладка «Политики» — место
+// прототиповского Settings (orchestrator policy): пресеты установки.
+
+const TABS: { id: AppTab; label: string }[] = [
+  { id: 'users', label: 'Пользователи' }, { id: 'runners', label: 'Runner’ы' },
+  { id: 'agents', label: 'Агенты' }, { id: 'connections', label: 'Подключения' }, { id: 'policies', label: 'Политики' },
+  { id: 'usage', label: 'Usage' },
+  { id: 'audit', label: 'Аудит' }, { id: 'status', label: 'Состояние' },
+]
+
+export function AppManagement({ me, tab }: { me: User; tab: AppTab }) {
+  const { nav, refreshProjects } = useStore()
+  return (
+    <div className="page">
+      <div className="page-head">
+        <h1>Управление приложением</h1>
+        <span className="sub">настройки уровня установки</span>
+      </div>
+      <Tabs tabs={TABS} active={tab} onChange={t => nav({ view: 'app-management', tab: t })} />
+      {tab === 'users' && <UsersTab me={me} />}
+      {tab === 'runners' && <RunnerTokensTab />}
+      {tab === 'agents' && <AgentsTab />}
+      {tab === 'connections' && <ConnectionsTab />}
+      {tab === 'policies' && <InstallationPolicyPanel onSaved={refreshProjects} />}
+      {tab === 'usage' && <UsageView scope="installation" defaultGroup="project" title="Usage установки" sub="все проекты, метеринг установки" />}
+      {tab === 'audit' && <AuditTab />}
+      {tab === 'status' && <StatusTab />}
+    </div>
+  )
+}
+
+// Общий помощник действий: ошибка и заметка над вкладкой.
+export function useActions(refresh: () => void) {
+  const [err, setErr] = useState('')
+  const [note, setNote] = useState('')
+  const [busy, run] = useBusy()
+  const act = (fn: () => Promise<unknown>, msg = '') => () => run(async () => {
+    setErr(''); setNote('')
+    try { await fn(); setNote(msg); refresh() } catch (e) { setErr(errText(e)) }
+  })
+  const banner = (err || note) ? <div style={{ marginBottom: 8 }}><FormNote err={err || undefined} ok={note || undefined} /></div> : null
+  return { act, banner, busy }
+}
+
+// ─── Пользователи ───────────────────────────────────────────────────────
+
+function UsersTab({ me }: { me: User }) {
+  const [users, setUsers] = useState<User[]>([])
+  // Одноразовый пароль показывается ровно один раз (спека web).
+  const [oneTime, setOneTime] = useState<{ login: string; password: string } | null>(null)
+  const [form, setForm] = useState({ login: '', name: '', password: '', admin: false })
+
+  const refresh = useCallback(() => {
+    api.users().then(u => setUsers(u ?? [])).catch(() => {})
+  }, [])
+  useEffect(refresh, [refresh])
+  const { act, banner, busy } = useActions(refresh)
+
+  // Последний активный администратор: у него действия «снять права» и
+  // «отключить» недоступны, а не отклоняются после нажатия.
+  const activeAdmins = users.filter(u => u.admin && !u.disabled).length
+  const locked = (u: User) => u.admin && !u.disabled && activeAdmins <= 1
+
+  return (
+    <>
+      {banner}
+      {oneTime && (
+        <SecretOnce title={`Одноразовый пароль для ${oneTime.login}`} secret={oneTime.password}
+          hint="Показывается один раз. Пользователь войдёт с ним и должен будет сменить пароль."
+          onHide={() => setOneTime(null)} />
+      )}
+      <div className="dw-sec">
+        <h3>Пользователи</h3>
+        <div className="sess-list">
+          {users.map(u => (
+            <div className="sess-row" key={u.id}>
+              <span className="mono">{u.login}</span>
+              <span className="sess-agent">{u.name}</span>
+              {u.admin && <span className="chip"><span className="n">админ</span></span>}
+              <span className={u.disabled ? 'muted' : ''}>{u.disabled ? 'отключён' : 'активен'}</span>
+              <Button size="sm" variant="quiet" disabled={locked(u)}
+                title={locked(u) ? 'последний администратор установки' : ''}
+                onClick={act(() => api.patchUser(u.id, { admin: !u.admin }),
+                  u.admin ? 'права администратора сняты' : 'права администратора выданы')}>
+                {u.admin ? 'Снять админа' : 'Сделать админом'}
+              </Button>
+              <Button size="sm" variant="quiet"
+                onClick={act(async () => {
+                  const { password } = await api.resetPassword(u.id)
+                  setOneTime({ login: u.login, password })
+                }, 'пароль сброшен')}>
+                Сбросить пароль
+              </Button>
+              <Button size="sm" variant={u.disabled ? 'default' : 'danger'} disabled={locked(u)}
+                title={locked(u) ? 'последний администратор установки' : ''}
+                onClick={act(() => api.patchUser(u.id, { disabled: !u.disabled }),
+                  u.disabled ? 'пользователь включён' : 'пользователь отключён')}>
+                {u.disabled ? 'Включить' : 'Отключить'}
+              </Button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="dw-sec f-form" style={{ maxWidth: 760 }}>
+        <h3>Новый пользователь</h3>
+        <div className="f-grid">
+          <Field label="Логин" hint="латиница, цифры, «._-»">
+            {ids => <TextInput ids={ids} mono placeholder="Логин" value={form.login} onChange={e => setForm({ ...form, login: e.target.value })} />}
+          </Field>
+          <Field label="Имя" optional>
+            {ids => <TextInput ids={ids} placeholder="Имя" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />}
+          </Field>
+          <Field label="Пароль" hint="не короче 8 символов; пользователь сменит его при первом входе">
+            {ids => <PasswordInput ids={ids} placeholder="Пароль (от 8 символов)" autoComplete="new-password" value={form.password}
+              onChange={e => setForm({ ...form, password: e.target.value })} />}
+          </Field>
+          <Field label="Права">
+            {() => <div style={{ height: 'var(--f-h)', display: 'flex', alignItems: 'center' }}>
+              <Checkbox checked={form.admin} label="администратор установки" onChange={v => setForm({ ...form, admin: v })} />
+            </div>}
+          </Field>
+        </div>
+        <FormActions>
+          <Button variant="primary" size="sm" busy={busy} disabled={!form.login || form.password.length < 8}
+            onClick={act(async () => {
+              await api.createUser(form)
+              setForm({ login: '', name: '', password: '', admin: false })
+            }, 'пользователь создан')}>
+            Создать
+          </Button>
+        </FormActions>
+        <div className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>
+          Вы вошли как {me.login}. Свой пароль и токены — на странице профиля.
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ─── Runner'ы: токены регистрации ───────────────────────────────────────
+
+function RunnerTokensTab() {
+  const [tokens, setTokens] = useState<RunnerToken[]>([])
+  const [created, setCreated] = useState<{ name: string; secret: string } | null>(null)
+  const [form, setForm] = useState({ name: '', expires: '' })
+  // Адрес протокола и TLS — из состояния установки, чтобы команда запуска
+  // runner'а была верной для нестандартного порта и TLS-only установки.
+  const [plane, setPlane] = useState<{ addr: string; tls: boolean }>({ addr: `${location.hostname}:8090`, tls: false })
+  const refresh = useCallback(() => {
+    api.runnerTokens().then(t => setTokens(t ?? [])).catch(() => {})
+    api.systemStatus().then(s => {
+      const d = s.components.find(c => c.name === 'runners')?.data as { grpc_addr?: string; tls?: boolean } | undefined
+      if (!d?.grpc_addr) return
+      // Адрес прослушивания вида ":8090", "0.0.0.0:8090" или "[::]:8090" —
+      // подставляем хост консоли; порт — после последнего двоеточия.
+      const i = d.grpc_addr.lastIndexOf(':')
+      const host = i >= 0 ? d.grpc_addr.slice(0, i) : d.grpc_addr
+      const port = i >= 0 ? d.grpc_addr.slice(i + 1) : ''
+      const wildcard = host === '' || host === '0.0.0.0' || host === '[::]' || host === '::'
+      const h = wildcard ? location.hostname : host
+      setPlane({ addr: port ? `${h}:${port}` : d.grpc_addr, tls: !!d.tls })
+    }).catch(() => {})
+  }, [])
+  useEffect(refresh, [refresh])
+  const { act, banner, busy } = useActions(refresh)
+
+  // Действующий — не отозван и не просрочен: бэкенд отклоняет и те, и другие.
+  const expired = (t: RunnerToken) => !!t.expires_at && new Date(t.expires_at).getTime() <= Date.now()
+  const active = tokens.filter(t => !t.revoked_at && !expired(t))
+  const revoked = tokens.filter(t => t.revoked_at || expired(t))
+
+  const row = (t: RunnerToken) => (
+    <tr key={t.id} className={t.revoked_at || expired(t) ? 'muted' : ''}>
+      <td>{t.name}</td>
+      <td className="mono muted">{t.prefix}…</td>
+      <td className="muted">{fmtDate(t.created_at)} · {t.created_by}</td>
+      <td className="muted">{t.expires_at ? fmtDate(t.expires_at) : 'бессрочно'}</td>
+      <td className="muted">{t.last_used_at ? fmtAgo(t.last_used_at) : 'не использовался'}</td>
+      <td style={{ textAlign: 'right' }}>
+        {t.revoked_at
+          ? <span className="muted" style={{ fontSize: 11 }}>отозван {fmtDate(t.revoked_at)}</span>
+          : expired(t)
+            ? <span className="muted" style={{ fontSize: 11 }}>истёк</span>
+            : <Button size="sm" variant="danger" onClick={act(() => api.revokeRunnerToken(t.id), 'токен отозван: новые подключения по нему отклоняются')}>Отозвать</Button>}
+      </td>
+    </tr>
+  )
+
+  return (
+    <>
+      {banner}
+      {created && (
+        <SecretOnce title={`Токен регистрации «${created.name}»`} secret={created.secret}
+          hint="Показывается один раз. Передайте его runner'ам через RIVET_RUNNER_TOKEN или флаг -token."
+          onHide={() => setCreated(null)} />
+      )}
+      <div className="dw-sec">
+        <h3>Токены регистрации</h3>
+        <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
+          Runner подключается к control plane только с токеном регистрации. Один токен можно раздать нескольким runner'ам.
+          Отзыв закрывает новые подключения, уже открытые соединения доживают до обрыва: для немедленного вывода используйте drain.
+        </div>
+        <table className="tbl">
+          <thead><tr><th>Имя</th><th>Префикс</th><th>Создан</th><th>Срок</th><th>Использован</th><th></th></tr></thead>
+          <tbody>
+            {active.map(row)}
+            {active.length === 0 && <tr><td colSpan={6} className="muted">Действующих токенов нет — runner'ы не смогут подключиться.</td></tr>}
+            {revoked.map(row)}
+          </tbody>
+        </table>
+      </div>
+      <div className="dw-sec f-form" style={{ maxWidth: 760 }}>
+        <h3>Новый токен</h3>
+        <div className="f-grid" style={{ gridTemplateColumns: '1fr auto auto', alignItems: 'end' }}>
+          <Field label="Имя">
+            {ids => <TextInput ids={ids} placeholder="Имя (например, office-fleet)" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />}
+          </Field>
+          <Field label="Срок действия" optional>
+            {ids => <TextInput ids={ids} type="datetime-local" title="срок действия (пусто — бессрочно)" value={form.expires}
+              onChange={e => setForm({ ...form, expires: e.target.value })} />}
+          </Field>
+          <Button variant="primary" busy={busy} disabled={!form.name}
+            onClick={act(async () => {
+              const res = await api.createRunnerToken(form.name, form.expires ? new Date(form.expires).toISOString() : undefined)
+              setCreated({ name: res.token.name, secret: res.secret })
+              setForm({ name: '', expires: '' })
+            }, 'токен создан')}>
+            Создать
+          </Button>
+        </div>
+        <div className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>
+          Запуск runner'а на хосте с рабочими копиями:
+        </div>
+        <pre className="mono" style={{ fontSize: 11.5, marginTop: 4, whiteSpace: 'pre-wrap' }}>
+          {`RIVET_RUNNER_TOKEN=rrt_… rivet-runner -plane ${plane.addr}${plane.tls ? ' -tls' : ''} -id <имя> -agent claude-code -caps coding`}
+        </pre>
+        <div className="muted" style={{ fontSize: 11.5 }}>
+          {plane.tls
+            ? <>Протокол под TLS: для своего корневого сертификата добавьте <span className="mono">-tls-ca</span>.</>
+            : <>Протокол без TLS: токен идёт открытым текстом, порт должен быть закрыт периметром (включается <span className="mono">RIVET_GRPC_TLS_CERT/KEY</span> на rivetd).</>}
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ─── Аудит ──────────────────────────────────────────────────────────────
+
+const AUDIT_TYPES = ['', 'user.bootstrap', 'user.created', 'user.admin_changed', 'user.state_changed', 'user.password_reset',
+  'runner.registered', 'runner_token.created', 'runner_token.revoked',
+  'connection.created', 'connection.updated', 'connection.deleted', 'connection.key_replaced', 'connection.checked', 'connection.discovered', 'planner.model_changed',
+  'agent.created', 'agent.updated', 'agent.deleted', 'runner.secrets_delivered']
+
+function AuditTab() {
+  const [events, setEvents] = useState<Event[]>([])
+  const [type, setType] = useState('')
+  const [err, setErr] = useState('')
+  const [more, setMore] = useState(true)
+  const PAGE = 100
+
+  const load = useCallback((after?: number) => {
+    api.events({ scope: 'installation', type: type || undefined, cursor: after, limit: PAGE }).then(e => {
+      const batch = e ?? []
+      setMore(batch.length === PAGE)
+      setEvents(cur => after ? [...cur, ...batch] : batch)
+      setErr('')
+    }).catch(e => setErr(errText(e)))
+  }, [type])
+  useEffect(() => { load() }, [load])
+
+  const last = events[events.length - 1]?.ID
+  return (
+    <>
+      {err && <div style={{ marginBottom: 8 }}><FormNote err={err} /></div>}
+      <div className="filters">
+        <Select size="sm" aria-label="тип события" value={type} onChange={e => setType(e.target.value)}>
+          {AUDIT_TYPES.map(t => <option key={t} value={t}>{t || 'все типы'}</option>)}
+        </Select>
+        <Button size="sm" onClick={() => load()}>Обновить</Button>
+        <span className="muted" style={{ fontSize: 11.5 }}>события уровня установки: учётные записи, runner'ы, токены, ключи моделей</span>
+      </div>
+      {events.map(e => (
+        <div key={e.ID} className="act-row">
+          <span className="t" title={fmtDate(e.TS)}>{fmtDate(e.TS).slice(0, 10)} {timeShort(e.TS)}</span>
+          <span className="who">{e.ActorKind}{e.ActorID ? `:${e.ActorID}` : ''}</span>
+          <span><span className="mono muted" style={{ fontSize: 11, marginRight: 6 }}>{e.Type}</span>{e.Text}</span>
+        </div>
+      ))}
+      {events.length === 0 && <div className="muted">Событий нет.</div>}
+      {more && last && <Button size="sm" style={{ marginTop: 8 }} onClick={() => load(last)}>Показать ещё</Button>}
+    </>
+  )
+}
+
+// ─── Состояние ──────────────────────────────────────────────────────────
+
+const COMPONENT_LABEL: Record<string, string> = {
+  database: 'База данных', blob: 'Хранилище транскриптов', secrets: 'Ключ шифрования',
+  planner: 'Модель декомпозиции', policy: 'Движок политик', runners: 'Runner’ы',
+}
+
+function StatusTab() {
+  const [st, setSt] = useState<SystemStatus | null>(null)
+  const [err, setErr] = useState('')
+  const load = useCallback(() => {
+    api.systemStatus().then(s => { setSt(s); setErr('') }).catch(e => setErr(errText(e)))
+  }, [])
+  useEffect(load, [load])
+
+  if (err) return <FormNote err={err} />
+  if (!st) return <div className="muted">Загрузка…</div>
+  const planner = st.components.find(c => c.name === 'planner')?.data as { source?: string; connection_id?: string; model?: string } | undefined
+  const runners = st.components.find(c => c.name === 'runners')?.data as { online?: number; total?: number } | undefined
+  return (
+    <>
+      <div className="stat-strip">
+        <div className="mini-stat"><div className="v" style={{ color: statusColor(st.status) }}>{st.status.toUpperCase()}</div><div className="l">Общее состояние</div></div>
+        <div className="mini-stat"><div className="v">{st.version}</div><div className="l">Версия сборки</div></div>
+        <div className="mini-stat"><div className="v">v{st.protocol_version}</div><div className="l">Протокол runner’ов</div></div>
+        <div className="mini-stat"><div className="v">{runners?.online ?? 0}<em>/ {runners?.total ?? 0}</em></div><div className="l">Runner’ы в сети</div></div>
+        <div className="mini-stat"><div className="v" style={{ fontSize: 13 }}>{planner?.source === 'none' ? '—' : `${planner?.connection_id}`}<em>{planner?.source === 'env' ? 'окружение' : planner?.source === 'catalog' ? 'каталог' : ''}</em></div><div className="l">Модель: {planner?.model || 'не настроена'}</div></div>
+      </div>
+      <div className="dw-sec">
+        <div className="row" style={{ marginBottom: 8 }}>
+          <h3 style={{ margin: 0 }}>Компоненты</h3>
+          <Button size="sm" style={{ marginLeft: 'auto' }} onClick={load}>Обновить</Button>
+        </div>
+        <div className="status-grid">
+          {st.components.map(c => (
+            <div key={c.name} style={{ display: 'contents' }}>
+              <span>{COMPONENT_LABEL[c.name] ?? c.name}</span>
+              <span className="st-dot" style={{ color: statusColor(c.status) }}>{c.status}</span>
+              <span className="muted">{c.detail}</span>
+            </div>
+          ))}
+        </div>
+        <div className="muted" style={{ fontSize: 11.5, marginTop: 10 }}>
+          Запущен {fmtDate(st.started_at)}. Публичная проверка <span className="mono">/api/v1/health</span> отвечает по базе данных и деталей не раскрывает.
+        </div>
+      </div>
+    </>
+  )
+}

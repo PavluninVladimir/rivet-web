@@ -1,0 +1,146 @@
+/* Система элементов форм (redesign-console-forms, спека clients/web
+   «Система элементов форм», «Раскладка форм»). Расширяет токены прототипа:
+   поле — нейтральное углубление с рамкой, акцент только на фокусе и
+   основной кнопке, ошибка — рамка плюс текст под полем. */
+:root {
+  --f-h: 30px; --f-h-sm: 24px; --f-h-lg: 36px;
+  --f-pad: 9px;
+  --f-bg: color-mix(in oklch, var(--bg) 85%, black);
+  --f-border: color-mix(in oklch, var(--border) 70%, var(--muted));
+  --f-border-hover: color-mix(in oklch, var(--border) 35%, var(--muted));
+  --f-ring: 0 0 0 1px var(--bg), 0 0 0 3px var(--accent);
+  --f-err: var(--c-block);
+  --f-err-ring: 0 0 0 1px var(--bg), 0 0 0 3px color-mix(in oklch, var(--c-block) 70%, transparent);
+  --f-ok: var(--c-done);
+  --f-fs: 12.5px;
+}
+
+/* ─── базовые элементы: все input/select/textarea консоли ───────────── */
+input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='submit']):not([type='button']):not([type='reset']):not([type='file']):not([type='color']):not([type='image']),
+select, textarea {
+  height: var(--f-h); padding: 0 var(--f-pad);
+  background: var(--f-bg); color: var(--fg);
+  border: 1px solid var(--f-border); border-radius: var(--r);
+  font: 400 var(--f-fs)/1.4 var(--font-ui);
+  transition: border-color .12s, box-shadow .12s, background-color .12s;
+  min-width: 0;
+}
+textarea { height: auto; min-height: calc(var(--f-h) * 2); padding: 7px var(--f-pad); resize: vertical; line-height: 1.45; }
+@supports (field-sizing: content) {
+  textarea.f-auto { field-sizing: content; resize: none; max-height: 40vh; }
+}
+input::placeholder, textarea::placeholder { color: color-mix(in oklch, var(--muted) 70%, transparent); }
+input:hover:not(:disabled):not(:focus-visible), select:hover:not(:disabled):not(:focus-visible),
+textarea:hover:not(:disabled):not(:focus-visible) { border-color: var(--f-border-hover); }
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: none; border-color: var(--accent); box-shadow: var(--f-ring);
+}
+input:disabled, select:disabled, textarea:disabled { opacity: .55; cursor: not-allowed; background: var(--surface); }
+input:read-only:not(:disabled), textarea:read-only:not(:disabled) { background: var(--surface); border-style: dashed; }
+input[aria-invalid='true'], select[aria-invalid='true'], textarea[aria-invalid='true'] { border-color: var(--f-err); }
+input[aria-invalid='true']:focus-visible, select[aria-invalid='true']:focus-visible,
+textarea[aria-invalid='true']:focus-visible { box-shadow: var(--f-err-ring); }
+input.mono, textarea.mono { font-family: var(--font-mono); }
+input[type='number'] { font-variant-numeric: tabular-nums; }
+input[type='number']::-webkit-inner-spin-button { opacity: .5; }
+
+/* Селект: своя стрелка, нативный тёмный список. */
+select {
+  appearance: none; -webkit-appearance: none; padding-right: 26px; cursor: pointer; color-scheme: dark;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23999' stroke-width='1.5' stroke-linecap='round'/></svg>");
+  background-repeat: no-repeat; background-position: right 9px center;
+}
+select option { background: var(--surface); color: var(--fg); }
+select[multiple] { height: auto; padding: 4px; background-image: none; }
+select[multiple] option { padding: 3px 6px; border-radius: 3px; }
+select[multiple] option:checked { background: color-mix(in oklch, var(--accent) 25%, var(--surface)); }
+
+/* Чекбокс и radio — акцентный цвет, кольцо фокуса как у полей. */
+input[type='checkbox'], input[type='radio'] {
+  accent-color: var(--accent); width: 14px; height: 14px; margin: 0; cursor: pointer; vertical-align: -2px;
+}
+input[type='checkbox']:focus-visible, input[type='radio']:focus-visible { outline: none; box-shadow: var(--f-ring); border-radius: 3px; }
+input[type='checkbox']:disabled, input[type='radio']:disabled { cursor: not-allowed; opacity: .55; }
+
+/* Размеры. */
+.f-sm, input.f-sm, select.f-sm { height: var(--f-h-sm); font-size: 11.5px; padding: 0 7px; }
+select.f-sm { padding-right: 22px; }
+.f-lg, input.f-lg, select.f-lg { height: var(--f-h-lg); font-size: 13.5px; padding: 0 11px; }
+.f-full { width: 100%; }
+
+/* ─── поле с подписью ────────────────────────────────────────────────── */
+.f-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.f-field > label, .f-label { font-size: 12px; font-weight: 500; color: var(--fg); display: flex; gap: 6px; align-items: baseline; }
+.f-label .f-opt { font-weight: 400; font-size: 11px; color: var(--muted); }
+.f-hint { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+.f-error { font-size: 11.5px; color: var(--f-err); line-height: 1.4; display: flex; gap: 5px; align-items: baseline; }
+.f-error::before { content: '!'; flex: none; display: inline-grid; place-items: center; width: 13px; height: 13px;
+  border-radius: 50%; border: 1px solid currentColor; font: 700 9px var(--font-mono); }
+.f-field.inline { flex-direction: row; align-items: center; gap: 8px; }
+.f-field.inline > label { flex: none; }
+
+/* Раскладка формы: одна колонка, две на широких. */
+.f-form { display: flex; flex-direction: column; gap: 12px; }
+.f-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+@media (min-width: 900px) { .f-grid { grid-template-columns: 1fr 1fr; } .f-grid .span2 { grid-column: 1 / -1; } }
+.f-actions { display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 4px; }
+.f-actions .f-note { margin-right: auto; }
+.f-note { font-size: 12px; line-height: 1.4; }
+.f-note.ok { color: var(--f-ok); }
+.f-note.err { color: var(--f-err); }
+.f-note.muted { color: var(--muted); }
+
+/* Обёртки с кнопкой внутри поля (пароль, теги, поиск). */
+.f-wrap { position: relative; display: flex; align-items: center; min-width: 0; }
+.f-wrap > input { flex: 1; padding-right: 34px; }
+.f-wrap .f-eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  height: 22px; padding: 0 6px; border-radius: 4px; color: var(--muted); font-size: 11px; }
+.f-wrap .f-eye:hover { color: var(--fg); background: var(--fg-soft); }
+.f-wrap .f-eye:focus-visible { outline: none; box-shadow: var(--f-ring); }
+
+/* Поле-теги. */
+.f-tags { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; min-height: var(--f-h); padding: 3px var(--f-pad) 3px 5px;
+  background: var(--f-bg); border: 1px solid var(--f-border); border-radius: var(--r); cursor: text; }
+.f-tags:hover { border-color: var(--f-border-hover); }
+.f-tags:focus-within { border-color: var(--accent); box-shadow: var(--f-ring); }
+.f-tags.invalid { border-color: var(--f-err); }
+.f-tags.disabled { opacity: .55; cursor: not-allowed; background: var(--surface); }
+.f-tag { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 4px 0 7px;
+  border-radius: 4px; background: var(--fg-soft); font: 500 11.5px var(--font-mono); color: var(--fg); }
+.f-tag button { color: var(--muted); padding: 0 3px; border-radius: 3px; line-height: 1; }
+.f-tag button:hover { color: var(--fg); background: var(--fg-soft); }
+.f-tag button:focus-visible { outline: none; box-shadow: var(--f-ring); }
+.f-tags > input { flex: 1; min-width: 80px; height: 20px; padding: 0 4px; background: none; border: 0; box-shadow: none; }
+.f-tags > input:focus-visible { box-shadow: none; }
+
+/* Переключатель (перенос .sw из политик). */
+.f-switch { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; cursor: pointer; }
+.f-switch .sw:focus-visible { outline: none; box-shadow: var(--f-ring); }
+.f-check { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-size: 12.5px; }
+.f-check input:disabled ~ span { opacity: .6; }
+
+/* ─── кнопки: роли и размеры, занятость ─────────────────────────────── */
+.btn { height: var(--f-h); padding: 0 12px; transition: border-color .12s, background-color .12s, color .12s; white-space: nowrap; }
+.btn:focus-visible { outline: none; box-shadow: var(--f-ring); }
+.btn.sm { height: var(--f-h-sm); padding: 0 8px; font-size: 11.5px; }
+.btn.lg { height: var(--f-h-lg); padding: 0 16px; font-size: 13px; }
+.btn.primary:hover { background: color-mix(in oklch, var(--accent) 88%, white); border-color: color-mix(in oklch, var(--accent) 88%, white); }
+.btn.quiet { background: transparent; border-color: transparent; box-shadow: none; color: var(--muted); }
+.btn.quiet:hover { color: var(--fg); background: var(--fg-soft); border-color: transparent; }
+.btn.danger { color: var(--c-block); }
+.btn.danger:hover { border-color: color-mix(in oklch, var(--c-block) 60%, transparent); background: color-mix(in oklch, var(--c-block) 10%, transparent); }
+.btn.danger.primary { background: var(--c-block); border-color: var(--c-block); color: var(--bg); }
+.btn[aria-disabled='true'] { cursor: progress; }
+.btn .f-spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent;
+  animation: f-spin .7s linear infinite; flex: none; }
+@keyframes f-spin { to { transform: rotate(360deg); } }
+.f-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Строка настроек: подпись слева, контрол справа (пресеты, переключатели). */
+.set-row .ctl input:not([type='checkbox']), .set-row .ctl select { height: var(--f-h-sm); font-size: 12px; }
+
+/* Модальные окна и мастер: формы внутри по единой раскладке. */
+.modal input, .modal textarea { width: 100%; }
+.login-card input { width: 100%; }
+.login-card .f-actions { justify-content: stretch; }
+.login-card .f-actions .btn { flex: 1; justify-content: center; }
