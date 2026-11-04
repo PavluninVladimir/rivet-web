@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, stLabel, type Deployment, type EnvConfig, type Environment } from '../api/client'
+import { api, stLabel, type Deployment, type EnvConfig, type Environment, type MonitorConfig, type MonitorState } from '../api/client'
 import { useStore } from '../store'
-import { fmtDuration, timeShort } from './ui'
-import { Button, Field, FormActions, FormNote, Select, TagsInput, TextInput, errText, useBusy } from './form'
+import { fmtAgo, fmtDuration, timeShort } from './ui'
+import { Button, Field, FormActions, FormNote, NumberInput, Select, Switch, TagsInput, TextInput, errText, fieldError, useBusy } from './form'
 
 // Блок «Окружения» проекта (спека web «Окружения проекта»):
 // статус последней публикации, запуск, история с логом, resume после
@@ -112,6 +112,7 @@ export function Environments({ projectId, isAdmin }: { projectId: string; isAdmi
               {last && active(last.status) && (
                 <div className="term sess-term">{deployLogs.get(last.id) || 'ожидание вывода…'}</div>
               )}
+              {env.config.monitor?.enabled && <MonitorLine env={env} />}
               {last?.status === 'failed' || last?.status === 'rolled_back' ? (
                 <div className="env-detail">{last.detail}</div>
               ) : null}
@@ -186,6 +187,7 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
   const [cfg, setCfg] = useState<EnvConfig>(env?.config ?? { deploy_cmd: '' })
   const [caps, setCaps] = useState<string[]>(env?.runner_caps ?? [])
   const [err, setErr] = useState('')
+  const [lastErr, setLastErr] = useState<unknown>(null)
   const [busy, run] = useBusy()
   // Внешний пайплайн исполняет хостинг: команд и хоста у него нет,
   // Verify — проверка URL со стороны Rivet. У Kubernetes команды собирает
@@ -197,11 +199,19 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
 
   const save = () => run(async () => {
     setErr('')
+    // Внешней доставке команды наблюдения недоступны: скрытые поля прежнего
+    // типа не уходят на сервер (иначе 422 по невидимому полю). Выключение
+    // наблюдения меняет только флаг: команды и URL проверки сохраняются до
+    // повторного включения (сервер у выключенного их не проверяет).
+    let config = cfg
+    if ((external || gitops) && cfg.monitor) {
+      config = { ...cfg, monitor: { ...cfg.monitor, check_cmd: undefined, logs_cmd: undefined } }
+    }
     try {
-      if (env) await api.patchEnvironment(env.id, { name, trigger, config: cfg, runner_caps: caps })
-      else await api.createEnvironment(projectId, { name, trigger, exec_type: execType, config: cfg, runner_caps: caps })
+      if (env) await api.patchEnvironment(env.id, { name, trigger, config, runner_caps: caps })
+      else await api.createEnvironment(projectId, { name, trigger, exec_type: execType, config, runner_caps: caps })
       onSaved()
-    } catch (e) { setErr(errText(e)) }
+    } catch (e) { setErr(errText(e)); setLastErr(e) }
   })
   const del = () => run(async () => {
     setErr('')
@@ -267,6 +277,9 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
           </>
         )}
         {text('URL health-check', 'verify_url', 'URL health-check (verify_url)')}
+        <MonitorFields external={external || gitops} value={cfg.monitor}
+          error={(f: string) => fieldError(lastErr, f)}
+          onChange={monitor => setCfg({ ...cfg, monitor })} />
         {!external && !gitops && (
           <Field label="Capabilities runner'а публикации" optional hint="пусто, если подходит любой deploy-runner">
             {ids => <TagsInput ids={ids} value={caps} onChange={setCaps} placeholder="Capability runner'а публикации через запятую (пусто — любой deploy-runner)" />}
@@ -279,5 +292,79 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
         </FormActions>
       </div>
     </div>
+  )
+}
+
+// Последний результат наблюдения на карточке окружения.
+const MON_LABEL: Record<string, string> = { ok: 'проверка проходит', fail: 'проверка падает', unknown: 'результат неизвестен', disabled: 'наблюдение выключено' }
+function MonitorLine({ env }: { env: Environment }) {
+  const [m, setM] = useState<MonitorState | null>(null)
+  const [open, setOpen] = useState(false)
+  // Перечитывание по смене состояния наблюдения и публикации окружения
+  // (список окружений сам обновляется по событиям), при раскрытии строки и
+  // к времени следующей проверки: время последней проверки не устаревает,
+  // а реплей журнала не порождает запросов на каждое событие.
+  const [due, setDue] = useState(0)
+  const seq = useRef(0)
+  useEffect(() => {
+    const n = ++seq.current
+    api.monitor(env.id).then(v => { if (n === seq.current) setM(v) }).catch(() => { if (n === seq.current) setM(null) })
+  }, [env.id, env.monitor_state, env.last_deployment?.status, open, due])
+  useEffect(() => {
+    if (!m?.next_at) return
+    const wait = Date.parse(m.next_at) - Date.now() + 5000
+    if (!Number.isFinite(wait)) return
+    const id = setTimeout(() => setDue(d => d + 1), Math.min(Math.max(wait, 15000), 30 * 60 * 1000))
+    return () => clearTimeout(id)
+  }, [m?.next_at])
+  // Состояние — из списка окружений (свежее), из ответа — детали.
+  const state = env.monitor_state ?? m?.state ?? 'unknown'
+  const lastRun = m?.runs[0]
+  return (
+    <div className={'env-monitor s-' + state}>
+      <button className="em-row" onClick={() => setOpen(o => !o)} aria-expanded={open}>
+        <span className="dot" />
+        <span>{MON_LABEL[state] ?? state}</span>
+        {m?.reason && <span className="muted">· {m.reason}</span>}
+        {m?.last_at && <span className="muted mono">· {fmtAgo(m.last_at)}</span>}
+        {state === 'fail' && m && <span className="muted">· {m.consecutive_fail} подряд</span>}
+      </button>
+      {open && lastRun && <pre className="term sess-term">{lastRun.output || 'вывода нет'}</pre>}
+    </div>
+  )
+}
+
+// Настройки наблюдения в форме окружения: внешней доставке — только URL.
+function MonitorFields({ external, value, onChange, error }: {
+  external: boolean; value?: MonitorConfig; onChange: (m: MonitorConfig | undefined) => void; error: (field: string) => string | undefined
+}) {
+  const m: MonitorConfig = value ?? { enabled: false, interval_min: 10 }
+  const set = (patch: Partial<MonitorConfig>) => onChange({ ...m, ...patch })
+  return (
+    <fieldset className="f-group monitor-fields">
+      <legend>Наблюдение</legend>
+      <Switch on={m.enabled} onChange={enabled => set({ enabled })} label="Проверять работающее приложение" />
+      {error('config.monitor') && <div className="f-error" role="alert">{error('config.monitor')}</div>}
+      {m.enabled && (
+        <>
+          {!external && (
+            <Field label="Команда проверки" hint="выполняет deploy-runner, как команды выкатки" error={error('config.monitor.check_cmd')}>
+              {ids => <TextInput ids={ids} mono placeholder="sh scripts/smoke.sh" value={m.check_cmd ?? ''} onChange={e => set({ check_cmd: e.target.value || undefined })} />}
+            </Field>
+          )}
+          <Field label="URL проверки" optional={!external} hint={external ? 'проверяет Rivet: GET, ответ 2xx' : 'вместо команды: GET, ответ 2xx'} error={error('config.monitor.check_url')}>
+            {ids => <TextInput ids={ids} mono placeholder="https://demo.example.com/api/health" value={m.check_url ?? ''} onChange={e => set({ check_url: e.target.value || undefined })} />}
+          </Field>
+          {!external && (
+            <Field label="Команда логов" optional hint="выполняется только при провале проверки" error={error('config.monitor.logs_cmd')}>
+              {ids => <TextInput ids={ids} mono placeholder="tail -n 200 app.log" value={m.logs_cmd ?? ''} onChange={e => set({ logs_cmd: e.target.value || undefined })} />}
+            </Field>
+          )}
+          <Field label="Интервал, минут" hint="от 1 до 1440" error={error('config.monitor.interval_min')}>
+            {ids => <NumberInput ids={ids} min={1} max={1440} value={m.interval_min || 10} onChange={e => set({ interval_min: Number(e.target.value) })} />}
+          </Field>
+        </>
+      )}
+    </fieldset>
   )
 }

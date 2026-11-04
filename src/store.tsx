@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ApiError, api, subscribe, type AgentRole, type Attention, type Event, type OverviewPeriod, type Project, type Runner, type TeamAgent } from './api/client'
+import { ApiError, api, subscribe, type AgentRole, type Attention, type CyclePeriod, type CyclePhaseId, type Event, type OverviewPeriod, type Project, type Runner, type TeamAgent } from './api/client'
 import { parsePeriod, throttleWithRecheck } from './components/overviewLogic'
 import { isAgentWorkEvent } from './components/roleLabels'
+import { isPhase } from './components/cycleGeometry'
 
 // Не чаще раза в столько миллисекунд команда и runner'ы перечитываются по
 // занятости агентов установки.
@@ -26,10 +27,21 @@ export type Route =
   // Исследование продукта (add-product-discovery): runId — открытая версия
   // из истории, без него показывается текущая.
   | { view: 'discovery'; runId?: string }
+  // Цикл разработки проекта (add-sdlc-cycle): фаза и период в адресе.
+  | { view: 'cycle'; id: string; phase?: CyclePhaseId; period?: CyclePeriod }
+  | { view: 'releases'; id?: string } | { view: 'incidents'; id?: string }
+
+const PERIODS: CyclePeriod[] = ['today', '7d', '30d']
 
 function parseHash(): Route {
-  const h = location.hash.replace(/^#\/?/, '')
+  const [h, query = ''] = location.hash.replace(/^#\/?/, '').split('?')
   const [a, b, c, d] = h.split('/')
+  if (a === 'project' && b && c === 'cycle') {
+    const q = new URLSearchParams(query)
+    const phase = q.get('phase'), period = q.get('period') as CyclePeriod | null
+    return { view: 'cycle', id: b, phase: isPhase(phase) ? phase : undefined, period: period && PERIODS.includes(period) ? period : undefined }
+  }
+  if (a === 'releases' || a === 'incidents') return b ? { view: a, id: b } : { view: a }
   if (a === 'epic' && b) {
     return c === 'task' && d ? { view: 'epic', id: b, taskId: d } : { view: 'epic', id: b }
   }
@@ -49,6 +61,14 @@ function parseHash(): Route {
 }
 
 export function routeHash(r: Route): string {
+  if (r.view === 'cycle') {
+    const q = new URLSearchParams()
+    if (r.phase) q.set('phase', r.phase)
+    if (r.period) q.set('period', r.period)
+    const qs = q.toString()
+    return `#/project/${r.id}/cycle${qs ? '?' + qs : ''}`
+  }
+  if (r.view === 'releases' || r.view === 'incidents') return r.id ? `#/${r.view}/${r.id}` : `#/${r.view}`
   if (r.view === 'epic') return r.taskId ? `#/epic/${r.id}/task/${r.taskId}` : `#/epic/${r.id}`
   if (r.view === 'project-settings') return r.tab === 'general' ? `#/project/${r.id}/settings` : `#/project/${r.id}/settings/${r.tab}`
   if (r.view === 'app-management') return `#/app-management/${r.tab}`
@@ -59,7 +79,8 @@ export function routeHash(r: Route): string {
 
 interface Store {
   route: Route
-  nav: (r: Route) => void
+  // replace — без новой записи в истории браузера (перебор фаз стрелками).
+  nav: (r: Route, opts?: { replace?: boolean }) => void
   projects: Project[]
   projectId: string | null
   setProjectId: (id: string) => void
@@ -68,11 +89,19 @@ interface Store {
   mySteps: number
   connected: boolean
   tick: number            // растёт на каждом SSE-событии — зависимость для рефетчей
+  // eventTick — только события проекта (без чанков логов) и переподключения:
+  // зависимость перечитываний, которым логи не нужны.
+  eventTick: number
   lastEvent: Event | null
   // discoveryTick растёт на каждом событии исследования и декомпозиции и
   // при переподключении (add-product-discovery). В отличие от lastEvent
   // не теряет события, пришедшие одной пачкой.
   discoveryTick: number
+  // recent — последние события проекта из потока, новые первыми (лента цикла).
+  recent: Event[]
+  // reconnects — число переподключений потока (первое подключение не
+  // считается): экран цикла перечитывает агрегат и историю.
+  reconnects: number
   logs: Map<string, string> // live-лог по задачам (только текущее подключение)
   deployLogs: Map<string, string> // live-лог публикаций по deployment_id
   refreshProjects: () => void
@@ -114,8 +143,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [runners, setRunners] = useState<Runner[]>([])
   const [connected, setConnected] = useState(false)
   const [tick, setTick] = useState(0)
+  const [eventTick, setEventTick] = useState(0)
+  const opened = useRef(false)
   const [lastEvent, setLastEvent] = useState<Event | null>(null)
   const [discoveryTick, setDiscoveryTick] = useState(0)
+  const [recent, setRecent] = useState<Event[]>([])
+  const [reconnects, setReconnects] = useState(0)
   const logsRef = useRef(new Map<string, string>())
   const listenersRef = useRef(new Set<(e: Event) => void>())
   const listen = useCallback((fn: (e: Event) => void) => {
@@ -125,7 +158,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [overviewAvailable, setOverviewAvailable] = useState(true)
   const deployLogsRef = useRef(new Map<string, string>())
 
-  const nav = useCallback((r: Route) => { location.hash = routeHash(r) }, [])
+  const nav = useCallback((r: Route, opts?: { replace?: boolean }) => {
+    if (opts?.replace) {
+      // replaceState не шлёт hashchange: маршрут обновляется сам.
+      history.replaceState(history.state, '', routeHash(r))
+      setRoute(parseHash())
+      return
+    }
+    location.hash = routeHash(r)
+  }, [])
   useEffect(() => {
     const onHash = () => setRoute(parseHash())
     addEventListener('hashchange', onHash)
@@ -211,13 +252,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           return
         }
         setLastEvent(e)
+        setRecent(r => (r.some(x => x.ID === e.ID) ? r : [e, ...r].slice(0, 60)))
         setTick(t => t + 1)
+        setEventTick(t => t + 1)
         for (const fn of listenersRef.current) fn(e)
         if (DISCOVERY_RELOAD.test(e.Type)) setDiscoveryTick(t => t + 1)
         // policy.decision пишется, когда движок не дал решения: вместе с
         // ним появляется эскалация уровня проекта, своего события у неё нет.
+        // Лимит сопровождения создаёт эскалацию OPS_LIMIT вместе с инцидентом.
         if (e.Type.startsWith('attention') || e.Type === 'task.status'
-          || e.Type === 'deploy.status' || e.Type === 'policy.decision') refreshAttention()
+          || e.Type === 'deploy.status' || e.Type === 'policy.decision' || e.Type.startsWith('incident.')) refreshAttention()
         if (e.Type === 'task.status' || e.Type === 'task.step' || e.Type === 'task.verdict'
           || e.Type === 'task.assign') refreshMySteps()
         // Бюджет и политика живут в DTO проекта: пауза по бюджету и новая
@@ -234,6 +278,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (e.Type === 'runner.renamed') { refreshRunners(); refreshTeam() }
         // Декомпозиция: Тимлид занят, пока не придёт итог плана.
         if (e.Type === 'epic.decomposing' || e.Type === 'epic.decomposed' || e.Type === 'epic.plan_failed') refreshTeam()
+        // Релиз-инженер и Инженер сопровождения заняты заданием control plane.
+        if (e.Type === 'ops.job') refreshTeam()
       },
       onLog: (c) => {
         const cur = logsRef.current.get(c.task_id) ?? ''
@@ -251,18 +297,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // каталог перечитывается целиком, а tick заставляет экраны
         // перечитать runner'ов и задачи.
         if (on) {
+          if (opened.current) setReconnects(n => n + 1)
+          opened.current = true
           refreshRoles(); refreshTeam(); refreshRunners(); refreshAttention(); refreshMySteps()
           setTick(t => t + 1)
+          setEventTick(t => t + 1)
           setDiscoveryTick(t => t + 1)
         }
       },
     })
   }, [projectId, refreshAttention, refreshProjects, refreshRoles, refreshTeam, refreshRunners, refreshMySteps, agentWork])
+  // Лента событий относится к выбранному проекту; новый поток — первое
+  // подключение, а не переподключение.
+  useEffect(() => { setRecent([]); opened.current = false }, [projectId])
 
   return (
     <Ctx.Provider value={{
       route, nav, projects, projectId, setProjectId,
-      attention, mySteps, connected, tick, lastEvent, discoveryTick, logs: logsRef.current,
+      attention, mySteps, connected, tick, eventTick, lastEvent, recent, reconnects, discoveryTick, logs: logsRef.current,
       deployLogs: deployLogsRef.current, refreshProjects, refreshAttention, refreshMySteps,
       roles, roleOf, refreshRoles, team, refreshTeam, runners, refreshRunners,
       overviewAvailable, listen,

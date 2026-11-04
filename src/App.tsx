@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, setOnPasswordChangeRequired, setOnUnauthorized, type User } from './api/client'
 import { StoreProvider, useStore, type Route } from './store'
 import { EpicsView } from './views/EpicsView'
@@ -13,6 +13,9 @@ import { RunnersView } from './views/RunnersView'
 import { ActivityView } from './views/ActivityView'
 import { UsageView } from './views/UsageView'
 import { OverviewView } from './views/OverviewView'
+import { CycleView } from './views/CycleView'
+import { ReleasesView } from './views/ReleasesView'
+import { IncidentsView } from './views/IncidentsView'
 import { AppManagement } from './views/AppManagement'
 import { PasswordGate, Profile } from './views/Profile'
 import { Login } from './components/Login'
@@ -22,6 +25,8 @@ const NAV: { view: Route['view']; label: string }[] = [
   { view: 'projects', label: 'Проекты' },
   // Обзор текущего проекта для руководителя (add-project-lead-view).
   { view: 'overview', label: 'Обзор' },
+  // Цикл разработки (add-sdlc-cycle): сразу после «Обзора».
+  { view: 'cycle', label: 'Цикл разработки' },
   // Интервью и бэклог исследования (add-product-discovery).
   { view: 'discovery', label: 'Исследование' },
   { view: 'epics', label: 'Epic’и' },
@@ -31,6 +36,8 @@ const NAV: { view: Route['view']; label: string }[] = [
   { view: 'runners', label: 'Runner’ы' },
   { view: 'activity', label: 'Активность' },
   { view: 'usage', label: 'Usage' },
+  { view: 'releases', label: 'Релизы' },
+  { view: 'incidents', label: 'Инциденты' },
 ]
 
 function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
@@ -51,6 +58,28 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
 
   const project = projects.find(p => p.ID === projectId)
   const open = attention.length
+  // Адрес цикла несёт проект: переход по ссылке переключает проект в
+  // сторе. Синхронизация только при смене проекта в адресе, иначе выбор
+  // проекта селектором сразу откатывался бы к адресу.
+  const routeProject = route.view === 'cycle' ? route.id : null
+  const syncedRoute = useRef<string | null>(null)
+  useEffect(() => {
+    // Ушли с экрана цикла: при возврате «Назад» адрес снова синхронизирует
+    // проект, даже если он тот же, что был.
+    if (!routeProject) { syncedRoute.current = null; return }
+    if (routeProject === syncedRoute.current || !projects.some(p => p.ID === routeProject)) return
+    syncedRoute.current = routeProject
+    if (routeProject !== projectId) setProjectId(routeProject)
+  }, [routeProject, projectId, projects, setProjectId])
+  const pickProject = (id: string) => {
+    setProjectId(id)
+    if (route.view === 'cycle') nav({ view: 'cycle', id, period: route.period })
+  }
+  const go = (v: Route['view']) => {
+    if (v === 'cycle') { if (projectId) nav({ view: 'cycle', id: projectId }) }
+    else if (v === 'overview') nav({ view: 'overview', period: '7d' })
+    else nav({ view: v } as Route)
+  }
 
   return (
     <div id="app">
@@ -63,7 +92,7 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
           {NAV.filter(n => n.view !== 'overview' || overviewAvailable).map(n => (
             <button key={n.view}
               className={'nav-item' + (route.view === n.view || (n.view === 'epics' && route.view === 'epic') ? ' active' : '')}
-              onClick={() => nav(n.view === 'overview' ? { view: 'overview', period: '7d' } : { view: n.view } as Route)}>
+              onClick={() => go(n.view)}>
               {n.label}
               {n.view === 'tasks' && open > 0 && <span className="count warn">{open}</span>}
               {n.view === 'mysteps' && mySteps > 0 && <span className="count warn">{mySteps}</span>}
@@ -91,7 +120,7 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
           </div>
           {projects.length > 1 && (
             <select className="search" style={{ width: '100%', marginTop: 8 }}
-              value={projectId ?? ''} onChange={e => setProjectId(e.target.value)}>
+              value={projectId ?? ''} onChange={e => pickProject(e.target.value)}>
               {projects.map(p => <option key={p.ID} value={p.ID}>{p.Name}</option>)}
             </select>
           )}
@@ -135,6 +164,9 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
           {route.view === 'activity' && <ActivityView />}
           {route.view === 'usage' && <UsageView />}
           {route.view === 'overview' && <OverviewView key={projectId ?? ''} period={route.period} user={user} />}
+          {route.view === 'cycle' && <CycleView key={route.id} projectId={route.id} phase={route.phase} period={route.period} admin={user.admin} />}
+          {route.view === 'releases' && <ReleasesView id={route.id} login={user.login} />}
+          {route.view === 'incidents' && <IncidentsView id={route.id} login={user.login} />}
         </div>
       </div>
 
