@@ -106,37 +106,44 @@ export function ProjectProcessSection({ projectId, isOwner, tick }: { projectId:
   )
 }
 
-export function InstallationProcessSection({ doc, locks, readOnly, onChange }: {
+// Правка графа и правка ограничений приходят родителю разными колбэками:
+// ограничения не должны делать показанный процесс по умолчанию явным
+// (см. withLocks). explicit — процесс установки задан явно: тогда можно
+// вернуться к встроенному, на котором действует tester_agent.
+export function InstallationProcessSection({ doc, locks, readOnly, explicit, onProcessChange, onLocksChange, onResetProcess }: {
   doc: ProcessDoc
   locks: ProcessLocks
   readOnly?: boolean
-  onChange: (doc: ProcessDoc, locks: ProcessLocks) => void
+  explicit?: boolean
+  onProcessChange: (doc: ProcessDoc) => void
+  onLocksChange: (locks: ProcessLocks) => void
+  onResetProcess?: () => void
 }) {
   const [runners, setRunners] = useState<Runner[]>([])
   useEffect(() => { api.runners().then(r => setRunners(r ?? [])).catch(() => {}) }, [])
   const kinds = ['code', 'test', 'review', 'prompt']
   const required = new Set(locks.required_kinds ?? [])
-  // Ограничения без пустых ключей: снятое ограничение исчезает из объекта,
-  // и пустой объект превращается в null у родителя.
-  const emit = (l: ProcessLocks) => {
-    const clean: ProcessLocks = {}
-    if (l.required_kinds?.length) clean.required_kinds = l.required_kinds
-    if (l.min_participants && Object.keys(l.min_participants).length) clean.min_participants = l.min_participants
-    if (l.human_review) clean.human_review = true
-    onChange(doc, clean)
-  }
   const toggleRequired = (k: string, on: boolean) => {
     const next = new Set(required)
     if (on) next.add(k); else next.delete(k)
-    emit({ ...locks, required_kinds: Array.from(next) })
+    onLocksChange({ ...locks, required_kinds: Array.from(next) })
   }
   return (
     <div className="dw-sec proc-section">
       <h3>Процесс по умолчанию</h3>
       <div className="muted" style={{ fontSize: 12.5, marginBottom: 6 }}>
         Действует для проектов без собственного процесса.
+        {explicit ? ' Процесс установки задан явно.' : ' Сейчас это встроенный процесс.'}
       </div>
-      <ProcessGraph doc={doc} runners={runners} locks={locks} readOnly={readOnly} onChange={d => onChange(d, locks)} />
+      <ProcessGraph doc={doc} runners={runners} locks={locks} readOnly={readOnly} onChange={onProcessChange} />
+      {explicit && !readOnly && onResetProcess && (
+        <div className="proc-row" style={{ marginTop: 8 }}>
+          <Button size="sm" onClick={onResetProcess}
+            title="снять явный процесс: снова действует встроенный, к нему применяется выключение тестировщика">
+            Вернуться к встроенному процессу
+          </Button>
+        </div>
+      )}
       <h3 style={{ marginTop: 12 }}>Ограничения на процессы проектов</h3>
       <div className="proc-row proc-opts">
         <span className="muted">обязательные шаги:</span>
@@ -146,13 +153,13 @@ export function InstallationProcessSection({ doc, locks, readOnly, onChange }: {
       </div>
       <div className="proc-row proc-opts">
         <Checkbox disabled={readOnly} checked={!!locks.human_review} label="человек на review обязателен"
-          onChange={on => emit({ ...locks, human_review: on })} />
+          onChange={on => onLocksChange({ ...locks, human_review: on })} />
         <label>минимум участников на review
           <NumberInput min={1} width={56} disabled={readOnly} value={locks.min_participants?.review ?? ''}
             onChange={e => {
               const mp = { ...(locks.min_participants ?? {}) }
               if (e.target.value) mp.review = Number(e.target.value); else delete mp.review
-              emit({ ...locks, min_participants: mp })
+              onLocksChange({ ...locks, min_participants: mp })
             }} />
         </label>
       </div>

@@ -1194,6 +1194,9 @@ export function subscribe(projectId: string, handlers: {
     // планировщика (add-agent-roles): события установки приходят и сюда.
     'role.created', 'role.updated', 'role.deleted', 'runner.renamed',
     'team.agent_created', 'team.agent_updated', 'team.agent_deleted', 'planner.model_changed',
+    // Агент занят или освободился в любом проекте: команда в этом проекте
+    // видит, что агент свободен, хотя событий чужого проекта сюда нет.
+    'team.agent_busy', 'team.agent_free',
     // Тимлид составляет план: видно всем зрителям, а не только нажавшему.
     'epic.decomposing', 'epic.plan_failed',
     // Обзор проекта (add-project-lead-view): целевая дата, конфликты и

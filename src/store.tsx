@@ -1,6 +1,11 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ApiError, api, subscribe, type AgentRole, type Attention, type Event, type OverviewPeriod, type Project, type Runner, type TeamAgent } from './api/client'
-import { parsePeriod } from './components/overviewLogic'
+import { parsePeriod, throttleWithRecheck } from './components/overviewLogic'
+import { isAgentWorkEvent } from './components/roleLabels'
+
+// Не чаще раза в столько миллисекунд команда и runner'ы перечитываются по
+// занятости агентов установки.
+const AGENT_WORK_MS = 2000
 
 // Маршрут — hash-навигация: #/epics, #/epic/<id>, #/task/<id> поверх epic и т.п.
 // Вкладки раздела «Управление приложением» адресуемы: #/app-management/<tab>.
@@ -188,10 +193,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => { live = false }
   }, [projectId])
 
+  // Занятость агентов приходит со всей установки (team.agent_busy и
+  // team.agent_free), на каждую стадию любого проекта. Она перечитывает
+  // только команду и runner'ов, склеенно, не чаще раза в AGENT_WORK_MS, и не
+  // двигает tick: стадия в чужом проекте не должна перечитывать текущий экран.
+  // Повтор через AGENT_WORK_MS застаёт событие, которое курсор SSE мог
+  // пропустить из-за позднего коммита транзакции с меньшим id.
+  const agentWork = useMemo(() => throttleWithRecheck(() => { refreshTeam(); refreshRunners() }, AGENT_WORK_MS), [refreshTeam, refreshRunners])
+  useEffect(() => () => agentWork.cancel(), [agentWork])
+
   useEffect(() => {
     if (!projectId) return
     return subscribe(projectId, {
       onEvent: (e) => {
+        if (isAgentWorkEvent(e.Type)) {
+          agentWork.call()
+          return
+        }
         setLastEvent(e)
         setTick(t => t + 1)
         for (const fn of listenersRef.current) fn(e)
@@ -239,7 +257,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       },
     })
-  }, [projectId, refreshAttention, refreshProjects, refreshRoles, refreshTeam, refreshRunners, refreshMySteps])
+  }, [projectId, refreshAttention, refreshProjects, refreshRoles, refreshTeam, refreshRunners, refreshMySteps, agentWork])
 
   return (
     <Ctx.Provider value={{
