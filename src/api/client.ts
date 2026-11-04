@@ -24,6 +24,16 @@ export interface Task {
   ProcessHash: string
   StepAttempts: Record<string, number> | null
   WaitReason: string
+  // Текущий исполнитель (api-contract add-agent-roles): роль, агент
+  // команды и имя runner'а; пусто без исполнителя, роли или агента.
+  RoleID?: string
+  AgentID?: string
+  AgentName?: string
+  RunnerName?: string
+  // Время задачи (api-contract add-project-lead-view): первое назначение
+  // на runner и переход в done; старый бэкенд их не отдаёт.
+  StartedAt?: string | null
+  DoneAt?: string | null
 }
 
 export interface Epic {
@@ -35,6 +45,9 @@ export interface Epic {
   // пусто у живых Epic'ов.
   SourceKey: string
   Created: string
+  // Первый запуск и целевая дата (api-contract add-project-lead-view).
+  StartedAt?: string | null
+  DueAt?: string | null
 }
 
 // Оценка стоимости плана по истории usage (api-contract add-cost-transparency).
@@ -110,7 +123,9 @@ export function budgetPaused(b: BudgetState | undefined, now = Date.now()): bool
 
 // Документ процесса проекта (api-contract add-process-model/humans/editor).
 export interface Participant {
-  agent?: { kind?: string; model?: string }
+  // role — роль из каталога (add-agent-roles): тип агента и модель без
+  // явного значения берутся из роли.
+  agent?: { role?: string; kind?: string; model?: string }
   user?: { login?: string; role?: string }
 }
 export interface ProcessStep {
@@ -130,12 +145,24 @@ export interface ProcessDoc { steps: ProcessStep[] }
 // Процесс по умолчанию, когда установка его не задавала (равен серверному
 // policy.DefaultProcess): в ответах политики process тогда null.
 export const DEFAULT_PROCESS: ProcessDoc = { steps: [
-  { id: 'code', kind: 'code', title: 'Реализация', participants: [{ agent: {} }] },
-  { id: 'test', kind: 'test', title: 'Проверки', participants: [{ agent: {} }] },
-  { id: 'review', kind: 'review', title: 'Review', participants: [{ agent: {} }] },
+  { id: 'code', kind: 'code', title: 'Реализация', participants: [{ agent: { role: 'developer' } }] },
+  { id: 'test', kind: 'test', title: 'Проверки', participants: [{ agent: { role: 'tester' } }] },
+  { id: 'review', kind: 'review', title: 'Review', participants: [{ agent: { role: 'reviewer' } }] },
   { id: 'merge', kind: 'merge', title: 'Merge' },
   { id: 'deploy', kind: 'deploy', title: 'Публикация' },
 ] }
+// Процесс по умолчанию с учётом флага tester_agent: при выключенном флаге
+// сервер снимает тестировщика только в процессе по умолчанию, редактор
+// показывает то же самое, чтобы сохранение не сделало роль явной.
+export function defaultProcess(testerAgent: boolean | undefined): ProcessDoc {
+  const doc = structuredClone(DEFAULT_PROCESS)
+  if (testerAgent === false) {
+    for (const st of doc.steps) {
+      st.participants = st.participants?.map(p => p.agent?.role === 'tester' ? { agent: {} } : p)
+    }
+  }
+  return doc
+}
 // Ограничения установки на процессы проектов.
 export interface ProcessLocks {
   required_kinds?: string[]
@@ -153,6 +180,13 @@ export interface Presets {
   auto_publish: boolean
   process?: ProcessDoc | null
   process_locks?: ProcessLocks | null
+  // Тестировщик на шаге test и шаблоны тестовых файлов (add-agent-roles);
+  // старый бэкенд их не отдаёт, тогда действуют значения по умолчанию.
+  tester_agent?: boolean
+  test_paths?: string[]
+  // Плановый бюджет месяца в долларах (add-project-lead-view): только
+  // для прогноза, задаётся в политике проекта.
+  monthly_budget_usd?: number | null
 }
 
 // Переопределения проекта: null — наследуется от установки;
@@ -169,7 +203,16 @@ export interface Overrides {
   process?: ProcessDoc | null
   // Модели по умолчанию агентов для проекта (add-agent-profiles).
   agent_models?: Record<string, AgentModelRef> | null
+  // Роли (add-agent-roles): тестировщик, шаблоны тестов, модели ролей
+  // тройкой; пустой agent — профиль шаблона.
+  tester_agent?: boolean | null
+  test_paths?: string[] | null
+  role_models?: Record<string, RoleModelRef> | null
+  // Плановый бюджет месяца, $ (add-project-lead-view): больше 0 или null —
+  // не задан. У установки его нет.
+  monthly_budget_usd?: number | null
 }
+export interface RoleModelRef { agent: string; connection_id: string; model: string }
 
 export interface PolicyVersion {
   id: string
@@ -315,6 +358,96 @@ export interface Runner {
   Secure: boolean
   ProfileName: string
   DeclaredModels: string[] | null
+  // Инфраструктура (api-contract add-agent-roles): имя runner'а, его
+  // возможности и агент команды текущей стадии. Ролей у runner'а нет:
+  // RoleID и агент описывают только идущую стадию.
+  DisplayName?: string
+  DisplayNameLocked?: boolean
+  Features?: string[] | null
+  RoleID?: string
+  AgentID?: string
+  AgentName?: string
+}
+
+// ─── шаблоны ролей и команда агентов (api-contract add-agent-roles) ─────
+
+export type RoleColor = 'blue' | 'violet' | 'green' | 'amber' | 'rose' | 'teal' | 'indigo' | 'slate'
+export const ROLE_COLORS: { id: RoleColor; label: string }[] = [
+  { id: 'blue', label: 'синий' }, { id: 'violet', label: 'фиолетовый' }, { id: 'green', label: 'зелёный' },
+  { id: 'amber', label: 'янтарный' }, { id: 'rose', label: 'розовый' }, { id: 'teal', label: 'бирюзовый' },
+  { id: 'indigo', label: 'индиго' }, { id: 'slate', label: 'серый' },
+]
+export const ROLE_CAPABILITIES = ['coding', 'review', 'explore']
+// Шаблон роли. control_plane — шаблон без capability (Тимлид): его
+// выполняет control plane, участником шага процесса он быть не может.
+export interface AgentRole {
+  id: string; title: string; description: string; instruction: string
+  color: RoleColor | string
+  capability: string
+  control_plane: boolean
+  agent: string; connection_id: string; model: string
+  default_model?: { connection_id: string; model: string } | null
+  enabled: boolean; builtin: boolean
+  agents: number // агентов команды по шаблону
+  updated_at: string; updated_by?: string
+}
+export interface AgentRoleInput {
+  id?: string // только при создании
+  title: string; description: string; instruction: string; color: string; capability: string
+  agent: string; connection_id?: string; model?: string; enabled: boolean
+  updated_at?: string // только при изменении: версия, которую видел клиент
+}
+
+// Агент команды: имя, шаблон и модель тройкой (все пустые — как в шаблоне,
+// у тимлида — модель планировщика), текущая работа.
+export interface TeamAgent {
+  id: string; name: string; role_id: string; role_title: string; color: string
+  agent: string; connection_id: string; model: string
+  instruction_extra: string; enabled: boolean; position: number
+  updated_at: string; updated_by: string
+  busy: boolean
+  // Задача видна только участникам её проекта, остальным пусто.
+  task_id: string; task_num: number; project_id: string; epic_id: string
+  step: 'code' | 'test' | 'review' | 'prompt' | string
+  step_entry: 'ok' | 'changes' | string
+  runner_id: string; runner_name: string
+}
+export interface TeamAgentInput {
+  id?: string // только при создании
+  name: string; role_id: string; agent: string; connection_id: string; model: string
+  instruction_extra: string; enabled: boolean; position?: number
+  updated_at?: string
+}
+// Тройка модели для выбора у агента и в переопределении модели роли.
+export interface ModelChoice { agent: string; agent_name: string; connection_id: string; model: string; runner_online: boolean }
+
+// Ссылка на шаблон: участник шага, переопределение модели в проекте или агент команды.
+export interface RoleRef {
+  scope: 'installation' | 'project' | string
+  kind: 'participant' | 'role_model' | 'agent' | string
+  project_id?: string; project_name?: string; step?: string
+  agent_id?: string; agent_name?: string
+}
+
+// Payload событий исполнителя (task.status, session.step, вердикты task.step).
+export interface RolePayload { id: string; title: string }
+
+// Ошибки каталогов (api-contract add-agent-roles): поле, ссылки и актуальная
+// версия лежат в error, поле и ссылки дублируются рядом.
+type ErrBody = { error?: { code?: string; field?: string; refs?: RoleRef[]; current?: unknown }; field?: string; refs?: RoleRef[] } | null
+export function apiField(e: unknown): string | undefined {
+  if (!(e instanceof ApiError)) return undefined
+  const d = e.data as ErrBody
+  return d?.error?.field ?? d?.field
+}
+export function apiRefs(e: unknown): RoleRef[] {
+  if (!(e instanceof ApiError)) return []
+  const d = e.data as ErrBody
+  return d?.error?.refs ?? d?.refs ?? []
+}
+export function apiCurrent<T>(e: unknown): T | undefined {
+  if (!(e instanceof ApiError) || e.code !== 'stale') return undefined
+  return (e.data as ErrBody)?.error?.current as T | undefined
 }
 
 // Профиль агента (api-contract add-agent-profiles).
@@ -361,6 +494,11 @@ export interface StepRun {
   detail: string
   by: string
   finished_at: string | null
+  // Роль, агент команды и модель запуска (api-contract add-agent-roles).
+  role?: string
+  agent_id?: string
+  agent_name?: string
+  model?: string
 }
 
 // Элемент очереди «мои шаги».
@@ -520,6 +658,106 @@ export interface StepPayload {
   session_id?: string
 }
 
+// ─── обзор проекта для руководителя (api-contract add-project-lead-view) ─
+
+export type OverviewPeriod = 'today' | '7d' | '30d' | 'month'
+
+// Сумма расхода: null — данных нет (не ноль), partial_cost — часть записей
+// без стоимости.
+export interface Amount {
+  tokens_in: number | null
+  tokens_out: number | null
+  cost_usd: number | null
+  duration_s: number
+  partial_cost: boolean
+}
+export interface PerDay { tasks: number; units: number }
+export type RiskStatus = 'on_track' | 'at_risk' | 'needs_human' | 'done'
+export type ReasonCode = 'escalation' | 'budget_exhausted' | 'late' | 'budget_forecast' | 'last_attempt' | 'stalled' | 'no_capacity'
+export interface RiskReason { code: ReasonCode | string; text: string; task_id: string | null; epic_id: string }
+export interface Forecast {
+  available: boolean
+  at: string | null
+  remaining_units: number
+  velocity_units_per_hour: number | null
+  velocity_source: 'project' | 'epic' | null
+  reason?: string
+}
+export interface EpicOverview {
+  id: string; title: string; status: Epic['Status']
+  progress: { done_units: number; total_units: number; done_tasks: number; total_tasks: number }
+  due_at: string | null
+  forecast: Forecast
+  risk: { status: RiskStatus; reasons: RiskReason[] | null }
+  spend: Amount
+  token_budget: number | null
+  budget_forecast_tokens: number | null
+}
+export type DecisionKind = 'plan_approval' | 'escalation' | 'merge_confirmation' | 'my_step'
+export interface Decision {
+  kind: DecisionKind | string
+  title: string
+  since: string
+  waiting_seconds: number
+  epic_id: string | null; task_id: string | null; task_num: number | null
+  run_id: string | null; attention_id: string | null
+  reason: string | null
+  claimed_by: string | null
+}
+export interface RoleLoad {
+  role: string; title: string; color: string
+  busy_now: number; avg_busy: number; sessions: number; busy_seconds: number
+}
+export interface ShareRow { key: string; title: string; amount: Amount; share: number | null }
+export interface OverviewDeployment {
+  id: string; env_id: string; version: string; status: string; initiator: string
+  created_at: string; ended_at: string | null; rollback: boolean
+}
+export interface Overview {
+  project_id: string
+  period: { name: OverviewPeriod | string; from: string; to: string; tz: string }
+  computed_at: string
+  thresholds: {
+    velocity_window_days: number; velocity_min_tasks: number; stalled_minutes: number
+    no_capacity_minutes: number; stuck_minutes: number; last_attempt_left: number
+  }
+  summary: {
+    active_epics: number; tasks_done: number; throughput_per_day: PerDay
+    spend: Amount; open_decisions: number; first_pass_review_rate: number | null
+  }
+  epics: EpicOverview[] | null
+  decisions: { counts: Record<DecisionKind, number>; items: Decision[] | null }
+  team: {
+    roles: RoleLoad[] | null
+    throughput: { tasks_done: number; units_done: number; per_day: PerDay }
+    quality: {
+      first_pass_review_rate: number | null
+      tester_returns: number; reviewer_returns: number
+      merge_conflicts: { returned: number; done: number }
+      escalations: { reason: string; count: number }[] | null
+    }
+  }
+  money: {
+    today: Amount; last_7d: Amount; month_to_date: Amount; period: Amount
+    by_role: ShareRow[] | null; by_model: ShareRow[] | null
+    avg_cost_per_task: number | null
+    daily_token_budget: { budget: number; used_today: number } | null
+    monthly_budget_usd: number | null
+    month_forecast_usd: number | null
+    month_over_budget_usd: number | null
+  }
+  delivery: {
+    environments: { id: string; name: string; last: OverviewDeployment | null }[] | null
+    deployments: OverviewDeployment[] | null
+    stuck: { task_id: string; task_num: number; title: string; status: string; last_event_at: string | null; waiting_runner: boolean }[] | null
+    last_attempt: { task_id: string; task_num: number; title: string; attempt_used: number; attempt_limit: number }[] | null
+    budget_risks: { epic_id: string; title: string; token_budget: number; budget_forecast_tokens: number }[] | null
+  }
+}
+
+// Отчёт: текст как есть и имя файла из Content-Disposition.
+export interface Report { text: string; filename: string }
+
 // Обработчик 401: консоль уводит на экран входа (спека web
 // «Вход в консоль»); hash-маршрут сохраняется, после входа пользователь
 // возвращается на ту же страницу.
@@ -586,6 +824,26 @@ async function reqText(path: string): Promise<string> {
   return resp.text()
 }
 
+// Отчёт обзора приходит как text/markdown: имя файла берётся из
+// Content-Disposition, чтобы скачанный файл назывался как на сервере.
+async function reqReport(path: string): Promise<Report> {
+  const resp = await fetch(`/api/v1${path}`)
+  if (!resp.ok) {
+    if (resp.status === 401) onUnauthorized()
+    const data = await resp.json().catch(() => null)
+    const msg = (data as { error?: { message?: string } })?.error?.message ?? resp.statusText
+    throw new ApiError(msg, apiCode(data), resp.status, data)
+  }
+  const text = await resp.text()
+  return { text, filename: dispositionFilename(resp.headers.get('Content-Disposition'), 'rivet-report.md') }
+}
+
+// Имя файла из Content-Disposition: filename="…" или без кавычек.
+export function dispositionFilename(header: string | null, fallback: string): string {
+  const m = header?.match(/filename="?([^";]+)"?/i)
+  return m?.[1]?.trim() || fallback
+}
+
 export const api = {
   login: (login: string, password: string) => req<User>('POST', '/auth/login', { login, password }),
   logout: () => req('POST', '/auth/logout'),
@@ -626,7 +884,23 @@ export const api = {
     req<Epic>('POST', `/projects/${projectId}/epics`, { title, goal }),
   decompose: (epicId: string) => req<{ tasks: Task[] }>('POST', `/epics/${epicId}/decompose`),
   epic: (id: string) => req<EpicView>('GET', `/epics/${id}`),
-  patchEpic: (id: string, patch: { token_budget: number | null }) => req<Epic>('PATCH', `/epics/${id}`, patch),
+  // Бюджет и целевая дата (due_at — RFC 3339 или null, только владелец).
+  patchEpic: (id: string, patch: { token_budget?: number | null; due_at?: string | null }) =>
+    req<Epic>('PATCH', `/epics/${id}`, patch),
+  // Обзор проекта и отчёт (api-contract add-project-lead-view).
+  overview: (projectId: string, period: OverviewPeriod, tz: string) =>
+    req<Overview>('GET', `/projects/${projectId}/overview?${new URLSearchParams({ period, tz })}`),
+  // Есть ли обзор у бэкенда: заведомо неверный период даёт 422 у нового
+  // бэкенда без расчёта и 404 у старого, где маршрута нет.
+  overviewProbe: (projectId: string) =>
+    req<unknown>('GET', `/projects/${projectId}/overview?period=probe`).then(() => true, (e: unknown) =>
+      !(e instanceof ApiError && e.status === 404)),
+  report: (projectId: string, q: { from?: string; to?: string; tz: string }) => {
+    const p = new URLSearchParams({ tz: q.tz })
+    if (q.from) p.set('from', q.from)
+    if (q.to) p.set('to', q.to)
+    return reqReport(`/projects/${projectId}/report?${p}`)
+  },
   epicAction: (id: string, action: 'start' | 'pause' | 'resume' | 'archive') =>
     req('POST', `/epics/${id}/${action}`),
   addTask: (epicId: string, t: { title: string; description: string; criteria: string[]; deps: string[] }) =>
@@ -720,6 +994,21 @@ export const api = {
   projectPolicyVersions: (projectId: string) => req<PolicyVersion[]>('GET', `/projects/${projectId}/policy/versions`),
   putProjectPolicySource: (projectId: string, kind: string) =>
     req<ProjectPolicy>('PUT', `/projects/${projectId}/policy/source`, { kind }),
+  // Шаблоны ролей и команда (api-contract add-agent-roles): чтение всем,
+  // правка администратору. Создание POST (занятый id — 409), изменение PUT
+  // с updated_at (чужая правка — 409 stale с актуальной версией).
+  roles: () => req<{ roles: AgentRole[] | null }>('GET', '/roles'),
+  createRole: (input: AgentRoleInput) => req<AgentRole>('POST', '/system/roles', input),
+  updateRole: (id: string, input: AgentRoleInput) => req<AgentRole>('PUT', `/system/roles/${id}`, input),
+  deleteRole: (id: string) => req<void>('DELETE', `/system/roles/${id}`),
+  team: () => req<{ agents: TeamAgent[] | null }>('GET', '/team'),
+  createTeamAgent: (input: TeamAgentInput) => req<TeamAgent>('POST', '/system/team', input),
+  updateTeamAgent: (id: string, input: TeamAgentInput) => req<TeamAgent>('PUT', `/system/team/${id}`, input),
+  deleteTeamAgent: (id: string) => req<void>('DELETE', `/system/team/${id}`),
+  modelChoices: () => req<{ choices: ModelChoice[] | null }>('GET', '/models/choices'),
+  // Пустая строка снимает имя из консоли: снова действует имя из регистрации.
+  renameRunner: (id: string, displayName: string) =>
+    req<Runner>('PATCH', `/system/runners/${id}`, { display_name: displayName }),
 }
 
 // ─── эксплуатация установки ─────────────────────────────────────────────
@@ -803,7 +1092,16 @@ export function subscribe(projectId: string, handlers: {
     'policy.decision', 'task.checks_external', 'task.review_external', 'task.pr_closed',
     'task.plan_edited', 'epic.plan_edited', 'epic.budget_exceeded',
     // Пересечения работ: реестр «Команды» и timeline задач (add-team-visibility).
-    'session.overlap']
+    'session.overlap',
+    // Шаблоны ролей, команда агентов, имена runner'ов и модель
+    // планировщика (add-agent-roles): события установки приходят и сюда.
+    'role.created', 'role.updated', 'role.deleted', 'runner.renamed',
+    'team.agent_created', 'team.agent_updated', 'team.agent_deleted', 'planner.model_changed',
+    // Тимлид составляет план: видно всем зрителям, а не только нажавшему.
+    'epic.decomposing', 'epic.plan_failed',
+    // Обзор проекта (add-project-lead-view): целевая дата, конфликты и
+    // подтверждение merge меняют риски и решения.
+    'epic.due_changed', 'task.merge_conflict', 'task.merge']
   for (const t of evTypes) {
     es.addEventListener(t, (m) => handlers.onEvent(JSON.parse((m as MessageEvent).data)))
   }

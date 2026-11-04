@@ -15,6 +15,52 @@ function stepOf(e: Event): StepPayload | undefined {
     files,
   }
 }
+// performersOfEvent валидирует исполнителей в payload (add-agent-roles):
+// роль, агент команды и runner приходят от runner'а и оркестратора, битые
+// типы рендер не роняют. У task.step они лежат в каждом вердикте.
+interface EventPerformer { id: string; title: string; name: string; runner: string; note: string }
+function performersOfEvent(e: Event): { list: EventPerformer[]; undelivered: boolean } {
+  const p = (e.Payload && typeof e.Payload === 'object') ? e.Payload as Record<string, unknown> : {}
+  const str = (v: unknown) => typeof v === 'string' ? v : ''
+  const of = (src: Record<string, unknown> | null | undefined): EventPerformer | null => {
+    const v = src?.role
+    if (!v || typeof v !== 'object') return null
+    const r = v as Record<string, unknown>
+    if (typeof r.id !== 'string' || !r.id) return null
+    const ag = src?.agent && typeof src.agent === 'object' ? src.agent as Record<string, unknown> : null
+    // У вердикта шага — подпись по собственному вердикту агента (тестировщика).
+    return { id: r.id, title: str(r.title) || r.id, name: str(ag?.name), runner: str(src?.runner_name),
+      note: agentVerdictNote(str(src?.agent_verdict), str(src?.verdict)) }
+  }
+  // Каждый вердикт — отдельный участник, даже при одинаковых роли и имени.
+  // Исполнитель верхнего уровня не дублирует участника вердиктов.
+  const fromVerdicts: EventPerformer[] = []
+  if (Array.isArray(p.verdicts)) {
+    for (const v of p.verdicts) {
+      const r = of(v && typeof v === 'object' ? v as Record<string, unknown> : null)
+      if (r) fromVerdicts.push(r)
+    }
+  }
+  const own = of(p)
+  const same = (a: EventPerformer, b: EventPerformer) => a.id === b.id && a.name === b.name && a.runner === b.runner
+  const list = own && !fromVerdicts.some(x => same(x, own)) ? [own, ...fromVerdicts] : fromVerdicts
+  return { list, undelivered: p.role_delivered === false }
+}
+
+// waitTail — особые случаи назначения (add-agent-roles): сбой
+// инфраструктуры тестировщика с бесплатным повтором и отложенный старт
+// стадии. Это предупреждения, а не замечания и не ошибки задачи.
+function waitTail(e: Event): { warn: boolean; tail: string } {
+  const p = (e.Payload && typeof e.Payload === 'object') ? e.Payload as Record<string, unknown> : {}
+  if (e.Type === 'task.assign' && typeof p.infra_error === 'string') {
+    return { warn: true, tail: p.infra_error ? ` · сбой: ${p.infra_error.slice(0, 200)}` : '' }
+  }
+  if (e.Type === 'task.wait' && p.deferred === true) {
+    return { warn: true, tail: typeof p.retry_in_s === 'number' ? ` · повтор через ${p.retry_in_s} с` : '' }
+  }
+  return { warn: false, tail: '' }
+}
+
 // overlapTail — хвост строки пересечения работ: доставлено ли
 // предупреждение самому агенту (спека web «Доставка предупреждения агенту
 // видна»). Payload старых событий полей доставки не несёт — хвоста нет.
@@ -35,6 +81,8 @@ import { useStore } from '../store'
 import { shortHash } from './PolicyPanel'
 import { Button, Checkbox, Field, FormNote, NumberInput, TextArea, TextInput } from './form'
 import { StBadge, attemptStr, fmtDuration, fmtTokens, timeShort } from './ui'
+import { Performer, RoleChip } from './RoleChip'
+import { agentVerdictNote, runnerName, verdictLabel } from './roleLabels'
 
 // Merge отложен политикой: последнее task.merge_deferred после последнего
 // task.review_passed (подсказка и кнопка подтверждения в деталке).
@@ -76,7 +124,8 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
   epicStatus?: string
   epicTasks?: Task[]
 }) {
-  const { tick, logs } = useStore()
+  // Runner'ы — из стора: деталке нужны только их имена для участников шага.
+  const { tick, logs, roleOf, runners } = useStore()
   const [task, setTask] = useState<Task | null>(null)
   const [timeline, setTimeline] = useState<Event[]>([])
   const [stepRuns, setStepRuns] = useState<StepRun[]>([])
@@ -297,7 +346,8 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
         <div className="dw-sec">
           <h3>Метаданные</h3>
           <div className="meta-grid">
-            <div className="kv"><span>runner</span><b>{task.RunnerID || '—'}</b></div>
+            <div className="kv"><span>исполнитель</span><b><Performer roleId={task.RoleID} agentName={task.AgentName} runnerName={task.RunnerName} runnerId={task.RunnerID} /></b></div>
+            {task.WaitReason && <div className="kv" data-wait><span>ожидание</span><b className="muted" style={{ fontWeight: 400 }}>{task.WaitReason}</b></div>}
             <div className="kv"><span>попытки</span>
               <b className="row" style={{ gap: 6 }}>
                 {limitEdit === null
@@ -348,16 +398,32 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
           <div className="dw-sec">
             <h3>Участники шага{task?.Step ? ` · ${task.Step}` : ''}</h3>
             <div className="step-runs">
-              {stepRuns.map(r => (
-                <div key={r.id} className="step-run">
+              {stepRuns.map(r => {
+                // Роль участника (add-agent-roles): ключ в DTO step_runs
+                // строчный, как у остальных полей.
+                const roleId = r.role
+                const role = roleOf(roleId)
+                const runner = r.runner ? runnerName(runners.find(x => x.ID === r.runner), r.runner) : ''
+                // agent — «тип/модель»: при известной model показываем тип
+                // агента и модель запуска, без повтора модели.
+                const kind = r.model ? (r.agent || '').split('/')[0] : r.agent
+                const tech = [kind, r.model].filter(Boolean).join(' · ')
+                return (
+                <div key={r.id} className="step-run" data-role={roleId || undefined}>
                   <span className="mono muted">{r.participant}</span>
-                  <span>{r.kind === 'user' ? `человек ${r.user}` : `агент ${r.agent || 'любой'}${r.runner ? ` @ ${r.runner}` : ''}`}</span>
-                  <span className={'chip' + (r.verdict ? ' v-' + r.verdict : '')}><span className="n">{r.verdict || 'ждёт'}</span></span>
+                  {r.kind !== 'user' && (roleId || r.agent_name)
+                    ? <>
+                        <RoleChip role={role} roleId={roleId} name={r.agent_name} runner={runner} small />
+                        <span className="muted">{tech || 'любой агент'}</span>
+                      </>
+                    : <span>{r.kind === 'user' ? `человек ${r.user}` : `агент ${tech || 'любой'}${runner ? ` @ ${runner}` : ''}`}</span>}
+                  <span className={'chip' + (r.verdict ? ' v-' + r.verdict : '')}><span className="n">{verdictLabel(r.verdict)}</span></span>
                   {r.by && <span className="muted">{r.by}</span>}
                   {r.finished_at && <span className="mono muted">{timeShort(r.finished_at)}</span>}
                   {r.detail && <div className="step-run-detail">{r.detail}</div>}
                 </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
@@ -412,14 +478,28 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
           <div className="tl">
             {timeline.map(e => {
               const step = stepOf(e)
+              const who = performersOfEvent(e)
+              // Плашка роли у событий агента (add-agent-roles): роль и имя
+              // исполнителя; у вердиктов шага — каждый участник отдельно.
+              const chips = (who.list.length > 0 || who.undelivered) && (
+                <span className="tl-role">
+                  {who.list.map((r, i) => <span key={`${r.id}-${r.name}-${i}`} className="tl-perf">
+                    <RoleChip role={roleOf(r.id)} roleId={r.id} title={r.title} name={r.name} runner={r.runner} small />
+                    {r.note && <span className="muted"> {r.note}</span>}
+                  </span>)}
+                  {who.undelivered && <span className="muted" title="runner без поддержки ролей"> роль не передана</span>}
+                </span>
+              )
               const bad = e.Type.includes('denied') || e.Type === 'task.merge_failed'
                 || step?.ok === false || e.Text.includes('заблокирована')
+              const wait = waitTail(e)
               return (
                 <div key={e.ID} className={'tl-row' + (bad ? ' bad' : '')
-                    + (e.Type === 'task.review_passed' ? ' warn' : '')}>
+                    + (e.Type === 'task.review_passed' || wait.warn ? ' warn' : '')}>
                   <span className="t">{timeShort(e.TS)}</span>
                   {step?.tool ? (
                     <span>
+                      {chips}
                       <span className="chip"><span className="n">{step.tool}</span></span>
                       {' '}{step.detail || ''}
                       {(step.files?.length ?? 0) > 0 && (
@@ -429,7 +509,7 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
                       )}
                       {step.ok === false && ' — ошибка'}
                     </span>
-                  ) : <span>{e.Text}<span className="muted">{overlapTail(e)}</span></span>}
+                  ) : <span>{chips}{e.Text}<span className="muted">{overlapTail(e)}{wait.tail}</span></span>}
                 </div>
               )
             })}

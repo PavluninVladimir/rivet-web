@@ -7,6 +7,8 @@ import { useStore, type AppTab } from '../store'
 import { UsageView } from './UsageView'
 import { ConnectionsTab } from './ConnectionsTab'
 import { AgentsTab } from './AgentsTab'
+import { RolesTab } from './RolesTab'
+import { TeamTab } from './TeamTab'
 
 // Раздел «Управление приложением» (спека web): настройки уровня установки,
 // адресуемые вкладки #/app-management/<tab>. Вкладка «Политики» — место
@@ -14,7 +16,8 @@ import { AgentsTab } from './AgentsTab'
 
 const TABS: { id: AppTab; label: string }[] = [
   { id: 'users', label: 'Пользователи' }, { id: 'runners', label: 'Runner’ы' },
-  { id: 'agents', label: 'Агенты' }, { id: 'connections', label: 'Подключения' }, { id: 'policies', label: 'Политики' },
+  { id: 'agents', label: 'Агенты' }, { id: 'team', label: 'Команда' }, { id: 'roles', label: 'Шаблоны ролей' },
+  { id: 'connections', label: 'Подключения' }, { id: 'policies', label: 'Политики' },
   { id: 'usage', label: 'Usage' },
   { id: 'audit', label: 'Аудит' }, { id: 'status', label: 'Состояние' },
 ]
@@ -31,6 +34,8 @@ export function AppManagement({ me, tab }: { me: User; tab: AppTab }) {
       {tab === 'users' && <UsersTab me={me} />}
       {tab === 'runners' && <RunnerTokensTab />}
       {tab === 'agents' && <AgentsTab />}
+      {tab === 'team' && <TeamTab />}
+      {tab === 'roles' && <RolesTab />}
       {tab === 'connections' && <ConnectionsTab />}
       {tab === 'policies' && <InstallationPolicyPanel onSaved={refreshProjects} />}
       {tab === 'usage' && <UsageView scope="installation" defaultGroup="project" title="Usage установки" sub="все проекты, метеринг установки" />}

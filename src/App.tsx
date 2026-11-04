@@ -11,6 +11,7 @@ import { MyStepsView } from './views/MyStepsView'
 import { RunnersView } from './views/RunnersView'
 import { ActivityView } from './views/ActivityView'
 import { UsageView } from './views/UsageView'
+import { OverviewView } from './views/OverviewView'
 import { AppManagement } from './views/AppManagement'
 import { PasswordGate, Profile } from './views/Profile'
 import { Login } from './components/Login'
@@ -18,6 +19,8 @@ import { Palette } from './components/Palette'
 
 const NAV: { view: Route['view']; label: string }[] = [
   { view: 'projects', label: 'Проекты' },
+  // Обзор текущего проекта для руководителя (add-project-lead-view).
+  { view: 'overview', label: 'Обзор' },
   { view: 'epics', label: 'Epic’и' },
   { view: 'tasks', label: 'Задачи' },
   { view: 'team', label: 'Команда' },
@@ -28,7 +31,7 @@ const NAV: { view: Route['view']; label: string }[] = [
 ]
 
 function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
-  const { route, nav, attention, mySteps, connected, projects, projectId, setProjectId } = useStore()
+  const { route, nav, attention, mySteps, connected, projects, projectId, setProjectId, overviewAvailable } = useStore()
   const [palOpen, setPalOpen] = useState(false)
 
   useEffect(() => {
@@ -54,10 +57,10 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
           <span className="env">DEV</span>
         </div>
         <nav>
-          {NAV.map(n => (
+          {NAV.filter(n => n.view !== 'overview' || overviewAvailable).map(n => (
             <button key={n.view}
               className={'nav-item' + (route.view === n.view || (n.view === 'epics' && route.view === 'epic') ? ' active' : '')}
-              onClick={() => nav({ view: n.view } as Route)}>
+              onClick={() => nav(n.view === 'overview' ? { view: 'overview', period: '7d' } : { view: n.view } as Route)}>
               {n.label}
               {n.view === 'tasks' && open > 0 && <span className="count warn">{open}</span>}
               {n.view === 'mysteps' && mySteps > 0 && <span className="count warn">{mySteps}</span>}
@@ -120,13 +123,14 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
             ? <AppManagement me={user} tab={route.tab} />
             : <div className="page"><span className="muted">Раздел доступен только администратору установки.</span></div>)}
           {route.view === 'epics' && <EpicsView />}
-          {route.view === 'epic' && <EpicDashboard key={route.id} epicId={route.id} taskId={route.taskId} />}
+          {route.view === 'epic' && <EpicDashboard key={route.id} epicId={route.id} taskId={route.taskId} admin={user.admin} />}
           {route.view === 'tasks' && <TasksView />}
           {route.view === 'team' && <TeamView />}
           {route.view === 'mysteps' && <MyStepsView />}
           {route.view === 'runners' && <RunnersView admin={user.admin} />}
           {route.view === 'activity' && <ActivityView />}
           {route.view === 'usage' && <UsageView />}
+          {route.view === 'overview' && <OverviewView key={projectId ?? ''} period={route.period} user={user} />}
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Task } from '../api/client'
 import { StBadge } from './ui'
+import { Performer } from './RoleChip'
 
 // Слоевая раскладка DAG — перенос алгоритма эталонного прототипа:
 // слой узла = 1 + max(слой зависимостей), слои центрируются по вертикали.
@@ -171,7 +172,9 @@ export function Dag({ tasks, filter, hideDone, showCP, selected, onSelect }: {
           </svg>
           {tasks.map(t => {
             const p = lay.pos.get(t.ID)!
-            const who = t.RunnerID || (byId.get(t.ID)?.BlockReason ? '⚠' : '—')
+            // Исполнитель «роль + имя» цветом роли (add-agent-roles); без
+            // роли прежний вид: id runner'а, ⚠ у заблокированной, иначе —.
+            const fallback = byId.get(t.ID)?.BlockReason ? '⚠' : '—'
             return (
               <button key={t.ID} className={'node'
                   + (visible.get(t.ID) ? '' : ' dim')
@@ -181,7 +184,7 @@ export function Dag({ tasks, filter, hideDone, showCP, selected, onSelect }: {
                 style={{ left: p.x, top: p.y }}>
                 <span className="n-top"><span className="n-id">task-{t.Num}</span><StBadge s={t.Status} /></span>
                 <span className="n-title">{t.Title}</span>
-                <span className="n-meta"><span>{who}</span><span>{t.AttemptUsed > 0 ? `${t.AttemptUsed}/${t.AttemptLimit}` : ''}</span></span>
+                <span className="n-meta"><Performer roleId={t.RoleID} agentName={t.AgentName} runnerName={t.RunnerName} runnerId={t.RunnerID} fallback={fallback} /><span>{t.AttemptUsed > 0 ? `${t.AttemptUsed}/${t.AttemptLimit}` : ''}</span></span>
               </button>
             )
           })}
