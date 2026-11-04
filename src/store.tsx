@@ -18,6 +18,9 @@ export type Route =
   | { view: 'project-settings'; id: string; tab: SettingsTab }
   // Обзор текущего проекта, период в адресе: #/overview/30d (add-project-lead-view).
   | { view: 'overview'; period: OverviewPeriod }
+  // Исследование продукта (add-product-discovery): runId — открытая версия
+  // из истории, без него показывается текущая.
+  | { view: 'discovery'; runId?: string }
 
 function parseHash(): Route {
   const h = location.hash.replace(/^#\/?/, '')
@@ -25,6 +28,7 @@ function parseHash(): Route {
   if (a === 'epic' && b) {
     return c === 'task' && d ? { view: 'epic', id: b, taskId: d } : { view: 'epic', id: b }
   }
+  if (a === 'discovery') return b ? { view: 'discovery', runId: b } : { view: 'discovery' }
   if (a === 'project' && b && c === 'settings') {
     return { view: 'project-settings', id: b, tab: (SETTINGS_TABS as readonly string[]).includes(d) ? d as SettingsTab : 'general' }
   }
@@ -44,6 +48,7 @@ export function routeHash(r: Route): string {
   if (r.view === 'project-settings') return r.tab === 'general' ? `#/project/${r.id}/settings` : `#/project/${r.id}/settings/${r.tab}`
   if (r.view === 'app-management') return `#/app-management/${r.tab}`
   if (r.view === 'overview') return r.period === '7d' ? '#/overview' : `#/overview/${r.period}`
+  if (r.view === 'discovery') return r.runId ? `#/discovery/${r.runId}` : '#/discovery'
   return `#/${r.view}`
 }
 
@@ -59,6 +64,10 @@ interface Store {
   connected: boolean
   tick: number            // растёт на каждом SSE-событии — зависимость для рефетчей
   lastEvent: Event | null
+  // discoveryTick растёт на каждом событии исследования и декомпозиции и
+  // при переподключении (add-product-discovery). В отличие от lastEvent
+  // не теряет события, пришедшие одной пачкой.
+  discoveryTick: number
   logs: Map<string, string> // live-лог по задачам (только текущее подключение)
   deployLogs: Map<string, string> // live-лог публикаций по deployment_id
   refreshProjects: () => void
@@ -83,6 +92,9 @@ interface Store {
   listen: (fn: (e: Event) => void) => () => void
 }
 
+// События, после которых экран исследования перечитывает состояние.
+const DISCOVERY_RELOAD = /^(discovery\.|epic\.(decomposing|decomposed|plan_failed|deps_changed))/
+
 const Ctx = createContext<Store | null>(null)
 export const useStore = () => useContext(Ctx)!
 
@@ -98,6 +110,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [connected, setConnected] = useState(false)
   const [tick, setTick] = useState(0)
   const [lastEvent, setLastEvent] = useState<Event | null>(null)
+  const [discoveryTick, setDiscoveryTick] = useState(0)
   const logsRef = useRef(new Map<string, string>())
   const listenersRef = useRef(new Set<(e: Event) => void>())
   const listen = useCallback((fn: (e: Event) => void) => {
@@ -182,6 +195,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setLastEvent(e)
         setTick(t => t + 1)
         for (const fn of listenersRef.current) fn(e)
+        if (DISCOVERY_RELOAD.test(e.Type)) setDiscoveryTick(t => t + 1)
         // policy.decision пишется, когда движок не дал решения: вместе с
         // ним появляется эскалация уровня проекта, своего события у неё нет.
         if (e.Type.startsWith('attention') || e.Type === 'task.status'
@@ -221,6 +235,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (on) {
           refreshRoles(); refreshTeam(); refreshRunners(); refreshAttention(); refreshMySteps()
           setTick(t => t + 1)
+          setDiscoveryTick(t => t + 1)
         }
       },
     })
@@ -229,7 +244,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{
       route, nav, projects, projectId, setProjectId,
-      attention, mySteps, connected, tick, lastEvent, logs: logsRef.current,
+      attention, mySteps, connected, tick, lastEvent, discoveryTick, logs: logsRef.current,
       deployLogs: deployLogsRef.current, refreshProjects, refreshAttention, refreshMySteps,
       roles, roleOf, refreshRoles, team, refreshTeam, runners, refreshRunners,
       overviewAvailable, listen,

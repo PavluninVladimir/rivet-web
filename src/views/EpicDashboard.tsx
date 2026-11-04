@@ -5,12 +5,13 @@ import { TaskDrawer } from '../components/TaskDrawer'
 import { ClaimControl, fmtCost, fmtDate, fmtDuration, fmtTokens, StBadge } from '../components/ui'
 import { Performer } from '../components/RoleChip'
 import { TeamPanel } from '../components/TeamPanel'
+import { EpicWaiting, EpicWhy } from '../components/EpicWhy'
 import { Button, Field, FormActions, FormNote, NumberInput, Select, TextArea, TextInput, errText, useBusy } from '../components/form'
 import { useStore } from '../store'
 
 const SEG_ORDER = ['done', 'running', 'testing', 'fixing', 'review', 'ready', 'queued', 'blocked', 'failed', 'cancelled']
 
-export function EpicDashboard({ epicId, taskId, admin = false }: { epicId: string; taskId?: string; admin?: boolean }) {
+export function EpicDashboard({ epicId, taskId, admin = false, login }: { epicId: string; taskId?: string; admin?: boolean; login?: string }) {
   const { nav, tick, attention, projects, refreshAttention } = useStore()
   const [epic, setEpic] = useState<EpicView | null>(null)
   const [mode, setMode] = useState<'graph' | 'list'>('graph')
@@ -164,7 +165,9 @@ export function EpicDashboard({ epicId, taskId, admin = false }: { epicId: strin
             {' '}Выполняющиеся стадии дорабатываются, новые назначения возобновятся {fmtDate(budget.paused_until)}.
           </div>
         )}
+        <EpicWaiting epic={epic} />
         {err && <div style={{ color: 'var(--c-block)', fontSize: 12, marginTop: 6 }}>{err}</div>}
+        <EpicWhy epic={epic} login={login} onChanged={refresh} />
       </div>
 
       {epicAtt.length > 0 && (

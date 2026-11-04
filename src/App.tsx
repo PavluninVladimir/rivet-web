@@ -3,6 +3,7 @@ import { api, setOnPasswordChangeRequired, setOnUnauthorized, type User } from '
 import { StoreProvider, useStore, type Route } from './store'
 import { EpicsView } from './views/EpicsView'
 import { EpicDashboard } from './views/EpicDashboard'
+import { DiscoveryView } from './views/DiscoveryView'
 import { ProjectsView } from './views/ProjectsView'
 import { ProjectSettings } from './views/ProjectSettings'
 import { TasksView } from './views/TasksView'
@@ -21,6 +22,8 @@ const NAV: { view: Route['view']; label: string }[] = [
   { view: 'projects', label: 'Проекты' },
   // Обзор текущего проекта для руководителя (add-project-lead-view).
   { view: 'overview', label: 'Обзор' },
+  // Интервью и бэклог исследования (add-product-discovery).
+  { view: 'discovery', label: 'Исследование' },
   { view: 'epics', label: 'Epic’и' },
   { view: 'tasks', label: 'Задачи' },
   { view: 'team', label: 'Команда' },
@@ -123,7 +126,8 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
             ? <AppManagement me={user} tab={route.tab} />
             : <div className="page"><span className="muted">Раздел доступен только администратору установки.</span></div>)}
           {route.view === 'epics' && <EpicsView />}
-          {route.view === 'epic' && <EpicDashboard key={route.id} epicId={route.id} taskId={route.taskId} admin={user.admin} />}
+          {route.view === 'epic' && <EpicDashboard key={route.id} epicId={route.id} taskId={route.taskId} admin={user.admin} login={user.login} />}
+          {route.view === 'discovery' && <DiscoveryView key={projectId ?? ''} user={user} runId={route.runId} />}
           {route.view === 'tasks' && <TasksView />}
           {route.view === 'team' && <TeamView />}
           {route.view === 'mysteps' && <MyStepsView />}
