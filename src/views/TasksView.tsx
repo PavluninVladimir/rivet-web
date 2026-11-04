@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type Epic, type Task } from '../api/client'
 import { ClaimControl, StBadge } from '../components/ui'
+import { Performer } from '../components/RoleChip'
 import { useStore } from '../store'
 
 // Сквозной список задач проекта + очередь needs attention.
@@ -97,7 +98,7 @@ export function TasksView() {
       )}
 
       <table className="tbl">
-        <thead><tr><th>Задача</th><th>Название</th><th>Epic</th><th>Статус</th><th>Runner</th></tr></thead>
+        <thead><tr><th>Задача</th><th>Название</th><th>Epic</th><th>Статус</th><th>Исполнитель</th></tr></thead>
         <tbody>
           {filtered.map(({ epic, task }) => (
             <tr key={task.ID} className="rowlink" onClick={() => nav({ view: 'epic', id: epic.ID, taskId: task.ID })}>
@@ -105,7 +106,7 @@ export function TasksView() {
               <td>{task.Title}</td>
               <td className="muted">{epic.Title}</td>
               <td><StBadge s={task.Status} /></td>
-              <td className="mono muted">{task.RunnerID || '—'}</td>
+              <td className="mono muted"><Performer roleId={task.RoleID} agentName={task.AgentName} runnerName={task.RunnerName} runnerId={task.RunnerID} /></td>
             </tr>
           ))}
         </tbody>

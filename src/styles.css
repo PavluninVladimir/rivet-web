@@ -18,6 +18,17 @@
   --c-run:    var(--accent);
   --c-cancel: oklch(50% 0.02 255);
 
+  /* Цвета ролей агентов (add-agent-roles): та же светлота, что у статусов,
+     другие оттенки, чтобы роль не путалась со статусом. */
+  --role-blue:   oklch(72% 0.120 240);
+  --role-violet: oklch(72% 0.135 300);
+  --role-green:  oklch(74% 0.125 160);
+  --role-amber:  oklch(79% 0.120 75);
+  --role-rose:   oklch(71% 0.145 10);
+  --role-teal:   oklch(75% 0.100 190);
+  --role-indigo: oklch(68% 0.140 275);
+  --role-slate:  oklch(70% 0.030 255);
+
   --raised:      color-mix(in oklch, var(--surface) 88%, white);
   --accent-soft: color-mix(in oklch, var(--accent) 15%, transparent);
   --fg-soft:     color-mix(in oklch, var(--fg) 6%, transparent);
@@ -452,3 +463,35 @@ textarea.answer { width: 100%; min-height: 64px; }
 .model-rows .hdr { font: 600 10.5px var(--font-mono); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .hdr-row { display: flex; gap: 6px; align-items: end; }
 .hdr-row > * { flex: 1; }
+
+/* роли агентов и команда (add-agent-roles) */
+.rc-runner, .perf-runner { margin-left: 6px; font: 400 10px var(--font-mono); color: var(--muted); }
+.team-card .rc-top .name { font-family: var(--font-ui); font-size: 12.5px; }
+.team-card .rc-role { font-size: 11px; color: var(--rc); white-space: nowrap; }
+.team-card.off { opacity: .55; }
+.team-card .rc-model { display: flex; align-items: center; gap: 6px; font: 400 10.5px var(--font-mono); color: var(--muted); min-width: 0; }
+.team-card .rc-model > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-card .rc-model select { max-width: 100%; }
+.model-warn { font-size: 11px; color: var(--c-review); }
+.tmpl-instr { white-space: pre-wrap; font-size: 12px; color: var(--muted); border-left: 2px solid var(--border); padding: 4px 8px; max-height: 9em; overflow: auto; }
+.role-chip { border-color: color-mix(in oklch, var(--rc) 45%, var(--border)); }
+.role-chip .dot { background: var(--rc); }
+.role-chip.sm { padding: 1px 7px 1px 6px; font-size: 11px; }
+.role-chip.sm .n { font-size: 10.5px; }
+.performer { display: inline-flex; align-items: center; gap: 5px; min-width: 0; color: var(--rc);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.performer .dot { width: 6px; height: 6px; background: var(--rc); }
+.node .n-meta > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-top .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-top .rc-who { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.rc-top .rc-who .dot { background: var(--rc, var(--muted)); }
+.rc-roles { display: flex; flex-wrap: wrap; gap: 4px; }
+.lead-card { border-style: dashed; }
+.role-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--rc); flex: none; }
+.role-instr { white-space: pre-wrap; font-size: 12px; color: var(--muted); max-height: 3.6em; overflow: hidden; }
+.tl-role { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-right: 6px; vertical-align: middle; }
+/* Роль участника в окне шага (add-agent-roles): четыре поля в строке,
+   кнопка удаления остаётся рядом. */
+.modal .proc-participant > select, .modal .proc-participant > input { min-width: 88px; }
+.chip.v-error .n { color: var(--c-review); }
+.tl-perf { display: inline-flex; align-items: center; gap: 4px; }

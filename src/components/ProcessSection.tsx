@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, ApiError, DEFAULT_PROCESS, type Member, type ProcessDoc, type ProcessLocks, type Runner } from '../api/client'
+import { api, ApiError, defaultProcess, type Member, type ProcessDoc, type ProcessLocks, type Runner } from '../api/client'
 import { ProcessGraph } from './ProcessGraph'
 import type { StepError as EditorError } from './StepModal'
 import { shortHash } from './PolicyPanel'
@@ -41,8 +41,10 @@ export function ProjectProcessSection({ projectId, isOwner, tick }: { projectId:
     const my = ++seq.current
     api.projectPolicy(projectId).then(p => {
       if (my !== seq.current) return
-      // Без документа в политике действует процесс по умолчанию.
-      const eff = p.effective.process ?? DEFAULT_PROCESS
+      // Без документа в политике действует процесс по умолчанию; при
+      // выключенном tester_agent сервер снимает в нём тестировщика, редактор
+      // показывает то же (иначе сохранение сделало бы роль явной).
+      const eff = p.effective.process ?? defaultProcess(p.effective.tester_agent)
       setEffective(eff)
       setSource(p.process_source ?? (p.overrides.process ? 'project' : 'installation'))
       setHash(p.effective_hash)
@@ -56,9 +58,9 @@ export function ProjectProcessSection({ projectId, isOwner, tick }: { projectId:
 
   if (!doc) return <div className="dw-sec"><h3>Процесс</h3><div className="muted">загрузка…</div></div>
   const editable = isOwner && !fromGit
-  const applySaved = (r: { effective: { process?: ProcessDoc | null }; process_source?: 'project' | 'installation'; effective_hash: string }, src: 'project' | 'installation') => {
+  const applySaved = (r: { effective: { process?: ProcessDoc | null; tester_agent?: boolean }; process_source?: 'project' | 'installation'; effective_hash: string }, src: 'project' | 'installation') => {
     seq.current++ // ответы refresh, начатых до сохранения, больше не нужны
-    const eff = r.effective.process ?? DEFAULT_PROCESS
+    const eff = r.effective.process ?? defaultProcess(r.effective.tester_agent)
     markDirty(false)
     setEffective(eff)
     setSource(r.process_source ?? src)

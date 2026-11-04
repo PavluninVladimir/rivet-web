@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
-import type { Member, ProcessDoc, ProcessLocks, ProcessStep, Runner } from '../api/client'
+import type { AgentRole, Member, ProcessDoc, ProcessLocks, ProcessStep, Runner } from '../api/client'
+import { useStore } from '../store'
 import { StepModal, TransitionModal, type StepError } from './StepModal'
 import { CAP_H, CAP_W, DEFAULT_TITLE, GX, HAS_PARTICIPANTS, NW, PAD, layoutProcess, type GEdge, type GNode, type Outcome } from './processLayout'
 
@@ -15,10 +16,13 @@ const KIND_COLOR: Record<string, string> = {
   code: 'var(--c-run)', test: 'var(--c-test)', review: 'var(--c-review)', prompt: 'var(--accent)', merge: 'var(--c-done)', deploy: 'var(--c-queue)',
 }
 
-function participantLabel(p: ProcessStep['participants'] extends (infer T)[] | undefined ? T : never): string {
+// Подпись участника: у агента с ролью название роли (add-agent-roles),
+// явные агент и модель дописываются через точку.
+function participantLabel(p: ProcessStep['participants'] extends (infer T)[] | undefined ? T : never, roles: AgentRole[]): string {
   if (p.user) return '👤 ' + (p.user.login !== undefined ? (p.user.login || '?') : p.user.role ?? 'owner')
   const a = p.agent ?? {}
-  const t = [a.kind, a.model].filter(Boolean).join(' · ')
+  const role = a.role ? (roles.find(r => r.id === a.role)?.title ?? a.role) : ''
+  const t = [role, a.kind, a.model].filter(Boolean).join(' · ')
   return '⚙ ' + (t || 'любой')
 }
 
@@ -32,6 +36,7 @@ export function ProcessGraph({ doc, runners, members, locks, readOnly, error, on
   onChange: (doc: ProcessDoc) => void
 }) {
   const uid = useId().replace(/:/g, '')
+  const { roles } = useStore()
   const lay = useMemo(() => layoutProcess(doc), [doc])
   const [modal, setModal] = useState<Modal>(null)
   const [hi, setHi] = useState<string | null>(null)
@@ -136,7 +141,7 @@ export function ProcessGraph({ doc, runners, members, locks, readOnly, error, on
         {stepNodes.map(nd => {
           const s = nd.step!
           const parts = s.participants ?? []
-          const shown = parts.slice(0, 3).map(participantLabel)
+          const shown = parts.slice(0, 3).map(p => participantLabel(p, roles))
           const isDrag = drag?.index === nd.index
           const tx = isDrag ? drag!.dx : 0
           const label = `шаг ${s.id}${s.title ? ', ' + s.title : ''}, ${s.kind}, участников: ${parts.length}${s.enabled === false ? ', выключен' : ''}`

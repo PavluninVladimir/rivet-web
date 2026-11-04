@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { api, subscribe, type Attention, type Event, type Project } from './api/client'
+import { ApiError, api, subscribe, type AgentRole, type Attention, type Event, type Project, type Runner, type TeamAgent } from './api/client'
 
 // Маршрут — hash-навигация: #/epics, #/epic/<id>, #/task/<id> поверх epic и т.п.
 // Вкладки раздела «Управление приложением» адресуемы: #/app-management/<tab>.
-export const APP_TABS = ['users', 'runners', 'agents', 'connections', 'policies', 'usage', 'audit', 'status'] as const
+export const APP_TABS = ['users', 'runners', 'agents', 'team', 'roles', 'connections', 'policies', 'usage', 'audit', 'status'] as const
 export type AppTab = typeof APP_TABS[number]
 // Вкладки настроек проекта: #/project/<id>/settings/<tab> (add-project-settings-tabs).
 export const SETTINGS_TABS = ['general', 'members', 'process', 'policies', 'environments'] as const
@@ -60,6 +60,16 @@ interface Store {
   // Claim эскалации не порождает события — после него список обновляется явно.
   refreshAttention: () => void
   refreshMySteps: () => void
+  // Шаблоны ролей, команда агентов и runner'ы (add-agent-roles): общие
+  // для дашборда, деталки, управления и редактора процесса; перечитываются
+  // по role.*, team.agent_*, runner.renamed и переподключению SSE.
+  roles: AgentRole[]
+  roleOf: (id: string | undefined) => AgentRole | undefined
+  refreshRoles: () => void
+  team: TeamAgent[]
+  refreshTeam: () => void
+  runners: Runner[]
+  refreshRunners: () => void
 }
 
 const Ctx = createContext<Store | null>(null)
@@ -71,6 +81,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [projectId, setProjectId] = useState<string | null>(null)
   const [attention, setAttention] = useState<Attention[]>([])
   const [mySteps, setMySteps] = useState(0)
+  const [roles, setRoles] = useState<AgentRole[]>([])
+  const [team, setTeam] = useState<TeamAgent[]>([])
+  const [runners, setRunners] = useState<Runner[]>([])
   const [connected, setConnected] = useState(false)
   const [tick, setTick] = useState(0)
   const [lastEvent, setLastEvent] = useState<Event | null>(null)
@@ -111,6 +124,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     api.mySteps().then(s => setMySteps((s ?? []).length)).catch(() => {})
   }, [])
   useEffect(refreshMySteps, [refreshMySteps])
+  // Каталоги перечитываются по SSE-событиям и переподключению: применяется
+  // ответ только последнего запроса, запоздавший старый не возвращает
+  // прежние данные. Старый бэкенд без /roles и /team отвечает 404: каталог
+  // пуст, подписи деградируют к runner'ам. Прочие ошибки каталог не трогают.
+  const rolesSeq = useRef(0)
+  const refreshRoles = useCallback(() => {
+    const seq = ++rolesSeq.current
+    api.roles()
+      .then(r => { if (seq === rolesSeq.current) setRoles(r?.roles ?? []) })
+      .catch(e => { if (seq === rolesSeq.current && e instanceof ApiError && e.status === 404) setRoles([]) })
+  }, [])
+  useEffect(refreshRoles, [refreshRoles])
+  const teamSeq = useRef(0)
+  const refreshTeam = useCallback(() => {
+    const seq = ++teamSeq.current
+    api.team()
+      .then(r => { if (seq === teamSeq.current) setTeam(r?.agents ?? []) })
+      .catch(e => { if (seq === teamSeq.current && e instanceof ApiError && e.status === 404) setTeam([]) })
+  }, [])
+  useEffect(refreshTeam, [refreshTeam])
+  const runnersSeq = useRef(0)
+  const refreshRunners = useCallback(() => {
+    const seq = ++runnersSeq.current
+    api.runners().then(r => { if (seq === runnersSeq.current) setRunners(r ?? []) }).catch(() => {})
+  }, [])
+  useEffect(refreshRunners, [refreshRunners])
+  const roleOf = useCallback((id: string | undefined) => id ? roles.find(r => r.id === id) : undefined, [roles])
 
   useEffect(() => {
     if (!projectId) return
@@ -127,6 +167,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // Бюджет и политика живут в DTO проекта: пауза по бюджету и новая
         // версия политики должны обновить состояние без перезагрузки.
         if (e.Type === 'policy.budget_exceeded' || e.Type === 'policy.activated') refreshProjects()
+        // Название и цвет шаблона приходят и в DTO агентов: правка
+        // шаблона перечитывает и команду. Смена модели планировщика меняет
+        // модель агента-тимлида.
+        if (e.Type.startsWith('role.')) { refreshRoles(); refreshTeam() }
+        if (e.Type.startsWith('team.agent_') || e.Type === 'planner.model_changed') refreshTeam()
+        if (e.Type === 'planner.model_changed') refreshRoles()
+        // Текущая работа агентов и runner'ов меняется вместе со статусами задач.
+        if (e.Type === 'task.status' || e.Type === 'task.assign' || e.Type === 'task.step') { refreshTeam(); refreshRunners() }
+        if (e.Type === 'runner.renamed') { refreshRunners(); refreshTeam() }
+        // Декомпозиция: Тимлид занят, пока не придёт итог плана.
+        if (e.Type === 'epic.decomposing' || e.Type === 'epic.decomposed' || e.Type === 'epic.plan_failed') refreshTeam()
       },
       onLog: (c) => {
         const cur = logsRef.current.get(c.task_id) ?? ''
@@ -138,15 +189,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         deployLogsRef.current.set(c.deploy_id, (cur + c.data).slice(-64000))
         setTick(t => t + 1)
       },
-      onState: setConnected,
+      onState: (on) => {
+        setConnected(on)
+        // После разрыва события ролей и имён runner'ов могли пропасть:
+        // каталог перечитывается целиком, а tick заставляет экраны
+        // перечитать runner'ов и задачи.
+        if (on) {
+          refreshRoles(); refreshTeam(); refreshRunners(); refreshAttention(); refreshMySteps()
+          setTick(t => t + 1)
+        }
+      },
     })
-  }, [projectId, refreshAttention, refreshProjects])
+  }, [projectId, refreshAttention, refreshProjects, refreshRoles, refreshTeam, refreshRunners, refreshMySteps])
 
   return (
     <Ctx.Provider value={{
       route, nav, projects, projectId, setProjectId,
       attention, mySteps, connected, tick, lastEvent, logs: logsRef.current,
       deployLogs: deployLogsRef.current, refreshProjects, refreshAttention, refreshMySteps,
+      roles, roleOf, refreshRoles, team, refreshTeam, runners, refreshRunners,
     }}>
       {children}
     </Ctx.Provider>

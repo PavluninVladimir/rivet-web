@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, budgetPaused, errCode, stColor, type EpicView, type Runner, type Task, type UsageRow } from '../api/client'
+import { api, budgetPaused, errCode, stColor, type EpicView, type Task, type UsageRow } from '../api/client'
 import { Dag, type DagFilter } from '../components/Dag'
 import { TaskDrawer } from '../components/TaskDrawer'
-import { ClaimControl, CtxBar, fmtCost, fmtDate, fmtDuration, fmtTokens, StBadge } from '../components/ui'
+import { ClaimControl, fmtCost, fmtDate, fmtDuration, fmtTokens, StBadge } from '../components/ui'
+import { Performer } from '../components/RoleChip'
+import { TeamPanel } from '../components/TeamPanel'
 import { Button, Field, FormActions, FormNote, NumberInput, Select, TextArea, TextInput, errText, useBusy } from '../components/form'
 import { useStore } from '../store'
 
 const SEG_ORDER = ['done', 'running', 'testing', 'fixing', 'review', 'ready', 'queued', 'blocked', 'failed', 'cancelled']
 
-export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: string }) {
+export function EpicDashboard({ epicId, taskId, admin = false }: { epicId: string; taskId?: string; admin?: boolean }) {
   const { nav, tick, attention, projects, refreshAttention } = useStore()
   const [epic, setEpic] = useState<EpicView | null>(null)
-  const [runners, setRunners] = useState<Runner[]>([])
   const [mode, setMode] = useState<'graph' | 'list'>('graph')
   const [filter, setFilter] = useState<DagFilter>('all')
   const [hideDone, setHideDone] = useState(false)
@@ -20,10 +21,11 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
   const [err, setErr] = useState('')
   // Бюджет Epic (add-cost-transparency): черновик поля, null — не редактируется.
   const [budgetEdit, setBudgetEdit] = useState<string | null>(null)
+  // Тимлид составляет план, пока идёт запрос декомпозиции (add-agent-roles).
+  const [planning, setPlanning] = useState(false)
 
   const refresh = useCallback(() => {
     api.epic(epicId).then(setEpic).catch(e => setErr(String(e)))
-    api.runners().then(r => setRunners(r ?? [])).catch(() => {})
   }, [epicId])
   useEffect(refresh, [refresh, tick])
 
@@ -56,7 +58,7 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
 
   const total = tasks.reduce((s, t) => s + t.Estimate, 0) || 1
   const epicAtt = attention.filter(a => tasks.some(t => t.ID === a.TaskID))
-  const online = runners.filter(r => r.Status !== 'offline')
+
   const usageByTask = new Map<string, UsageRow>((epic.usage ?? []).map(u => [u.key, u]))
   const usageTotal = epic.usage_total
   // Пауза планирования по дневному бюджету токенов — из DTO проекта
@@ -90,7 +92,10 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
           <StBadge s={epic.Status} />
           <div className="epic-actions">
             {epic.Status === 'planned' && tasks.length === 0 &&
-              <Button busy={busy} busyLabel="декомпозиция…" onClick={act(() => api.decompose(epic.ID))}>Декомпозировать</Button>}
+              <Button busy={busy} busyLabel="декомпозиция…" onClick={act(async () => {
+                setPlanning(true)
+                try { await api.decompose(epic.ID) } finally { setPlanning(false) }
+              })}>Декомпозировать</Button>}
             {epic.Status === 'planned' && <Button variant="primary" busy={busy} onClick={act(() => api.epicAction(epic.ID, 'start'))}>Запустить</Button>}
             {epic.Status === 'running' && <Button busy={busy} onClick={act(() => api.epicAction(epic.ID, 'pause'))}>Пауза</Button>}
             {epic.Status === 'paused' && <Button variant="primary" busy={busy} onClick={act(() => api.epicAction(epic.ID, 'resume'))}>Возобновить</Button>}
@@ -205,7 +210,7 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
             : (
               <div className="epic-list">
                 <table className="tbl">
-                  <thead><tr><th>Задача</th><th>Название</th><th>Статус</th><th>Runner</th><th className="num">Попытки</th><th className="num">Токены</th><th className="num">Стоимость</th></tr></thead>
+                  <thead><tr><th>Задача</th><th>Название</th><th>Статус</th><th>Исполнитель</th><th className="num">Попытки</th><th className="num">Токены</th><th className="num">Стоимость</th></tr></thead>
                   <tbody>
                     {tasks.map(t => {
                       const u = usageByTask.get(t.ID)
@@ -214,7 +219,7 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
                           <td className="id">task-{t.Num}</td>
                           <td>{t.Title}</td>
                           <td><StBadge s={t.Status} /></td>
-                          <td className="mono muted">{t.RunnerID || '—'}</td>
+                          <td className="mono muted"><Performer roleId={t.RoleID} agentName={t.AgentName} runnerName={t.RunnerName} runnerId={t.RunnerID} /></td>
                           <td className="num">{t.AttemptUsed}/{t.AttemptLimit}</td>
                           <td className="num mono muted">{u ? `${fmtTokens(u.tokens_in)} / ${fmtTokens(u.tokens_out)}` : '—'}</td>
                           <td className="num mono muted">{u ? fmtCost(u.cost_usd) : '—'}</td>
@@ -227,22 +232,7 @@ export function EpicDashboard({ epicId, taskId }: { epicId: string; taskId?: str
             )}
         </div>
 
-        <aside className="rail">
-          <div className="rail-head"><h2>Runner’ы</h2><span className="n">{online.length} online</span></div>
-          <div className="rail-body">
-            {online.map(r => (
-              <div key={r.ID} className="runner-card">
-                <div className="rc-top">
-                  <span className="name">{r.ID}</span>
-                  <span className="muted" style={{ fontSize: 10.5 }}>{r.Model || r.Agent}</span>
-                  <StBadge s={r.Status} />
-                </div>
-                {r.TaskID && <div className="rc-action mono">{tasks.find(t => t.ID === r.TaskID) ? `task-${tasks.find(t => t.ID === r.TaskID)!.Num}` : 'занят'}</div>}
-                {r.TaskID && <CtxBar pct={r.CtxPct} />}
-              </div>
-            ))}
-          </div>
-        </aside>
+        <TeamPanel epicId={epic.ID} tasks={tasks} planning={planning} admin={admin} />
       </div>
 
       {taskId && <TaskDrawer taskId={taskId} onClose={closeTask} onChanged={refresh}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { api, type AgentCatalog, type Member, type Participant, type ProcessDoc, type ProcessStep, type Runner } from '../api/client'
 import { Button, Checkbox, Combo, Field, FormActions, FormNote, NumberInput, Select, TextArea, TextInput } from './form'
 import { HAS_PARTICIPANTS, KIND_LABEL, OUTCOMES, defaultTarget, newStepId, type Outcome } from './processLayout'
+import { useStore } from '../store'
 
 // Модальные окна графа процесса (add-process-graph-editor, design решения
 // 4 и 5): окно шага со всеми полями и окно одного перехода. Правки
@@ -92,6 +93,12 @@ export function StepModal({ doc, index, isNew, at, runners, members, readOnly, e
     return Array.from(new Set(runners.filter(r => !kind || r.Agent === kind).flatMap(r => r.Models ?? []))).sort()
   }
   const logins = useMemo(() => (members ?? []).map(m => m.login).sort(), [members])
+  // Роли участников (add-agent-roles): включённые шаблоны, кроме шаблонов
+  // control plane (Тимлид участником шага быть не может); тип агента и
+  // модель без явного значения берутся из шаблона и показываются подсказкой.
+  const { roles } = useStore()
+  const enabledRoles = roles.filter(r => r.enabled && !r.control_plane && r.capability)
+  const roleById = (id?: string) => id ? roles.find(r => r.id === id) : undefined
 
   const patch = (p: Partial<ProcessStep>) => setDraft(d => ({ ...d, ...p }))
   const setKind = (kind: ProcessStep['kind']) => {
@@ -168,6 +175,22 @@ export function StepModal({ doc, index, isNew, at, runners, members, readOnly, e
                     <option value="agent">агент</option>
                     <option value="user">человек</option>
                   </Select>
+                  {!isUser && (() => {
+                    const role = roleById(p.agent?.role)
+                    return <Select size="sm" aria-label="роль" value={p.agent?.role ?? ''} disabled={readOnly}
+                      aria-invalid={fe(`participants[${k}].agent.role`) ? true : undefined}
+                      title={role?.description || undefined}
+                      onChange={e => setPart(k, { agent: { ...p.agent, role: e.target.value || undefined } })}>
+                      <option value="">без роли</option>
+                      {enabledRoles.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}
+                      {p.agent?.role && !enabledRoles.some(r => r.id === p.agent?.role) &&
+                        <option value={p.agent.role}>{(() => {
+                          const r = roleById(p.agent?.role)
+                          if (!r) return `${p.agent.role} (нет в каталоге)`
+                          return `${r.title} (${!r.enabled ? 'отключён' : 'control plane'})`
+                        })()}</option>}
+                    </Select>
+                  })()}
                   {!isUser && <>
                     {customKind[k] || (p.agent?.kind && !profiles.some(a => a.id === p.agent?.kind) && !externalKinds.includes(p.agent.kind))
                       ? <Combo className="f-sm" aria-label="агент" options={[...profiles.map(a => a.id), ...externalKinds]} placeholder="идентификатор агента" value={p.agent?.kind ?? ''} disabled={readOnly}
@@ -177,26 +200,34 @@ export function StepModal({ doc, index, isNew, at, runners, members, readOnly, e
                           aria-invalid={fe(`participants[${k}].agent.kind`) ? true : undefined}
                           onChange={e => {
                             // Смена агента сбрасывает модель: у нового её может не быть.
-                            if (e.target.value === '__custom') { setCustomKind(c => ({ ...c, [k]: true })); setPart(k, { agent: {} }); return }
-                            setPart(k, { agent: { kind: e.target.value || undefined } })
+                            if (e.target.value === '__custom') { setCustomKind(c => ({ ...c, [k]: true })); setPart(k, { agent: { role: p.agent?.role } }); return }
+                            setPart(k, { agent: { role: p.agent?.role, kind: e.target.value || undefined } })
                           }}>
-                          <option value="">любой агент</option>
+                          <option value="">{roleById(p.agent?.role) ? `${roleById(p.agent?.role)!.agent || 'любой'} (роль)` : 'любой агент'}</option>
                           {profiles.map(a => <option key={a.id} value={a.id}>{a.name} ({a.id})</option>)}
                           {externalKinds.length > 0 && <optgroup label="вне каталога">
                             {externalKinds.map(k2 => <option key={k2} value={k2}>{k2}</option>)}
                           </optgroup>}
                           <option value="__custom">другой агент…</option>
                         </Select>}
-                    {profileOf(p.agent?.kind)?.models.length
+                    {(() => {
+                      // Модели выбираются у явного агента, иначе у агента роли.
+                      const role = roleById(p.agent?.role)
+                      const kind = p.agent?.kind || role?.agent
+                      const defLabel = role?.model
+                        ? `${role.model} (роль)`
+                        : `по умолчанию${profileOf(kind)?.default_model ? ` (${profileOf(kind)!.default_model!.model})` : ''}`
+                      return profileOf(kind)?.models.length
                       ? <Select size="sm" aria-label="модель" value={p.agent?.model ?? ''} disabled={readOnly}
                           aria-invalid={fe(`participants[${k}].agent.model`) ? true : undefined}
                           onChange={e => setPart(k, { agent: { ...p.agent, model: e.target.value || undefined } })}>
-                          <option value="">по умолчанию{profileOf(p.agent?.kind)?.default_model ? ` (${profileOf(p.agent?.kind)!.default_model!.model})` : ''}</option>
-                          {modelsFor(p.agent?.kind).map(m => <option key={m} value={m}>{m}</option>)}
+                          <option value="">{defLabel}</option>
+                          {modelsFor(kind).map(m => <option key={m} value={m}>{m}</option>)}
                         </Select>
-                      : <Combo className="f-sm" aria-label="модель" options={modelsFor(p.agent?.kind)} placeholder="любая модель" value={p.agent?.model ?? ''} disabled={readOnly}
+                      : <Combo className="f-sm" aria-label="модель" options={modelsFor(kind)} placeholder={role ? defLabel : 'любая модель'} value={p.agent?.model ?? ''} disabled={readOnly}
                           aria-invalid={fe(`participants[${k}].agent.model`) ? true : undefined}
-                          onChange={e => setPart(k, { agent: { ...p.agent, model: e.target.value || undefined } })} />}
+                          onChange={e => setPart(k, { agent: { ...p.agent, model: e.target.value || undefined } })} />
+                    })()}
                   </>}
                   {isUser && <>
                     <Select size="sm" aria-label="как выбирать человека" value={p.user?.login !== undefined ? 'login' : 'role'} disabled={readOnly}

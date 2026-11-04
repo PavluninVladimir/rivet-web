@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type Runner } from '../api/client'
 import { CtxBar, fmtAgo, StBadge } from '../components/ui'
+import { Performer } from '../components/RoleChip'
+import { Button, TextInput, errText } from '../components/form'
 import { useStore } from '../store'
 
 // Представление Runner'ов открыто всем (спека runners «Список runner'ов»);
@@ -9,11 +11,24 @@ import { useStore } from '../store'
 export function RunnersView({ admin }: { admin: boolean }) {
   const { tick, nav } = useStore()
   const [runners, setRunners] = useState<Runner[]>([])
+  // Правка имени runner'а администратором (add-agent-roles): одна строка
+  // за раз; пустое имя возвращает имя из регистрации.
+  const [edit, setEdit] = useState<{ id: string; value: string } | null>(null)
+  const [editErr, setEditErr] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const refresh = useCallback(() => {
     api.runners().then(r => setRunners(r ?? [])).catch(() => {})
   }, [])
   useEffect(refresh, [refresh, tick])
+
+  const nameErr = edit && edit.value.trim().length > 40 ? 'не длиннее 40 символов' : ''
+  const saveName = async () => {
+    if (!edit || nameErr || saving) return
+    setSaving(true); setEditErr('')
+    try { await api.renameRunner(edit.id, edit.value.trim()); setEdit(null); refresh() }
+    catch (e) { setEditErr(errText(e)) } finally { setSaving(false) }
+  }
 
   const toggle = async (r: Runner) => {
     await api.drain(r.ID, !r.Draining).catch(() => {})
@@ -32,11 +47,35 @@ export function RunnersView({ admin }: { admin: boolean }) {
         )}
       </div>
       <table className="tbl">
-        <thead><tr><th>ID</th><th>Агент</th><th>Хост</th><th>Capabilities</th><th>Глубина</th><th>Контекст</th><th>Статус</th><th>Последний сигнал</th><th></th></tr></thead>
+        <thead><tr><th>Runner</th><th>Сейчас</th><th>Профиль</th><th>Хост</th><th>Capabilities</th><th>Глубина</th><th>Контекст</th><th>Статус</th><th>Последний сигнал</th><th></th></tr></thead>
         <tbody>
           {runners.map(r => (
             <tr key={r.ID}>
-              <td className="id">{r.ID}</td>
+              <td data-runner-name={r.ID}>
+                {edit?.id === r.ID
+                  ? <span className="row" style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                      <TextInput size="sm" autoFocus aria-label={`имя runner’а ${r.ID}`} placeholder={r.ID} value={edit.value}
+                        aria-invalid={nameErr || editErr ? true : undefined}
+                        onChange={e => setEdit({ id: r.ID, value: e.target.value })}
+                        onKeyDown={e => { if (e.key === 'Enter') void saveName(); if (e.key === 'Escape') setEdit(null) }} />
+                      <Button size="sm" variant="primary" busy={saving} disabled={!!nameErr} onClick={saveName}>OK</Button>
+                      <Button size="sm" variant="quiet" aria-label="отмена" onClick={() => { setEdit(null); setEditErr('') }}>✕</Button>
+                      {(nameErr || editErr) && <span className="f-error" role="alert">{nameErr || editErr}</span>}
+                    </span>
+                  : <>
+                      <span style={{ whiteSpace: 'nowrap' }}>
+                        <b title={r.DisplayNameLocked ? 'имя задано в консоли и не меняется при переподключении' : undefined}>{r.DisplayName || r.ID}</b>
+                        {admin && <Button variant="quiet" size="sm" aria-label={`изменить имя ${r.ID}`} title="задать имя runner’а; пусто: имя из регистрации"
+                          onClick={() => { setEdit({ id: r.ID, value: r.DisplayName ?? '' }); setEditErr('') }}>✎</Button>}
+                      </span>
+                      {r.DisplayName && <div className="mono muted" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{r.ID}</div>}
+                    </>}
+              </td>
+              <td title="агент команды, чья сессия идёт на runner’е">
+                {r.AgentName || r.RoleID
+                  ? <Performer roleId={r.RoleID} agentName={r.AgentName} />
+                  : <span className="muted">{r.TaskID ? 'занят' : '—'}</span>}
+              </td>
               <td className="muted">
                 {r.ProfileName ? <>{r.ProfileName} <span className="mono">{r.Agent}</span></> : r.Agent}
                 {r.Models?.length ? <span className="mono"> · {r.Models.join(', ')}</span> : r.Model ? <span className="mono"> · {r.Model}</span> : null}

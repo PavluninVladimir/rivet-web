@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { InstallationProcessSection } from './ProcessSection'
-import { DEFAULT_PROCESS } from '../api/client'
-import { api, type Overrides, type PolicyEngine, type PolicyVersion, type Presets, type ProjectPolicy } from '../api/client'
+import { api, apiField, defaultProcess, type ModelChoice, type Overrides, type PolicyEngine, type PolicyVersion, type Presets, type ProjectPolicy, type RoleModelRef } from '../api/client'
+import { choiceLabel, tripleKey, tripleOf } from './roleLabels'
+import { useStore } from '../store'
 import { fmtDate, fmtTokens } from './ui'
 import { Button, Checkbox, FormNote, NumberInput, Select, Switch, TagsInput, errText } from './form'
 
@@ -13,6 +14,15 @@ import { Button, Checkbox, FormNote, NumberInput, Select, Switch, TagsInput, err
 // из прототипа не делаются (design, сверка с прототипом).
 
 type PresetKey = 'auto_merge' | 'human_review_paths' | 'attempt_limit' | 'review_limit' | 'daily_token_budget' | 'auto_publish'
+  | 'tester_agent' | 'test_paths'
+
+// Значения по умолчанию новых пресетов (api-contract add-agent-roles):
+// старый бэкенд их не отдаёт, форма показывает действующие по умолчанию.
+export const DEFAULT_TEST_PATHS = ['test/**', 'tests/**', '**/*_test.*', '**/*.test.*', '**/*.spec.*']
+const PRESET_DEFAULTS: Partial<Record<PresetKey, Presets[PresetKey]>> = { tester_agent: true, test_paths: DEFAULT_TEST_PATHS }
+function presetValue(p: Presets, k: PresetKey): Presets[PresetKey] {
+  return p[k] ?? PRESET_DEFAULTS[k] ?? p[k]
+}
 
 const ROWS: { key: PresetKey; label: string; hint: string }[] = [
   { key: 'auto_merge', label: 'Авто-merge после review', hint: 'мержить PR, когда review и проверки пройдены' },
@@ -21,6 +31,8 @@ const ROWS: { key: PresetKey; label: string; hint: string }[] = [
   { key: 'review_limit', label: 'Лимит отказов review', hint: 'эскалация человеку после N отказов review' },
   { key: 'daily_token_budget', label: 'Дневной бюджет токенов', hint: 'пауза планирования при превышении, пусто — без ограничения' },
   { key: 'auto_publish', label: 'Автопубликация после merge', hint: 'разрешить окружениям с автозапуском публиковаться' },
+  { key: 'tester_agent', label: 'Тестировщик на шаге test', hint: 'агент-тестировщик дописывает тесты по критериям; выкл: только проверки проекта. Действует на процесс по умолчанию, в своём процессе тестировщик задаётся участником шага test' },
+  { key: 'test_paths', label: 'Шаблоны тестовых файлов', hint: 'тестировщик меняет только такие файлы, правки вне них откатываются' },
 ]
 
 export function shortHash(h: string | undefined | null): string {
@@ -29,8 +41,8 @@ export function shortHash(h: string | undefined | null): string {
 
 export { Switch }
 
-function PathsInput({ value, disabled, onChange }: { value: string[]; disabled?: boolean; onChange: (v: string[]) => void }) {
-  return <div style={{ minWidth: 260 }}><TagsInput value={value} disabled={disabled} onChange={onChange} placeholder="infra/**, **/*.sql" /></div>
+function PathsInput({ value, disabled, onChange, placeholder = 'infra/**, **/*.sql' }: { value: string[]; disabled?: boolean; onChange: (v: string[]) => void; placeholder?: string }) {
+  return <div style={{ minWidth: 260 }}><TagsInput value={value} disabled={disabled} onChange={onChange} placeholder={placeholder} /></div>
 }
 
 function NumInput({ value, disabled, width = 72, min = 1, onChange, placeholder }: {
@@ -52,9 +64,12 @@ function PresetControl({ k, value, disabled, onChange }: {
   switch (k) {
     case 'auto_merge':
     case 'auto_publish':
+    case 'tester_agent':
       return <Switch on={Boolean(value)} disabled={disabled} onChange={onChange} />
     case 'human_review_paths':
       return <PathsInput value={(value as string[]) ?? []} disabled={disabled} onChange={onChange} />
+    case 'test_paths':
+      return <PathsInput value={(value as string[]) ?? []} disabled={disabled} onChange={onChange} placeholder="test/**, **/*.test.*" />
     case 'daily_token_budget':
       return <NumInput value={value as number | null} disabled={disabled} width={120} min={0}
         placeholder="без лимита" onChange={onChange} />
@@ -64,8 +79,10 @@ function PresetControl({ k, value, disabled, onChange }: {
 }
 
 function fmtValue(k: PresetKey, v: Presets[PresetKey]): string {
-  if (k === 'auto_merge' || k === 'auto_publish') return v ? 'вкл' : 'выкл'
-  if (k === 'human_review_paths') return (v as string[]).length ? (v as string[]).join(', ') : 'нет'
+  if (k === 'auto_merge' || k === 'auto_publish' || k === 'tester_agent') return v ? 'вкл' : 'выкл'
+  // Пустые шаблоны тестов на сервере значат «по умолчанию», а не «нет».
+  if (k === 'test_paths') return (v as string[] | undefined)?.length ? (v as string[]).join(', ') : `по умолчанию (${DEFAULT_TEST_PATHS.join(', ')})`
+  if (k === 'human_review_paths') return (v as string[] | undefined)?.length ? (v as string[]).join(', ') : 'нет'
   if (k === 'daily_token_budget') return v == null ? 'без лимита' : fmtTokens(v as number)
   return String(v)
 }
@@ -94,11 +111,17 @@ function VersionHistory({ versions }: { versions: PolicyVersion[] }) {
   )
 }
 
+// Баннер ошибок и заметок. Ошибка API с полем (test_paths,
+// role_models.<роль>.model) показывается у поля, а не только баннером.
 function useBanner() {
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
+  const [errField, setErrField] = useState<string | undefined>(undefined)
   const banner: ReactNode = (err || note) ? <div style={{ marginBottom: 8 }}><FormNote err={err || undefined} ok={note || undefined} /></div> : null
-  return { banner, setErr, setNote }
+  const fail = (e: unknown) => { setErr(errText(e)); setErrField(apiField(e)) }
+  const clear = () => { setErr(''); setNote(''); setErrField(undefined) }
+  const fieldErr = (name: string) => errField && (errField === name || errField.startsWith(name + '.') || errField.startsWith(name + '[')) ? err : undefined
+  return { banner, setErr, setNote, fail, clear, fieldErr }
 }
 
 // ─── пресеты установки (вкладка «Политики» раздела управления) ──────────
@@ -109,7 +132,7 @@ export function InstallationPolicyPanel({ onSaved }: { onSaved?: () => void } = 
   const [version, setVersion] = useState<PolicyVersion | null>(null)
   const [versions, setVersions] = useState<PolicyVersion[]>([])
   const [dirty, setDirty] = useState(false)
-  const { banner, setErr, setNote } = useBanner()
+  const { banner, setErr, setNote, fail, clear, fieldErr } = useBanner()
 
   const refresh = useCallback(() => {
     api.systemPolicy()
@@ -125,7 +148,7 @@ export function InstallationPolicyPanel({ onSaved }: { onSaved?: () => void } = 
   const external = engine?.mode === 'external'
   const set = (k: PresetKey) => (v: Presets[PresetKey]) => { setPresets({ ...presets, [k]: v }); setDirty(true) }
   const save = async () => {
-    setErr(''); setNote('')
+    clear()
     try {
       const r = await api.putSystemPolicy(presets)
       setPresets(r.presets); setVersion(r.version); setDirty(false)
@@ -135,7 +158,7 @@ export function InstallationPolicyPanel({ onSaved }: { onSaved?: () => void } = 
         : saved)
       api.systemPolicyVersions().then(v => setVersions(v ?? [])).catch(() => {})
       onSaved?.()
-    } catch (e) { setErr(errText(e)) }
+    } catch (e) { fail(e) }
   }
 
   return (
@@ -160,12 +183,13 @@ export function InstallationPolicyPanel({ onSaved }: { onSaved?: () => void } = 
             <div className="set-row" key={r.key}>
               <div className="lbl"><b>{r.label}</b><span>{r.hint}</span></div>
               <div className="ctl">
-                <PresetControl k={r.key} value={presets[r.key]} disabled={external} onChange={set(r.key)} />
+                <PresetControl k={r.key} value={presetValue(presets, r.key)} disabled={external} onChange={set(r.key)} />
+                {fieldErr(r.key) && <div className="f-error" role="alert">{fieldErr(r.key)}</div>}
               </div>
             </div>
           ))}
         </div>
-        <InstallationProcessSection doc={presets.process ?? DEFAULT_PROCESS} locks={presets.process_locks ?? {}} readOnly={external}
+        <InstallationProcessSection doc={presets.process ?? defaultProcess(presets.tester_agent)} locks={presets.process_locks ?? {}} readOnly={external}
           onChange={(d, l) => { setPresets(prev => ({ ...(prev ?? presets), process: d, process_locks: Object.keys(l).length ? l : null })); setDirty(true) }} />
         <div className="dw-sec">
           <div className="set-row" style={{ border: 0 }}>
@@ -194,7 +218,12 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
   const [overrides, setOverrides] = useState<Overrides | null>(null)
   const [versions, setVersions] = useState<PolicyVersion[]>([])
   const [dirty, setDirty] = useState(false)
-  const { banner, setErr, setNote } = useBanner()
+  const { banner, setErr, setNote, fail, clear, fieldErr } = useBanner()
+  // Модели ролей проекта (add-agent-roles): тройка «профиль, подключение,
+  // модель» из выбора установки; у шаблона с профилем — его привязки.
+  const { roles } = useStore()
+  const [choices, setChoices] = useState<ModelChoice[]>([])
+  useEffect(() => { api.modelChoices().then(r => setChoices(r?.choices ?? [])).catch(() => {}) }, [])
 
   const refresh = useCallback(() => {
     api.projectPolicy(projectId).then(p => {
@@ -226,17 +255,19 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
   // Значение строки в форме: переопределение, если задано, иначе действующее.
   // Бюджет 0 в переопределении — «без ограничения», в поле показывается пустым.
   const shown = (k: PresetKey): Presets[PresetKey] => {
-    const v = overrides[k] !== null && overrides[k] !== undefined ? (overrides[k] as Presets[PresetKey]) : pp.effective[k]
+    const v = overrides[k] !== null && overrides[k] !== undefined ? (overrides[k] as Presets[PresetKey]) : presetValue(pp.effective, k)
     return k === 'daily_token_budget' && v === 0 ? null : v
   }
   const save = async () => {
-    setErr(''); setNote('')
+    clear()
     try {
-      const r = await api.putProjectPolicy(projectId, overrides)
+      // Пустые шаблоны тестов значат «по умолчанию»: переопределение снимается.
+      const body = overrides.test_paths && overrides.test_paths.length === 0 ? { ...overrides, test_paths: null } : overrides
+      const r = await api.putProjectPolicy(projectId, body)
       setPP(r); setOverrides(r.overrides); setDirty(false)
       setNote(`сохранена версия проекта ${r.version?.version} (${shortHash(r.version?.hash)})`)
       api.projectPolicyVersions(projectId).then(v => setVersions(v ?? [])).catch(() => {})
-    } catch (e) { setErr(errText(e)) }
+    } catch (e) { fail(e) }
   }
 
   return (
@@ -282,17 +313,18 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
                     <span className="n">{inherited ? 'наследуется' : 'переопределено'}</span>
                   </span>
                 </b>
-                <span>{r.hint}{inherited && <> · действует: {fmtValue(r.key, pp.effective[r.key])}</>}</span>
+                <span>{r.hint}{inherited && <> · действует: {fmtValue(r.key, presetValue(pp.effective, r.key))}</>}</span>
               </div>
               <div className="ctl">
                 {editable && (
                   <Checkbox checked={!inherited} label={<span className="muted" style={{ fontSize: 12 }}>переопределить</span>}
                     onChange={on => setOv(r.key, on
-                      ? (r.key === 'daily_token_budget' && pp.effective[r.key] == null ? 0 : pp.effective[r.key])
+                      ? (r.key === 'daily_token_budget' && pp.effective[r.key] == null ? 0 : presetValue(pp.effective, r.key))
                       : null)} />
                 )}
                 <PresetControl k={r.key} value={shown(r.key)} disabled={!editable || inherited}
                   onChange={v => setOv(r.key, r.key === 'daily_token_budget' && v == null ? 0 : v)} />
+                {fieldErr(r.key) && <div className="f-error" role="alert">{fieldErr(r.key)}</div>}
               </div>
             </div>
           )
@@ -325,6 +357,50 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
                   {am.models.length === 0 && <option value="">привязок нет</option>}
                   {am.models.map(m => <option key={`${m.connection_id}/${m.model}`} value={`${m.connection_id}/${m.model}`}>{m.connection_id}/{m.model}</option>)}
                 </Select>
+              </div>
+            </div>
+          )
+        })}
+        {roles.filter(r => r.enabled && !r.control_plane).map(r => {
+          // Варианты: привязки профиля шаблона, без профиля — всех включённых.
+          const opts = choices.filter(c => !r.agent || c.agent === r.agent)
+          if (opts.length === 0) return null
+          const ov = overrides.role_models?.[r.id]
+          const inherited = !ov
+          const own: RoleModelRef | null = r.model ? { agent: r.agent, connection_id: r.connection_id, model: r.model } : null
+          // Без модели шаблона действует модель профиля с учётом
+          // переопределения агента в проекте.
+          const profEff = r.agent ? pp.agent_models?.[r.agent]?.effective : null
+          const effLabel = ov ? `${ov.agent || r.agent || 'профиль шаблона'} / ${ov.connection_id}/${ov.model}`
+            : own ? `${own.agent || 'любой профиль'} / ${own.connection_id}/${own.model}`
+            : profEff ? `${r.agent} / ${profEff.connection_id}/${profEff.model} (профиль)` : 'по умолчанию профиля'
+          const setRole = (v: RoleModelRef | null) => {
+            const next = { ...(overrides.role_models ?? {}) }
+            if (v) next[r.id] = v; else delete next[r.id]
+            setOverrides({ ...overrides, role_models: Object.keys(next).length ? next : null }); setDirty(true)
+          }
+          const cur = tripleKey(ov ?? own)
+          const fErr = fieldErr(`role_models.${r.id}`)
+          return (
+            <div className="set-row" key={'role-' + r.id} data-role-model={r.id}>
+              <div className="lbl">
+                <b>Модель роли {r.title}
+                  <span className="chip" style={{ marginLeft: 8 }}><span className="n">{inherited ? 'наследуется' : 'переопределено'}</span></span>
+                </b>
+                <span>агенты и участники роли <span className="mono">{r.id}</span> без своей модели · действует: <span className="mono">{effLabel}</span></span>
+              </div>
+              <div className="ctl">
+                {editable && (
+                  <Checkbox checked={!inherited} label={<span className="muted" style={{ fontSize: 12 }}>переопределить</span>}
+                    onChange={on => setRole(on ? (own ?? { agent: opts[0].agent, connection_id: opts[0].connection_id, model: opts[0].model }) : null)} />
+                )}
+                <Select size="sm" aria-label={`модель роли ${r.id}`} disabled={!editable || inherited} aria-invalid={fErr ? true : undefined}
+                  value={cur} onChange={e => { if (e.target.value) setRole(tripleOf(e.target.value)) }}>
+                  {!cur && <option value="">по умолчанию профиля</option>}
+                  {cur && !opts.some(c => tripleKey(c) === cur) && <option value={cur}>{effLabel}</option>}
+                  {opts.map(c => <option key={tripleKey(c)} value={tripleKey(c)}>{choiceLabel(c)}{c.runner_online ? '' : ' · нет runner’а'}</option>)}
+                </Select>
+                {fErr && <div className="f-error" role="alert">{fErr}</div>}
               </div>
             </div>
           )

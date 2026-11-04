@@ -24,6 +24,12 @@ export interface Task {
   ProcessHash: string
   StepAttempts: Record<string, number> | null
   WaitReason: string
+  // Текущий исполнитель (api-contract add-agent-roles): роль, агент
+  // команды и имя runner'а; пусто без исполнителя, роли или агента.
+  RoleID?: string
+  AgentID?: string
+  AgentName?: string
+  RunnerName?: string
 }
 
 export interface Epic {
@@ -110,7 +116,9 @@ export function budgetPaused(b: BudgetState | undefined, now = Date.now()): bool
 
 // Документ процесса проекта (api-contract add-process-model/humans/editor).
 export interface Participant {
-  agent?: { kind?: string; model?: string }
+  // role — роль из каталога (add-agent-roles): тип агента и модель без
+  // явного значения берутся из роли.
+  agent?: { role?: string; kind?: string; model?: string }
   user?: { login?: string; role?: string }
 }
 export interface ProcessStep {
@@ -130,12 +138,24 @@ export interface ProcessDoc { steps: ProcessStep[] }
 // Процесс по умолчанию, когда установка его не задавала (равен серверному
 // policy.DefaultProcess): в ответах политики process тогда null.
 export const DEFAULT_PROCESS: ProcessDoc = { steps: [
-  { id: 'code', kind: 'code', title: 'Реализация', participants: [{ agent: {} }] },
-  { id: 'test', kind: 'test', title: 'Проверки', participants: [{ agent: {} }] },
-  { id: 'review', kind: 'review', title: 'Review', participants: [{ agent: {} }] },
+  { id: 'code', kind: 'code', title: 'Реализация', participants: [{ agent: { role: 'developer' } }] },
+  { id: 'test', kind: 'test', title: 'Проверки', participants: [{ agent: { role: 'tester' } }] },
+  { id: 'review', kind: 'review', title: 'Review', participants: [{ agent: { role: 'reviewer' } }] },
   { id: 'merge', kind: 'merge', title: 'Merge' },
   { id: 'deploy', kind: 'deploy', title: 'Публикация' },
 ] }
+// Процесс по умолчанию с учётом флага tester_agent: при выключенном флаге
+// сервер снимает тестировщика только в процессе по умолчанию, редактор
+// показывает то же самое, чтобы сохранение не сделало роль явной.
+export function defaultProcess(testerAgent: boolean | undefined): ProcessDoc {
+  const doc = structuredClone(DEFAULT_PROCESS)
+  if (testerAgent === false) {
+    for (const st of doc.steps) {
+      st.participants = st.participants?.map(p => p.agent?.role === 'tester' ? { agent: {} } : p)
+    }
+  }
+  return doc
+}
 // Ограничения установки на процессы проектов.
 export interface ProcessLocks {
   required_kinds?: string[]
@@ -153,6 +173,10 @@ export interface Presets {
   auto_publish: boolean
   process?: ProcessDoc | null
   process_locks?: ProcessLocks | null
+  // Тестировщик на шаге test и шаблоны тестовых файлов (add-agent-roles);
+  // старый бэкенд их не отдаёт, тогда действуют значения по умолчанию.
+  tester_agent?: boolean
+  test_paths?: string[]
 }
 
 // Переопределения проекта: null — наследуется от установки;
@@ -169,7 +193,13 @@ export interface Overrides {
   process?: ProcessDoc | null
   // Модели по умолчанию агентов для проекта (add-agent-profiles).
   agent_models?: Record<string, AgentModelRef> | null
+  // Роли (add-agent-roles): тестировщик, шаблоны тестов, модели ролей
+  // тройкой; пустой agent — профиль шаблона.
+  tester_agent?: boolean | null
+  test_paths?: string[] | null
+  role_models?: Record<string, RoleModelRef> | null
 }
+export interface RoleModelRef { agent: string; connection_id: string; model: string }
 
 export interface PolicyVersion {
   id: string
@@ -315,6 +345,96 @@ export interface Runner {
   Secure: boolean
   ProfileName: string
   DeclaredModels: string[] | null
+  // Инфраструктура (api-contract add-agent-roles): имя runner'а, его
+  // возможности и агент команды текущей стадии. Ролей у runner'а нет:
+  // RoleID и агент описывают только идущую стадию.
+  DisplayName?: string
+  DisplayNameLocked?: boolean
+  Features?: string[] | null
+  RoleID?: string
+  AgentID?: string
+  AgentName?: string
+}
+
+// ─── шаблоны ролей и команда агентов (api-contract add-agent-roles) ─────
+
+export type RoleColor = 'blue' | 'violet' | 'green' | 'amber' | 'rose' | 'teal' | 'indigo' | 'slate'
+export const ROLE_COLORS: { id: RoleColor; label: string }[] = [
+  { id: 'blue', label: 'синий' }, { id: 'violet', label: 'фиолетовый' }, { id: 'green', label: 'зелёный' },
+  { id: 'amber', label: 'янтарный' }, { id: 'rose', label: 'розовый' }, { id: 'teal', label: 'бирюзовый' },
+  { id: 'indigo', label: 'индиго' }, { id: 'slate', label: 'серый' },
+]
+export const ROLE_CAPABILITIES = ['coding', 'review', 'explore']
+// Шаблон роли. control_plane — шаблон без capability (Тимлид): его
+// выполняет control plane, участником шага процесса он быть не может.
+export interface AgentRole {
+  id: string; title: string; description: string; instruction: string
+  color: RoleColor | string
+  capability: string
+  control_plane: boolean
+  agent: string; connection_id: string; model: string
+  default_model?: { connection_id: string; model: string } | null
+  enabled: boolean; builtin: boolean
+  agents: number // агентов команды по шаблону
+  updated_at: string; updated_by?: string
+}
+export interface AgentRoleInput {
+  id?: string // только при создании
+  title: string; description: string; instruction: string; color: string; capability: string
+  agent: string; connection_id?: string; model?: string; enabled: boolean
+  updated_at?: string // только при изменении: версия, которую видел клиент
+}
+
+// Агент команды: имя, шаблон и модель тройкой (все пустые — как в шаблоне,
+// у тимлида — модель планировщика), текущая работа.
+export interface TeamAgent {
+  id: string; name: string; role_id: string; role_title: string; color: string
+  agent: string; connection_id: string; model: string
+  instruction_extra: string; enabled: boolean; position: number
+  updated_at: string; updated_by: string
+  busy: boolean
+  // Задача видна только участникам её проекта, остальным пусто.
+  task_id: string; task_num: number; project_id: string; epic_id: string
+  step: 'code' | 'test' | 'review' | 'prompt' | string
+  step_entry: 'ok' | 'changes' | string
+  runner_id: string; runner_name: string
+}
+export interface TeamAgentInput {
+  id?: string // только при создании
+  name: string; role_id: string; agent: string; connection_id: string; model: string
+  instruction_extra: string; enabled: boolean; position?: number
+  updated_at?: string
+}
+// Тройка модели для выбора у агента и в переопределении модели роли.
+export interface ModelChoice { agent: string; agent_name: string; connection_id: string; model: string; runner_online: boolean }
+
+// Ссылка на шаблон: участник шага, переопределение модели в проекте или агент команды.
+export interface RoleRef {
+  scope: 'installation' | 'project' | string
+  kind: 'participant' | 'role_model' | 'agent' | string
+  project_id?: string; project_name?: string; step?: string
+  agent_id?: string; agent_name?: string
+}
+
+// Payload событий исполнителя (task.status, session.step, вердикты task.step).
+export interface RolePayload { id: string; title: string }
+
+// Ошибки каталогов (api-contract add-agent-roles): поле, ссылки и актуальная
+// версия лежат в error, поле и ссылки дублируются рядом.
+type ErrBody = { error?: { code?: string; field?: string; refs?: RoleRef[]; current?: unknown }; field?: string; refs?: RoleRef[] } | null
+export function apiField(e: unknown): string | undefined {
+  if (!(e instanceof ApiError)) return undefined
+  const d = e.data as ErrBody
+  return d?.error?.field ?? d?.field
+}
+export function apiRefs(e: unknown): RoleRef[] {
+  if (!(e instanceof ApiError)) return []
+  const d = e.data as ErrBody
+  return d?.error?.refs ?? d?.refs ?? []
+}
+export function apiCurrent<T>(e: unknown): T | undefined {
+  if (!(e instanceof ApiError) || e.code !== 'stale') return undefined
+  return (e.data as ErrBody)?.error?.current as T | undefined
 }
 
 // Профиль агента (api-contract add-agent-profiles).
@@ -361,6 +481,11 @@ export interface StepRun {
   detail: string
   by: string
   finished_at: string | null
+  // Роль, агент команды и модель запуска (api-contract add-agent-roles).
+  role?: string
+  agent_id?: string
+  agent_name?: string
+  model?: string
 }
 
 // Элемент очереди «мои шаги».
@@ -720,6 +845,21 @@ export const api = {
   projectPolicyVersions: (projectId: string) => req<PolicyVersion[]>('GET', `/projects/${projectId}/policy/versions`),
   putProjectPolicySource: (projectId: string, kind: string) =>
     req<ProjectPolicy>('PUT', `/projects/${projectId}/policy/source`, { kind }),
+  // Шаблоны ролей и команда (api-contract add-agent-roles): чтение всем,
+  // правка администратору. Создание POST (занятый id — 409), изменение PUT
+  // с updated_at (чужая правка — 409 stale с актуальной версией).
+  roles: () => req<{ roles: AgentRole[] | null }>('GET', '/roles'),
+  createRole: (input: AgentRoleInput) => req<AgentRole>('POST', '/system/roles', input),
+  updateRole: (id: string, input: AgentRoleInput) => req<AgentRole>('PUT', `/system/roles/${id}`, input),
+  deleteRole: (id: string) => req<void>('DELETE', `/system/roles/${id}`),
+  team: () => req<{ agents: TeamAgent[] | null }>('GET', '/team'),
+  createTeamAgent: (input: TeamAgentInput) => req<TeamAgent>('POST', '/system/team', input),
+  updateTeamAgent: (id: string, input: TeamAgentInput) => req<TeamAgent>('PUT', `/system/team/${id}`, input),
+  deleteTeamAgent: (id: string) => req<void>('DELETE', `/system/team/${id}`),
+  modelChoices: () => req<{ choices: ModelChoice[] | null }>('GET', '/models/choices'),
+  // Пустая строка снимает имя из консоли: снова действует имя из регистрации.
+  renameRunner: (id: string, displayName: string) =>
+    req<Runner>('PATCH', `/system/runners/${id}`, { display_name: displayName }),
 }
 
 // ─── эксплуатация установки ─────────────────────────────────────────────
@@ -803,7 +943,13 @@ export function subscribe(projectId: string, handlers: {
     'policy.decision', 'task.checks_external', 'task.review_external', 'task.pr_closed',
     'task.plan_edited', 'epic.plan_edited', 'epic.budget_exceeded',
     // Пересечения работ: реестр «Команды» и timeline задач (add-team-visibility).
-    'session.overlap']
+    'session.overlap',
+    // Шаблоны ролей, команда агентов, имена runner'ов и модель
+    // планировщика (add-agent-roles): события установки приходят и сюда.
+    'role.created', 'role.updated', 'role.deleted', 'runner.renamed',
+    'team.agent_created', 'team.agent_updated', 'team.agent_deleted', 'planner.model_changed',
+    // Тимлид составляет план: видно всем зрителям, а не только нажавшему.
+    'epic.decomposing', 'epic.plan_failed']
   for (const t of evTypes) {
     es.addEventListener(t, (m) => handlers.onEvent(JSON.parse((m as MessageEvent).data)))
   }

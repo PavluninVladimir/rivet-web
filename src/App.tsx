@@ -120,7 +120,7 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
             ? <AppManagement me={user} tab={route.tab} />
             : <div className="page"><span className="muted">Раздел доступен только администратору установки.</span></div>)}
           {route.view === 'epics' && <EpicsView />}
-          {route.view === 'epic' && <EpicDashboard key={route.id} epicId={route.id} taskId={route.taskId} />}
+          {route.view === 'epic' && <EpicDashboard key={route.id} epicId={route.id} taskId={route.taskId} admin={user.admin} />}
           {route.view === 'tasks' && <TasksView />}
           {route.view === 'team' && <TeamView />}
           {route.view === 'mysteps' && <MyStepsView />}
