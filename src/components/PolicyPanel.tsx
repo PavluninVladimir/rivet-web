@@ -219,16 +219,23 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
   const [versions, setVersions] = useState<PolicyVersion[]>([])
   const [dirty, setDirty] = useState(false)
   const { banner, setErr, setNote, fail, clear, fieldErr } = useBanner()
+  // Черновик планового бюджета месяца строкой: поле не теряет «12.» при
+  // вводе дробной части. null — показывается сохранённое значение.
+  const [monthDraft, setMonthDraft] = useState<string | null>(null)
   // Модели ролей проекта (add-agent-roles): тройка «профиль, подключение,
   // модель» из выбора установки; у шаблона с профилем — его привязки.
-  const { roles } = useStore()
+  // Плановый бюджет месяца есть только у бэкенда с обзором проекта: старый
+  // поле не знает и молча его отбросил бы.
+  const { roles, overviewAvailable } = useStore()
   const [choices, setChoices] = useState<ModelChoice[]>([])
   useEffect(() => { api.modelChoices().then(r => setChoices(r?.choices ?? [])).catch(() => {}) }, [])
 
   const refresh = useCallback(() => {
     api.projectPolicy(projectId).then(p => {
       setPP(p)
-      // Правки владельца не затираются фоновым обновлением.
+      // Правки владельца не затираются фоновым обновлением. Черновик
+      // бюджета уходит вместе с заменой переопределений ответом сервера.
+      if (!dirty) setMonthDraft(null)
       setOverrides(cur => (cur && dirty) ? cur : p.overrides)
     }).catch(e => setErr(errText(e)))
     api.projectPolicyVersions(projectId).then(v => setVersions(v ?? [])).catch(() => {})
@@ -247,7 +254,7 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
     setErr(''); setNote('')
     try {
       const r = await api.putProjectPolicySource(projectId, kind)
-      setPP(r); setOverrides(r.overrides); setDirty(false)
+      setPP(r); setOverrides(r.overrides); setDirty(false); setMonthDraft(null)
       setNote(kind === 'git' ? 'политика читается из репозитория' : 'политика правится в консоли')
     } catch (e) { setErr(errText(e)) }
   }
@@ -260,11 +267,16 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
   }
   const save = async () => {
     clear()
+    // NaN в JSON стал бы null и молча снял бы бюджет.
+    if (overrides.monthly_budget_usd != null && !Number.isFinite(overrides.monthly_budget_usd)) {
+      setErr('плановый бюджет месяца — число больше 0')
+      return
+    }
     try {
       // Пустые шаблоны тестов значат «по умолчанию»: переопределение снимается.
       const body = overrides.test_paths && overrides.test_paths.length === 0 ? { ...overrides, test_paths: null } : overrides
       const r = await api.putProjectPolicy(projectId, body)
-      setPP(r); setOverrides(r.overrides); setDirty(false)
+      setPP(r); setOverrides(r.overrides); setDirty(false); setMonthDraft(null)
       setNote(`сохранена версия проекта ${r.version?.version} (${shortHash(r.version?.hash)})`)
       api.projectPolicyVersions(projectId).then(v => setVersions(v ?? [])).catch(() => {})
     } catch (e) { fail(e) }
@@ -405,6 +417,26 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
             </div>
           )
         })}
+        {/* Плановый бюджет месяца (add-project-lead-view): только у проекта,
+            наследования от установки нет. На него ведёт ссылка из «Денег»
+            обзора проекта. */}
+        {overviewAvailable && <div className="set-row" id="monthly-budget" data-preset="monthly_budget_usd">
+          <div className="lbl">
+            <b>Плановый бюджет месяца, $</b>
+            <span>только для прогноза: обзор проекта сравнивает с ним расход месяца, работа по нему не останавливается. Пусто — не задан</span>
+          </div>
+          <div className="ctl">
+            <NumberInput min={0} step="0.01" width={120} placeholder="не задан" disabled={!editable}
+              aria-label="плановый бюджет месяца" aria-invalid={fieldErr('monthly_budget_usd') ? true : undefined}
+              value={monthDraft ?? (overrides.monthly_budget_usd != null ? String(overrides.monthly_budget_usd) : '')}
+              onChange={e => {
+                const v = e.target.value
+                setMonthDraft(v)
+                setOverrides({ ...overrides, monthly_budget_usd: v.trim() === '' ? null : Number(v) }); setDirty(true)
+              }} />
+            {fieldErr('monthly_budget_usd') && <div className="f-error" role="alert">{fieldErr('monthly_budget_usd')}</div>}
+          </div>
+        </div>}
         {editable && (
           <div className="set-row" style={{ border: 0 }}>
             <div className="lbl"><b>Сохранить</b><span>создаёт новую версию политики проекта</span></div>

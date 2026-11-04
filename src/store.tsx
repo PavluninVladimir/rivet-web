@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
-import { ApiError, api, subscribe, type AgentRole, type Attention, type Event, type Project, type Runner, type TeamAgent } from './api/client'
+import { ApiError, api, subscribe, type AgentRole, type Attention, type Event, type OverviewPeriod, type Project, type Runner, type TeamAgent } from './api/client'
+import { parsePeriod } from './components/overviewLogic'
 
 // Маршрут — hash-навигация: #/epics, #/epic/<id>, #/task/<id> поверх epic и т.п.
 // Вкладки раздела «Управление приложением» адресуемы: #/app-management/<tab>.
@@ -15,6 +16,8 @@ export type Route =
   | { view: 'app-management'; tab: AppTab } | { view: 'profile' }
   | { view: 'epic'; id: string; taskId?: string }
   | { view: 'project-settings'; id: string; tab: SettingsTab }
+  // Обзор текущего проекта, период в адресе: #/overview/30d (add-project-lead-view).
+  | { view: 'overview'; period: OverviewPeriod }
 
 function parseHash(): Route {
   const h = location.hash.replace(/^#\/?/, '')
@@ -25,6 +28,7 @@ function parseHash(): Route {
   if (a === 'project' && b && c === 'settings') {
     return { view: 'project-settings', id: b, tab: (SETTINGS_TABS as readonly string[]).includes(d) ? d as SettingsTab : 'general' }
   }
+  if (a === 'overview') return { view: 'overview', period: parsePeriod(b) }
   if (a === 'app-management') {
     // Старый адрес вкладки «Модели» ведёт на «Подключения» (add-model-connections).
     const tab = b === 'models' ? 'connections' : b
@@ -39,6 +43,7 @@ export function routeHash(r: Route): string {
   if (r.view === 'epic') return r.taskId ? `#/epic/${r.id}/task/${r.taskId}` : `#/epic/${r.id}`
   if (r.view === 'project-settings') return r.tab === 'general' ? `#/project/${r.id}/settings` : `#/project/${r.id}/settings/${r.tab}`
   if (r.view === 'app-management') return `#/app-management/${r.tab}`
+  if (r.view === 'overview') return r.period === '7d' ? '#/overview' : `#/overview/${r.period}`
   return `#/${r.view}`
 }
 
@@ -70,6 +75,12 @@ interface Store {
   refreshTeam: () => void
   runners: Runner[]
   refreshRunners: () => void
+  // Есть ли у бэкенда обзор проекта: старый отвечает 404, пункт
+  // навигации тогда скрывается (add-project-lead-view).
+  overviewAvailable: boolean
+  // Подписка на каждое событие проекта: экран сам решает, что перечитать,
+  // и не теряет события, склеенные в один рендер.
+  listen: (fn: (e: Event) => void) => () => void
 }
 
 const Ctx = createContext<Store | null>(null)
@@ -88,6 +99,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [tick, setTick] = useState(0)
   const [lastEvent, setLastEvent] = useState<Event | null>(null)
   const logsRef = useRef(new Map<string, string>())
+  const listenersRef = useRef(new Set<(e: Event) => void>())
+  const listen = useCallback((fn: (e: Event) => void) => {
+    listenersRef.current.add(fn)
+    return () => { listenersRef.current.delete(fn) }
+  }, [])
+  const [overviewAvailable, setOverviewAvailable] = useState(true)
   const deployLogsRef = useRef(new Map<string, string>())
 
   const nav = useCallback((r: Route) => { location.hash = routeHash(r) }, [])
@@ -151,6 +168,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [])
   useEffect(refreshRunners, [refreshRunners])
   const roleOf = useCallback((id: string | undefined) => id ? roles.find(r => r.id === id) : undefined, [roles])
+  useEffect(() => {
+    if (!projectId) return
+    let live = true
+    api.overviewProbe(projectId).then(ok => { if (live) setOverviewAvailable(ok) })
+    return () => { live = false }
+  }, [projectId])
 
   useEffect(() => {
     if (!projectId) return
@@ -158,6 +181,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       onEvent: (e) => {
         setLastEvent(e)
         setTick(t => t + 1)
+        for (const fn of listenersRef.current) fn(e)
         // policy.decision пишется, когда движок не дал решения: вместе с
         // ним появляется эскалация уровня проекта, своего события у неё нет.
         if (e.Type.startsWith('attention') || e.Type === 'task.status'
@@ -208,6 +232,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       attention, mySteps, connected, tick, lastEvent, logs: logsRef.current,
       deployLogs: deployLogsRef.current, refreshProjects, refreshAttention, refreshMySteps,
       roles, roleOf, refreshRoles, team, refreshTeam, runners, refreshRunners,
+      overviewAvailable, listen,
     }}>
       {children}
     </Ctx.Provider>

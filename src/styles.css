@@ -495,3 +495,39 @@ textarea.answer { width: 100%; min-height: 64px; }
 .modal .proc-participant > select, .modal .proc-participant > input { min-width: 88px; }
 .chip.v-error .n { color: var(--c-review); }
 .tl-perf { display: inline-flex; align-items: center; gap: 4px; }
+
+/* ─── обзор проекта (add-project-lead-view) ──────────────────────────────
+   Панели, two-col и attention-row как в прототипе (экран Usage); своя
+   только карточка Epic'а с полосой прогресса дашборда. */
+.ov .row { display: flex; }
+.ov .panel { background: var(--surface); border-radius: var(--r-lg); padding: 12px 14px; }
+.ov .panel h3 { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; margin-bottom: 12px; }
+.two-col > * { min-width: 0; }
+@media (max-width: 1000px) { .two-col { grid-template-columns: 1fr; } .ov .attention-row { grid-template-columns: 1fr; } }
+.ov-epics { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.ov-epic { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 12px;
+  background: var(--surface); border: 1px solid var(--border); border-left: 2px solid var(--risk); border-radius: var(--r); }
+.ov-epic .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ov button.link { color: inherit; text-align: left; min-width: 0; }
+.ov button.link:hover { color: var(--accent); }
+.ov button.link:focus-visible { color: var(--accent); outline: 1px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.ov button.link.accent { color: var(--accent); }
+.ov button.link.mono { font-family: var(--font-mono); }
+.ov-epic .top button.link.title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-risk { margin-left: auto; font: 600 10px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--risk); white-space: nowrap; }
+.ov-epic .progress { flex: 1; width: auto; }
+.ov-epic .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12px; color: var(--muted); }
+.ov-epic .meta b { color: var(--fg); font-weight: 500; }
+.ov-epic input[type='datetime-local'] { font-size: 12px; }
+.ov-reasons { margin: 0; padding-left: 16px; font-size: 12px; }
+.ov .att-card { cursor: pointer; }
+.ov-kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 12.5px; align-items: baseline; }
+.ov-kv .k { color: var(--muted); }
+.ov-sub { font: 600 10px var(--font-mono); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+.ov-list { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; }
+.ov-list .it { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.ov-list .it .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-warn { color: var(--c-review); }
+.modal.report { width: 780px; max-height: 90vh; }
+.modal.report .report-pre { max-height: 60vh; min-height: 120px; color: var(--fg); margin-top: 0; }

@@ -30,6 +30,10 @@ export interface Task {
   AgentID?: string
   AgentName?: string
   RunnerName?: string
+  // Время задачи (api-contract add-project-lead-view): первое назначение
+  // на runner и переход в done; старый бэкенд их не отдаёт.
+  StartedAt?: string | null
+  DoneAt?: string | null
 }
 
 export interface Epic {
@@ -41,6 +45,9 @@ export interface Epic {
   // пусто у живых Epic'ов.
   SourceKey: string
   Created: string
+  // Первый запуск и целевая дата (api-contract add-project-lead-view).
+  StartedAt?: string | null
+  DueAt?: string | null
 }
 
 // Оценка стоимости плана по истории usage (api-contract add-cost-transparency).
@@ -177,6 +184,9 @@ export interface Presets {
   // старый бэкенд их не отдаёт, тогда действуют значения по умолчанию.
   tester_agent?: boolean
   test_paths?: string[]
+  // Плановый бюджет месяца в долларах (add-project-lead-view): только
+  // для прогноза, задаётся в политике проекта.
+  monthly_budget_usd?: number | null
 }
 
 // Переопределения проекта: null — наследуется от установки;
@@ -198,6 +208,9 @@ export interface Overrides {
   tester_agent?: boolean | null
   test_paths?: string[] | null
   role_models?: Record<string, RoleModelRef> | null
+  // Плановый бюджет месяца, $ (add-project-lead-view): больше 0 или null —
+  // не задан. У установки его нет.
+  monthly_budget_usd?: number | null
 }
 export interface RoleModelRef { agent: string; connection_id: string; model: string }
 
@@ -645,6 +658,106 @@ export interface StepPayload {
   session_id?: string
 }
 
+// ─── обзор проекта для руководителя (api-contract add-project-lead-view) ─
+
+export type OverviewPeriod = 'today' | '7d' | '30d' | 'month'
+
+// Сумма расхода: null — данных нет (не ноль), partial_cost — часть записей
+// без стоимости.
+export interface Amount {
+  tokens_in: number | null
+  tokens_out: number | null
+  cost_usd: number | null
+  duration_s: number
+  partial_cost: boolean
+}
+export interface PerDay { tasks: number; units: number }
+export type RiskStatus = 'on_track' | 'at_risk' | 'needs_human' | 'done'
+export type ReasonCode = 'escalation' | 'budget_exhausted' | 'late' | 'budget_forecast' | 'last_attempt' | 'stalled' | 'no_capacity'
+export interface RiskReason { code: ReasonCode | string; text: string; task_id: string | null; epic_id: string }
+export interface Forecast {
+  available: boolean
+  at: string | null
+  remaining_units: number
+  velocity_units_per_hour: number | null
+  velocity_source: 'project' | 'epic' | null
+  reason?: string
+}
+export interface EpicOverview {
+  id: string; title: string; status: Epic['Status']
+  progress: { done_units: number; total_units: number; done_tasks: number; total_tasks: number }
+  due_at: string | null
+  forecast: Forecast
+  risk: { status: RiskStatus; reasons: RiskReason[] | null }
+  spend: Amount
+  token_budget: number | null
+  budget_forecast_tokens: number | null
+}
+export type DecisionKind = 'plan_approval' | 'escalation' | 'merge_confirmation' | 'my_step'
+export interface Decision {
+  kind: DecisionKind | string
+  title: string
+  since: string
+  waiting_seconds: number
+  epic_id: string | null; task_id: string | null; task_num: number | null
+  run_id: string | null; attention_id: string | null
+  reason: string | null
+  claimed_by: string | null
+}
+export interface RoleLoad {
+  role: string; title: string; color: string
+  busy_now: number; avg_busy: number; sessions: number; busy_seconds: number
+}
+export interface ShareRow { key: string; title: string; amount: Amount; share: number | null }
+export interface OverviewDeployment {
+  id: string; env_id: string; version: string; status: string; initiator: string
+  created_at: string; ended_at: string | null; rollback: boolean
+}
+export interface Overview {
+  project_id: string
+  period: { name: OverviewPeriod | string; from: string; to: string; tz: string }
+  computed_at: string
+  thresholds: {
+    velocity_window_days: number; velocity_min_tasks: number; stalled_minutes: number
+    no_capacity_minutes: number; stuck_minutes: number; last_attempt_left: number
+  }
+  summary: {
+    active_epics: number; tasks_done: number; throughput_per_day: PerDay
+    spend: Amount; open_decisions: number; first_pass_review_rate: number | null
+  }
+  epics: EpicOverview[] | null
+  decisions: { counts: Record<DecisionKind, number>; items: Decision[] | null }
+  team: {
+    roles: RoleLoad[] | null
+    throughput: { tasks_done: number; units_done: number; per_day: PerDay }
+    quality: {
+      first_pass_review_rate: number | null
+      tester_returns: number; reviewer_returns: number
+      merge_conflicts: { returned: number; done: number }
+      escalations: { reason: string; count: number }[] | null
+    }
+  }
+  money: {
+    today: Amount; last_7d: Amount; month_to_date: Amount; period: Amount
+    by_role: ShareRow[] | null; by_model: ShareRow[] | null
+    avg_cost_per_task: number | null
+    daily_token_budget: { budget: number; used_today: number } | null
+    monthly_budget_usd: number | null
+    month_forecast_usd: number | null
+    month_over_budget_usd: number | null
+  }
+  delivery: {
+    environments: { id: string; name: string; last: OverviewDeployment | null }[] | null
+    deployments: OverviewDeployment[] | null
+    stuck: { task_id: string; task_num: number; title: string; status: string; last_event_at: string | null; waiting_runner: boolean }[] | null
+    last_attempt: { task_id: string; task_num: number; title: string; attempt_used: number; attempt_limit: number }[] | null
+    budget_risks: { epic_id: string; title: string; token_budget: number; budget_forecast_tokens: number }[] | null
+  }
+}
+
+// Отчёт: текст как есть и имя файла из Content-Disposition.
+export interface Report { text: string; filename: string }
+
 // Обработчик 401: консоль уводит на экран входа (спека web
 // «Вход в консоль»); hash-маршрут сохраняется, после входа пользователь
 // возвращается на ту же страницу.
@@ -711,6 +824,26 @@ async function reqText(path: string): Promise<string> {
   return resp.text()
 }
 
+// Отчёт обзора приходит как text/markdown: имя файла берётся из
+// Content-Disposition, чтобы скачанный файл назывался как на сервере.
+async function reqReport(path: string): Promise<Report> {
+  const resp = await fetch(`/api/v1${path}`)
+  if (!resp.ok) {
+    if (resp.status === 401) onUnauthorized()
+    const data = await resp.json().catch(() => null)
+    const msg = (data as { error?: { message?: string } })?.error?.message ?? resp.statusText
+    throw new ApiError(msg, apiCode(data), resp.status, data)
+  }
+  const text = await resp.text()
+  return { text, filename: dispositionFilename(resp.headers.get('Content-Disposition'), 'rivet-report.md') }
+}
+
+// Имя файла из Content-Disposition: filename="…" или без кавычек.
+export function dispositionFilename(header: string | null, fallback: string): string {
+  const m = header?.match(/filename="?([^";]+)"?/i)
+  return m?.[1]?.trim() || fallback
+}
+
 export const api = {
   login: (login: string, password: string) => req<User>('POST', '/auth/login', { login, password }),
   logout: () => req('POST', '/auth/logout'),
@@ -751,7 +884,23 @@ export const api = {
     req<Epic>('POST', `/projects/${projectId}/epics`, { title, goal }),
   decompose: (epicId: string) => req<{ tasks: Task[] }>('POST', `/epics/${epicId}/decompose`),
   epic: (id: string) => req<EpicView>('GET', `/epics/${id}`),
-  patchEpic: (id: string, patch: { token_budget: number | null }) => req<Epic>('PATCH', `/epics/${id}`, patch),
+  // Бюджет и целевая дата (due_at — RFC 3339 или null, только владелец).
+  patchEpic: (id: string, patch: { token_budget?: number | null; due_at?: string | null }) =>
+    req<Epic>('PATCH', `/epics/${id}`, patch),
+  // Обзор проекта и отчёт (api-contract add-project-lead-view).
+  overview: (projectId: string, period: OverviewPeriod, tz: string) =>
+    req<Overview>('GET', `/projects/${projectId}/overview?${new URLSearchParams({ period, tz })}`),
+  // Есть ли обзор у бэкенда: заведомо неверный период даёт 422 у нового
+  // бэкенда без расчёта и 404 у старого, где маршрута нет.
+  overviewProbe: (projectId: string) =>
+    req<unknown>('GET', `/projects/${projectId}/overview?period=probe`).then(() => true, (e: unknown) =>
+      !(e instanceof ApiError && e.status === 404)),
+  report: (projectId: string, q: { from?: string; to?: string; tz: string }) => {
+    const p = new URLSearchParams({ tz: q.tz })
+    if (q.from) p.set('from', q.from)
+    if (q.to) p.set('to', q.to)
+    return reqReport(`/projects/${projectId}/report?${p}`)
+  },
   epicAction: (id: string, action: 'start' | 'pause' | 'resume' | 'archive') =>
     req('POST', `/epics/${id}/${action}`),
   addTask: (epicId: string, t: { title: string; description: string; criteria: string[]; deps: string[] }) =>
@@ -949,7 +1098,10 @@ export function subscribe(projectId: string, handlers: {
     'role.created', 'role.updated', 'role.deleted', 'runner.renamed',
     'team.agent_created', 'team.agent_updated', 'team.agent_deleted', 'planner.model_changed',
     // Тимлид составляет план: видно всем зрителям, а не только нажавшему.
-    'epic.decomposing', 'epic.plan_failed']
+    'epic.decomposing', 'epic.plan_failed',
+    // Обзор проекта (add-project-lead-view): целевая дата, конфликты и
+    // подтверждение merge меняют риски и решения.
+    'epic.due_changed', 'task.merge_conflict', 'task.merge']
   for (const t of evTypes) {
     es.addEventListener(t, (m) => handlers.onEvent(JSON.parse((m as MessageEvent).data)))
   }
