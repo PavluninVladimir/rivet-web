@@ -302,8 +302,10 @@ textarea.answer { width: 100%; min-height: 64px; }
 .pal-item.sel, .pal-item:hover { background: var(--fg-soft); }
 
 /* forms */
-.modal-wrap { position: fixed; inset: 0; z-index: 50; background: oklch(0% 0 0 / .45); display: grid; place-items: center; }
-.modal { width: 480px; max-width: 92vw; background: var(--surface); border: 1px solid var(--border);
+.modal-wrap { position: fixed; inset: 0; z-index: 50; background: oklch(0% 0 0 / .45); display: grid; place-items: center; padding: 16px; }
+/* Окно не выше экрана и прокручивается внутри: длинная форма (окружение с
+   наблюдением) иначе уводит кнопку «Сохранить» за край без прокрутки. */
+.modal { width: 480px; max-width: 92vw; max-height: calc(100vh - 32px); overflow: auto; background: var(--surface); border: 1px solid var(--border);
   border-radius: 10px; box-shadow: var(--shadow); padding: 16px; display: flex; flex-direction: column; gap: 10px; }
 .modal h2 { font-size: 14px; }
 .modal input:not([type='checkbox']), .modal textarea, .modal select { width: 100%; }
