@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { dispositionFilename, type Decision } from '../api/client.ts'
-import { amountTokens, copyText, decisionAction, decisionTarget, fmtShare, fmtWait, fromLocalInput, overviewEventRelevant, parsePeriod, reportRange, riskInfo, startOfWeek, throttle, toLocalInput, type Clock } from './overviewLogic.ts'
+import { amountTokens, copyText, decisionAction, decisionTarget, fmtShare, fmtWait, fromLocalInput, overviewEventRelevant, parsePeriod, reportRange, riskInfo, startOfWeek, throttle, throttleWithRecheck, toLocalInput, type Clock } from './overviewLogic.ts'
 
 function fakeClock() {
   let t = 0
@@ -37,6 +37,60 @@ test('перечитывание не чаще раза в 5 секунд с з�
   assert.equal(calls, 3, 'после тишины снова сразу')
   th.call(); th.cancel(); advance(6000)
   assert.equal(calls, 3, 'отмена снимает завершающий вызов')
+})
+
+// Часы с несколькими таймерами: повтор throttleWithRecheck держит их по
+// одному на вызов.
+function multiClock() {
+  let t = 0
+  let seq = 0
+  const timers = new Map<number, { at: number; fn: () => void }>()
+  const clock: Clock = {
+    now: () => t,
+    set: (fn, ms) => { const id = ++seq; timers.set(id, { at: t + ms, fn }); return id },
+    clear: h => { timers.delete(h as number) },
+  }
+  const advance = (ms: number) => {
+    const end = t + ms
+    for (;;) {
+      let next: [number, { at: number; fn: () => void }] | null = null
+      for (const e of timers) if (e[1].at <= end && (!next || e[1].at < next[1].at)) next = e
+      if (!next) break
+      timers.delete(next[0])
+      t = next[1].at
+      next[1].fn()
+    }
+    t = end
+  }
+  return { clock, advance }
+}
+
+test('занятость агентов: перечитывание сразу и повтор через окно', () => {
+  const { clock, advance } = multiClock()
+  let calls = 0
+  const th = throttleWithRecheck(() => { calls++ }, 2000, clock)
+  th.call()
+  assert.equal(calls, 1, 'первое событие перечитывает сразу')
+  advance(1999)
+  assert.equal(calls, 1)
+  advance(1)
+  assert.equal(calls, 2, 'повтор через окно застаёт позднюю транзакцию')
+  advance(10000)
+  assert.equal(calls, 2, 'без событий перечитываний нет')
+  // Пачка: не чаще раза в окно, последнее чтение позже последнего события.
+  th.call(); th.call(); th.call()
+  assert.equal(calls, 3)
+  advance(2000)
+  assert.equal(calls, 4)
+  advance(2000)
+  assert.equal(calls, 5)
+  advance(10000)
+  assert.equal(calls, 5)
+  th.call()
+  assert.equal(calls, 6)
+  th.cancel()
+  advance(10000)
+  assert.equal(calls, 6, 'отмена снимает и повтор')
 })
 
 test('события, по которым обзор перечитывается', () => {

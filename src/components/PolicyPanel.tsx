@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { InstallationProcessSection } from './ProcessSection'
+import { processHandlers } from './installationProcess'
 import { api, apiField, defaultProcess, type ModelChoice, type Overrides, type PolicyEngine, type PolicyVersion, type Presets, type ProjectPolicy, type RoleModelRef } from '../api/client'
 import { choiceLabel, tripleKey, tripleOf } from './roleLabels'
 import { useStore } from '../store'
@@ -189,8 +190,12 @@ export function InstallationPolicyPanel({ onSaved }: { onSaved?: () => void } = 
             </div>
           ))}
         </div>
+        {/* Без явного процесса показывается встроенный по умолчанию, но в
+            пресеты он попадает только правкой графа: галочки ограничений
+            оставляют process как был, в том числе null. */}
         <InstallationProcessSection doc={presets.process ?? defaultProcess(presets.tester_agent)} locks={presets.process_locks ?? {}} readOnly={external}
-          onChange={(d, l) => { setPresets(prev => ({ ...(prev ?? presets), process: d, process_locks: Object.keys(l).length ? l : null })); setDirty(true) }} />
+          explicit={presets.process != null}
+          {...processHandlers(edit => { setPresets(prev => edit(prev ?? presets)); setDirty(true) })} />
         <div className="dw-sec">
           <div className="set-row" style={{ border: 0 }}>
             <div className="lbl">

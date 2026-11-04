@@ -57,6 +57,27 @@ export function throttle(fn: () => void, ms: number, clock: Clock = realClock): 
   }
 }
 
+// throttle с повтором: каждый вызов перечитывает сразу (через склейку) и
+// ещё раз через ms. Повтор ловит то, что поток событий мог пропустить:
+// курсор SSE идёт по id, а транзакция с меньшим id иногда коммитится на
+// миллисекунды позже уже доставленной. Чаще раза в ms перечитываний нет.
+export function throttleWithRecheck(fn: () => void, ms: number, clock: Clock = realClock): { call: () => void; cancel: () => void } {
+  const th = throttle(fn, ms, clock)
+  const pending = new Set<unknown>()
+  return {
+    call: () => {
+      th.call()
+      const h = clock.set(() => { pending.delete(h); th.call() }, ms)
+      pending.add(h)
+    },
+    cancel: () => {
+      th.cancel()
+      for (const h of pending) clock.clear(h)
+      pending.clear()
+    },
+  }
+}
+
 // Статус риска: подпись и цвет статусной системы прототипа.
 export function riskInfo(s: RiskStatus | string): { label: string; color: string } {
   switch (s) {

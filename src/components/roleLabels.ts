@@ -109,3 +109,14 @@ export function verdictLabel(verdict: string | undefined): string {
   if (!verdict) return 'ждёт'
   return verdict === 'error' ? 'сбой инфраструктуры' : verdict
 }
+
+// ─── живые события команды ──────────────────────────────────────────────
+
+// Занятость агента уровня установки (team.agent_busy, team.agent_free)
+// приходит со всей установки, на каждую стадию любого проекта. По ней
+// перечитываются только команда и runner'ы, а не текущий экран.
+export const AGENT_WORK_EVENTS: readonly string[] = ['team.agent_busy', 'team.agent_free']
+
+export function isAgentWorkEvent(type: string): boolean {
+  return AGENT_WORK_EVENTS.includes(type)
+}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api, type Runner } from '../api/client'
 import { CtxBar, fmtAgo, StBadge } from '../components/ui'
 import { Performer } from '../components/RoleChip'
@@ -9,17 +9,15 @@ import { useStore } from '../store'
 // регистрация — выпуск токена в разделе управления и запуск на хосте, поэтому
 // кнопка добавления ведёт на вкладку токенов (design, сверка с прототипом).
 export function RunnersView({ admin }: { admin: boolean }) {
-  const { tick, nav } = useStore()
-  const [runners, setRunners] = useState<Runner[]>([])
+  // Runner'ы из store: их перечитывают и события своего проекта (tick), и
+  // занятость агентов в других проектах, которая tick не двигает.
+  const { tick, nav, runners, refreshRunners: refresh } = useStore()
   // Правка имени runner'а администратором (add-agent-roles): одна строка
   // за раз; пустое имя возвращает имя из регистрации.
   const [edit, setEdit] = useState<{ id: string; value: string } | null>(null)
   const [editErr, setEditErr] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const refresh = useCallback(() => {
-    api.runners().then(r => setRunners(r ?? [])).catch(() => {})
-  }, [])
   useEffect(refresh, [refresh, tick])
 
   const nameErr = edit && edit.value.trim().length > 40 ? 'не длиннее 40 символов' : ''

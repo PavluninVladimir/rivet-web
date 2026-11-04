@@ -1,6 +1,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { agentModelLabel, agentVerdictNote, mergeDraft, performerParts, refText, roleColorVar, runnerName, stepVerb, tripleKey, tripleOf, verdictLabel } from './roleLabels.ts'
+import { agentModelLabel, agentVerdictNote, isAgentWorkEvent, mergeDraft, performerParts, refText, roleColorVar, runnerName, stepVerb, tripleKey, tripleOf, verdictLabel } from './roleLabels.ts'
+
+test('занятость агента: только два события установки', () => {
+  assert.equal(isAgentWorkEvent('team.agent_busy'), true)
+  assert.equal(isAgentWorkEvent('team.agent_free'), true)
+  assert.equal(isAgentWorkEvent('team.agent_updated'), false)
+  assert.equal(isAgentWorkEvent('task.assign'), false)
+})
 
 test('имя runner’а: отображаемое имя, иначе id', () => {
   assert.equal(runnerName({ ID: 'claude-sonnet-1', DisplayName: 'mac-1' }), 'mac-1')
