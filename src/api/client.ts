@@ -48,7 +48,70 @@ export interface Epic {
   // Первый запуск и целевая дата (api-contract add-project-lead-view).
   StartedAt?: string | null
   DueAt?: string | null
+  // Исследование продукта (api-contract add-product-discovery): приоритет
+  // из бэклога, зависимости, незавершённые зависимости и обоснование.
+  // Старый бэкенд полей не отдаёт.
+  Priority?: Priority | null
+  DependsOn?: string[] | null
+  WaitingFor?: EpicRef[] | null
+  Discovery?: EpicDiscovery | null
 }
+
+export type Priority = 'must' | 'should' | 'could'
+export interface EpicRef { id: string; title: string; status: Epic['Status'] | string }
+export interface EpicDiscovery { run_id: string; version: number; needs: Need[] | null }
+
+// ─── исследование продукта (api-contract add-product-discovery) ─────────
+
+export interface Interview {
+  id: string; title: string; respondent_role: string; held_at?: string
+  chars: number; lines: number; created_by: string; created_at: string
+  deleted?: boolean
+  text?: string // только в GET .../interviews/{iid}
+}
+export type RunStatus = 'running' | 'ready' | 'failed' | 'approved' | 'superseded'
+export interface RunSummary {
+  id: string; version: number; status: RunStatus; created_at: string
+  finished_at?: string; agent_name?: string; model: string; outdated: boolean
+}
+export interface Persona { id: string; name: string; description: string; interviews: string[] | null }
+export interface Quote { interview: string; interview_title: string; respondent_role: string; line: number; text: string }
+export interface Need {
+  id: string; title: string; kind: 'pain' | 'need' | 'wish'; persona: string
+  importance: 'high' | 'medium' | 'low'; evidence: Quote[] | null
+}
+export interface BacklogEpic {
+  key: string; title: string; goal: string; rationale?: string
+  needs: string[] | null; priority: Priority; size: 'S' | 'M' | 'L'
+  depends_on: string[] | null; existing_epic: string | null
+}
+export interface DecomposeState { status: 'pending' | 'running' | 'done' | 'failed'; detail?: string }
+export interface BacklogRow extends BacklogEpic {
+  epic_id?: string | null
+  decompose?: DecomposeState | null
+}
+export interface Dropped { kind: 'quote' | 'finding' | 'persona' | 'need' | 'epic' | 'dependency' | string; ref: string; reason: string }
+export interface ApprovedEpic { key: string; epic_id: string; action: 'created' | 'linked' }
+export interface Run extends RunSummary {
+  stage: 'summaries' | 'synthesis' | 'done'
+  progress: { done: number; total: number }
+  agent: { id: string; name: string } | null
+  role: { id: string; title: string }
+  interviews: { id: string; title: string; sha256: string }[] | null
+  personas: Persona[] | null
+  needs: Need[] | null
+  proposed: BacklogRow[] | null
+  backlog: BacklogRow[] | null
+  backlog_rev: number
+  dropped: Dropped[] | null
+  defects: string[] | null
+  error?: string
+  usage: { tokens_in?: number; tokens_out?: number; cost_usd?: number; duration_s: number }
+  approved: { at: string; by: string; epics: ApprovedEpic[] | null } | null
+  started_at: string
+}
+export interface DiscoveryState { interviews: Interview[] | null; current: Run | null; versions: RunSummary[] | null }
+export interface NewInterview { title: string; respondent_role: string; held_at?: string; text: string }
 
 // Оценка стоимости плана по истории usage (api-contract add-cost-transparency).
 export interface CostEstimate {
@@ -811,6 +874,19 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   return data as T
 }
 
+// Multipart-запрос (загрузка интервью файлом): Content-Type с границей
+// ставит браузер, ошибки приходят тем же JSON-конвертом.
+async function reqForm<T>(path: string, form: FormData): Promise<T> {
+  const resp = await fetch(`/api/v1${path}`, { method: 'POST', body: form })
+  const data = await resp.json().catch(() => null)
+  if (!resp.ok) {
+    if (resp.status === 401) onUnauthorized()
+    const msg = (data as { error?: { message?: string } })?.error?.message ?? resp.statusText
+    throw new ApiError(msg, apiCode(data), resp.status, data)
+  }
+  return data as T
+}
+
 // Транскрипт приходит как text/plain, а не JSON — отдельный путь без
 // разбора тела (ошибки сервер по-прежнему шлёт JSON-конвертом).
 async function reqText(path: string): Promise<string> {
@@ -1009,6 +1085,27 @@ export const api = {
   // Пустая строка снимает имя из консоли: снова действует имя из регистрации.
   renameRunner: (id: string, displayName: string) =>
     req<Runner>('PATCH', `/system/runners/${id}`, { display_name: displayName }),
+  // Исследование продукта (api-contract add-product-discovery).
+  discovery: (projectId: string) => req<DiscoveryState>('GET', `/projects/${projectId}/discovery`),
+  addInterview: (projectId: string, iv: NewInterview) =>
+    req<Interview>('POST', `/projects/${projectId}/discovery/interviews`, iv),
+  uploadInterview: (projectId: string, file: File, meta: { title: string; respondent_role: string; held_at?: string }) => {
+    const form = new FormData()
+    form.set('title', meta.title)
+    form.set('respondent_role', meta.respondent_role)
+    if (meta.held_at) form.set('held_at', meta.held_at)
+    form.set('file', file)
+    return reqForm<Interview>(`/projects/${projectId}/discovery/interviews`, form)
+  },
+  interview: (projectId: string, id: string) => req<Interview>('GET', `/projects/${projectId}/discovery/interviews/${id}`),
+  deleteInterview: (projectId: string, id: string) => req<void>('DELETE', `/projects/${projectId}/discovery/interviews/${id}`),
+  startAnalysis: (projectId: string) => req<Run>('POST', `/projects/${projectId}/discovery/analyses`),
+  analysis: (projectId: string, id: string) => req<Run>('GET', `/projects/${projectId}/discovery/analyses/${id}`),
+  putBacklog: (projectId: string, id: string, backlogRev: number, epics: BacklogEpic[]) =>
+    req<Run>('PUT', `/projects/${projectId}/discovery/analyses/${id}/backlog`, { backlog_rev: backlogRev, epics }),
+  approveBacklog: (projectId: string, id: string, backlogRev: number, decompose: boolean) =>
+    req<{ run: Run; epics: ApprovedEpic[] }>('POST', `/projects/${projectId}/discovery/analyses/${id}/approve`, { backlog_rev: backlogRev, decompose }),
+  putEpicDeps: (epicId: string, dependsOn: string[]) => req<Epic>('PUT', `/epics/${epicId}/deps`, { depends_on: dependsOn }),
 }
 
 // ─── эксплуатация установки ─────────────────────────────────────────────
@@ -1101,7 +1198,12 @@ export function subscribe(projectId: string, handlers: {
     'epic.decomposing', 'epic.plan_failed',
     // Обзор проекта (add-project-lead-view): целевая дата, конфликты и
     // подтверждение merge меняют риски и решения.
-    'epic.due_changed', 'task.merge_conflict', 'task.merge']
+    'epic.due_changed', 'task.merge_conflict', 'task.merge',
+    // Исследование продукта и зависимости Epic'ов (add-product-discovery).
+    'discovery.interview_added', 'discovery.interview_deleted', 'discovery.analysis_started',
+    'discovery.analysis_progress', 'discovery.analysis_ready', 'discovery.analysis_failed',
+    'discovery.backlog_edited', 'discovery.approved',
+    'epic.deps_changed', 'epic.waiting_deps', 'epic.deps_ready']
   for (const t of evTypes) {
     es.addEventListener(t, (m) => handlers.onEvent(JSON.parse((m as MessageEvent).data)))
   }

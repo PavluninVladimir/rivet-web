@@ -531,3 +531,46 @@ textarea.answer { width: 100%; min-height: 64px; }
 .ov-warn { color: var(--c-review); }
 .modal.report { width: 780px; max-height: 90vh; }
 .modal.report .report-pre { max-height: 60vh; min-height: 120px; color: var(--fg); margin-top: 0; }
+/* Исследование продукта (add-product-discovery): статус версии, персоны
+   карточками в стиле runner'а, цитаты блоком с полосой цвета персоны,
+   окно интервью с нумерацией строк как diff. */
+.disc .dw-sec { padding-top: 18px; }
+.disc-status { border: 1px solid var(--border); border-radius: var(--r-lg); padding: 10px 12px; background: var(--surface); }
+.disc-status .progress { height: 5px; }
+.disc-defects { margin: 8px 0 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
+.disc-personas { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.persona-card { border-left: 3px solid var(--pc); }
+.disc-group { margin-bottom: 12px; }
+.disc-group-head { font-size: 12px; font-weight: 600; margin: 6px 0; }
+.need-card { border: 1px solid var(--border); border-radius: var(--r); padding: 8px 10px; margin-bottom: 6px; background: var(--bg); }
+.need-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12.5px; }
+.quote { margin: 6px 0 0; padding: 4px 10px; border-left: 3px solid var(--pc, var(--border)); background: var(--fg-soft); border-radius: 0 var(--r) var(--r) 0; }
+.quote-text { font-size: 12.5px; white-space: pre-wrap; }
+.quote-src { font-size: 11px; margin-top: 2px; }
+.quote-src a { cursor: pointer; color: var(--accent); }
+.chip.imp-high .n { color: var(--c-block); }
+.chip.imp-medium .n { color: var(--c-review); }
+.chip.prio-must .n { color: var(--c-block); }
+.chip.prio-should .n { color: var(--c-review); }
+.chip.prio-could .n { color: var(--muted); }
+.tbl.backlog td { vertical-align: top; }
+.tbl.backlog td.bl-narrow { min-width: 96px; }
+.tbl.backlog td.bl-narrow select { min-width: 88px; }
+.tbl.backlog .f-field { margin: 0; }
+.tbl.backlog textarea, .tbl.backlog input, .tbl.backlog select { width: 100%; }
+.tbl tr.sel td { background: var(--accent-soft); }
+.dec-done { color: var(--c-done); }
+.dec-failed { color: var(--c-block); }
+.modal.iv-modal { width: 860px; max-height: 88vh; }
+.iv-text { overflow: auto; max-height: 70vh; background: var(--term-bg); border: 1px solid var(--border); border-radius: var(--r); font: 400 12px/1.6 var(--font-mono); }
+/* Длинное интервью: браузер не раскладывает строки вне видимой области. */
+.iv-line { display: flex; gap: 10px; padding: 0 10px; content-visibility: auto; contain-intrinsic-size: auto 19px; }
+.iv-confirm { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; }
+.iv-line.hl { background: var(--accent-soft); }
+.iv-n { flex: none; width: 40px; text-align: right; color: var(--muted); user-select: none; }
+.iv-t { white-space: pre-wrap; word-break: break-word; min-width: 0; }
+.iv-t mark { background: color-mix(in oklch, var(--c-review) 35%, transparent); color: var(--fg); border-radius: 2px; }
+.epic-why { max-height: 34vh; overflow: auto; margin-top: 4px; }
+.epic-why .dw-sec { padding-top: 10px; }
+.deps-wait a, .epic-why a { cursor: pointer; color: var(--accent); }
+.deps-chip .n { color: var(--c-review); }

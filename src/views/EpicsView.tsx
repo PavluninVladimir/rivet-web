@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type Epic } from '../api/client'
 import { StBadge } from '../components/ui'
+import { waitingText } from '../components/discovery'
 import { Button, Field, FormActions, FormNote, TextArea, TextInput, errText, useBusy } from '../components/form'
 import { useStore } from '../store'
 
@@ -34,7 +35,7 @@ export function EpicsView() {
         <div className="right"><Button variant="primary" onClick={() => setCreating(true)}>Новый Epic</Button></div>
       </div>
       <table className="tbl">
-        <thead><tr><th>Название</th><th>Статус</th><th>Цель</th></tr></thead>
+        <thead><tr><th>Название</th><th>Статус</th><th>Приоритет</th><th>Цель</th></tr></thead>
         <tbody>
           {epics.map(e => (
             <tr key={e.ID} className="rowlink" onClick={() => nav({ view: 'epic', id: e.ID })}>
@@ -46,7 +47,15 @@ export function EpicsView() {
                   </span>
                 )}
               </td>
-              <td><StBadge s={e.Status} /></td>
+              <td>
+                <StBadge s={e.Status} />
+                {(e.WaitingFor?.length ?? 0) > 0 && e.Status === 'running' && (
+                  <span className="chip deps-chip" style={{ marginLeft: 6 }} title={waitingText(e.WaitingFor)}>
+                    <span className="n">ждёт {e.WaitingFor!.length}</span>
+                  </span>
+                )}
+              </td>
+              <td>{e.Priority ? <span className={'chip prio-' + e.Priority}><span className="n">{e.Priority}</span></span> : <span className="muted">—</span>}</td>
               <td className="muted" style={{ maxWidth: 480, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.Goal}</td>
             </tr>
           ))}
