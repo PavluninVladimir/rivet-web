@@ -53,7 +53,9 @@ test('варианты зависимостей: бэклог и Epic’и пр�
     { ID: 'x1', Title: 'Контакты', Status: 'done' as const },
     { ID: 'x2', Title: 'Связанный', Status: 'planned' as const },
     { ID: 'x3', Title: 'Старый', Status: 'archived' as const },
+    { ID: 'x4', Title: 'Сопровождение', Status: 'running' as const, Kind: 'maintenance' },
   ]
+  // Сопровождение (add-sdlc-cycle) в варианты не попадает.
   const opts = depOptions(backlog, 'e2', project).map(o => o.value)
   assert.deepEqual(opts, ['e1', 'x1'])
   // Выбранный архивный Epic не теряется: вариант с пометкой.

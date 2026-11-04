@@ -93,12 +93,13 @@ export function removeEpic(backlog: BacklogEpic[], key: string): BacklogEpic[] {
 
 // Варианты зависимости строки: другие Epic'и бэклога и Epic'и проекта
 // (не архивные и не связанные с другими строками: на них ссылается строка).
-export function depOptions(backlog: BacklogEpic[], key: string, projectEpics: Pick<Epic, 'ID' | 'Title' | 'Status'>[]): { value: string; label: string }[] {
+export function depOptions(backlog: BacklogEpic[], key: string, projectEpics: Pick<Epic, 'ID' | 'Title' | 'Status' | 'Kind'>[]): { value: string; label: string }[] {
   const linked = new Set(backlog.map(e => e.existing_epic).filter((v): v is string => !!v))
   const self = backlog.find(e => e.key === key)
   const out = backlog.filter(e => e.key !== key).map(e => ({ value: e.key, label: `${e.key} · ${e.title || 'без названия'}` }))
   for (const p of projectEpics) {
-    if (p.Status === 'archived' || linked.has(p.ID) || p.ID === self?.existing_epic) continue
+    // Epic «Сопровождение» (add-sdlc-cycle) в зависимостях не участвует.
+    if (p.Status === 'archived' || p.Kind === 'maintenance' || linked.has(p.ID) || p.ID === self?.existing_epic) continue
     out.push({ value: p.ID, label: `Epic проекта · ${p.Title}` })
   }
   return out

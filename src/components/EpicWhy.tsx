@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, type Epic, type EpicView, type Need } from '../api/client'
+import { api, isMaintenance, type Epic, type EpicView, type Need } from '../api/client'
 import { Button, Field, FormActions, FormNote, Select, errText, useBusy } from './form'
 import { IMPORTANCE_LABEL, KIND_LABEL, waitingText } from './discovery'
 import { useStore } from '../store'
@@ -49,17 +49,21 @@ export function EpicWhy({ epic, login, onChanged }: { epic: EpicView; login?: st
   const deps = epic.DependsOn ?? []
   const needs: Need[] = epic.Discovery?.needs ?? []
   const closed = epic.Status === 'done' || epic.Status === 'archived'
+  // Epic «Сопровождение» в зависимостях не участвует (add-sdlc-cycle):
+  // редактора у него нет.
+  const editable = isOwner && !closed && !isMaintenance(epic)
   if (!supported) return null
-  if (!epic.Discovery && !epic.Priority && deps.length === 0 && !(isOwner && !closed)) return null
+  if (!epic.Discovery && !epic.Priority && deps.length === 0 && !editable) return null
   // Версия исследования — в проекте Epic'а: переключаем проект, если
   // в консоли выбран другой.
   const openRun = (runId: string) => {
     if (projectId !== epic.ProjectID) setProjectId(epic.ProjectID)
     nav({ view: 'discovery', runId })
   }
-  // Варианты правки: Epic'и проекта без архивных и без самого Epic'а, плюс
-  // уже выбранные архивные — их видно и можно снять.
-  const options = epics.filter(e => e.ID !== epic.ID && (e.Status !== 'archived' || (editing ?? []).includes(e.ID)))
+  // Варианты правки: Epic'и проекта без архивных, без самого Epic'а и без
+  // «Сопровождения», плюс уже выбранные архивные — их видно и можно снять.
+  const options = epics.filter(e => e.ID !== epic.ID && !isMaintenance(e)
+    && (e.Status !== 'archived' || (editing ?? []).includes(e.ID)))
 
   const save = () => run(async () => {
     setErr('')
@@ -110,7 +114,7 @@ export function EpicWhy({ epic, login, onChanged }: { epic: EpicView; login?: st
                   {status(id) && <span className="n">{status(id)}</span>}
                 </span>
               ))}
-              {isOwner && !closed && <Button size="sm" variant="quiet" onClick={() => setEditing(deps)}>Изменить</Button>}
+              {editable && <Button size="sm" variant="quiet" onClick={() => setEditing(deps)}>Изменить</Button>}
             </div>
           )
           : (

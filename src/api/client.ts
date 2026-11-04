@@ -55,7 +55,13 @@ export interface Epic {
   DependsOn?: string[] | null
   WaitingFor?: EpicRef[] | null
   Discovery?: EpicDiscovery | null
+  // Вид Epic'а (api-contract add-sdlc-cycle): maintenance — системный Epic
+  // «Сопровождение» с задачами-багами, в зависимостях не участвует.
+  Kind?: 'work' | 'architecture' | 'explore' | 'maintenance' | string
 }
+
+// isMaintenance — системный Epic «Сопровождение» (add-sdlc-cycle).
+export const isMaintenance = (e: Pick<Epic, 'Kind'>) => e.Kind === 'maintenance'
 
 export type Priority = 'must' | 'should' | 'could'
 export interface EpicRef { id: string; title: string; status: Epic['Status'] | string }
@@ -640,6 +646,8 @@ export interface EnvConfig {
   repo?: string
   file?: string
   key?: string
+  // Наблюдение за работающим приложением (add-sdlc-cycle).
+  monitor?: MonitorConfig
 }
 
 export interface Environment {
@@ -653,6 +661,12 @@ export interface Environment {
   // Требуемые capability runner'а публикации помимо deploy.
   runner_caps: string[]
   last_deployment: Deployment | null
+  // Состояние наблюдения (add-sdlc-cycle); старый бэкенд поле не отдаёт.
+  monitor_state?: MonitorStateName
+  // monitor_reason и monitor_last_at — причина состояния и время последней
+  // проверки (без истории проверок).
+  monitor_reason?: string
+  monitor_last_at?: string | null
   created_at: string
 }
 
@@ -868,7 +882,7 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
   if (!resp.ok) {
     if (resp.status === 401 && path !== '/auth/login') onUnauthorized()
     if (resp.status === 403 && apiCode(data) === 'password_change_required') onPasswordChangeRequired()
-    const msg = (data as { error?: { message?: string } })?.error?.message ?? resp.statusText
+    const msg = (data as { error?: { message?: string } })?.error?.message || resp.statusText || `HTTP ${resp.status}`
     throw new ApiError(msg, apiCode(data), resp.status, data)
   }
   return data as T
@@ -1106,6 +1120,108 @@ export const api = {
   approveBacklog: (projectId: string, id: string, backlogRev: number, decompose: boolean) =>
     req<{ run: Run; epics: ApprovedEpic[] }>('POST', `/projects/${projectId}/discovery/analyses/${id}/approve`, { backlog_rev: backlogRev, decompose }),
   putEpicDeps: (epicId: string, dependsOn: string[]) => req<Epic>('PUT', `/epics/${epicId}/deps`, { depends_on: dependsOn }),
+  // Цикл разработки, релизы, инциденты и наблюдение (api-contract add-sdlc-cycle).
+  cycle: (projectId: string, period: CyclePeriod, tz?: string) =>
+    req<CycleView>('GET', `/projects/${projectId}/cycle?period=${period}${tz ? `&tz=${encodeURIComponent(tz)}` : ''}`),
+  releases: (projectId: string, q: { env?: string; before?: string; limit?: number } = {}) => {
+    const p = new URLSearchParams()
+    if (q.env) p.set('env', q.env)
+    if (q.before) p.set('before', q.before)
+    if (q.limit) p.set('limit', String(q.limit))
+    return req<{ releases: Release[]; next: string | null }>('GET', `/projects/${projectId}/releases?${p}`)
+  },
+  release: (id: string) => req<Release>('GET', `/releases/${id}`),
+  regenerateNotes: (id: string) => req<Release>('POST', `/releases/${id}/notes`),
+  incidents: (projectId: string, q: { status?: IncidentFilter; env?: string; before?: string; limit?: number } = {}) => {
+    const p = new URLSearchParams()
+    if (q.status) p.set('status', q.status)
+    if (q.env) p.set('env', q.env)
+    if (q.before) p.set('before', q.before)
+    if (q.limit) p.set('limit', String(q.limit))
+    return req<{ incidents: Incident[]; next: string | null }>('GET', `/projects/${projectId}/incidents?${p}`)
+  },
+  incident: (id: string) => req<Incident>('GET', `/incidents/${id}`),
+  resolveIncident: (id: string, comment: string) => req<Incident>('POST', `/incidents/${id}/resolve`, { comment }),
+  rebugIncident: (id: string) => req<Incident>('POST', `/incidents/${id}/bug`),
+  monitor: (envId: string) => req<MonitorState>('GET', `/environments/${envId}/monitor`),
+}
+
+// ─── цикл разработки (api-contract add-sdlc-cycle) ──────────────────────
+
+export type CyclePhaseId = 'discovery' | 'architecture' | 'planning' | 'development' | 'testing' | 'review' | 'release' | 'operations'
+export type CyclePeriod = 'today' | '7d' | '30d'
+export type CycleItemState = 'active' | 'waiting' | 'needs_human'
+export interface CycleWork { kind: 'task' | 'epic' | 'deployment' | 'incident' | 'analysis' | 'release' | string; id: string; num?: number; title: string; action: string }
+export interface CycleAgent {
+  agent_id: string; name: string; role_id: string; role_title: string
+  model?: string; connection_id?: string
+  state: 'working' | 'idle' | 'disabled' | 'no_runner'
+  current: CycleWork | null
+  runner_id?: string
+}
+export interface CycleItem {
+  kind: 'task' | 'epic' | 'deployment' | 'incident' | 'analysis' | 'material' | 'environment' | string
+  id: string; num?: number; title: string; state: CycleItemState
+  // Epic задачи (переход на дашборд), у Epic'а — он сам.
+  epic_id?: string
+  badge?: 'bug' | 'awaiting_release' | 'rollback' | string
+  since: string
+}
+export interface CycleArtifact { kind: string; id: string; title: string; at: string; ref: { view?: string; id?: string; url?: string } }
+export interface CyclePhase {
+  id: CyclePhaseId; title: string; role: string; no_data: boolean; hint?: string
+  counters: { active: number; waiting: number; needs_human: number; done_period: number }
+  template_only: boolean
+  agents: CycleAgent[]; items: CycleItem[]; artifacts: CycleArtifact[]
+}
+export interface CycleSummary {
+  agents_total: number; agents_working: number; incidents_open: number
+  last_release: { id: string; env_id: string; env_name: string; version: string; created_at: string } | null
+  spend_usd: number | null; tokens: number
+}
+export interface CycleView { project_id: string; period: CyclePeriod; generated_at: string; summary: CycleSummary; phases: CyclePhase[] }
+
+export interface ReleaseItem { task_id: string; num: number; title: string; kind: 'work' | 'bug' | 'architecture' | string; epic_id: string; epic_title: string; pr_url: string; incident_id: string | null }
+export interface Release {
+  id: string; project_id: string; env_id: string; env_name: string; deployment_id: string
+  version: string; prev_version?: string; created_at: string; initiator: string
+  composition: ReleaseItem[]; notes_md?: string
+  notes_status: 'pending' | 'ready' | 'template'
+  notes_agent: { id: string; name: string } | null
+  dropped_items: number
+  // Публикацию запустил человек: состав — оценка по времени merge.
+  composition_by_time?: boolean
+}
+
+export type IncidentFilter = 'active' | 'open' | 'mitigated' | 'resolved'
+export interface IncidentDescription {
+  status: 'pending' | 'ready' | 'template'
+  agent: { id: string; name: string } | null
+  summary: string; cause: string; reproduction: string[]
+  bug: { title: string; description: string; criteria: string[] }
+}
+export interface Incident {
+  id: string; project_id: string; env_id: string; env_name: string
+  source: 'monitor' | 'release'; fingerprint: string
+  status: 'open' | 'mitigated' | 'resolved'; severity: 'medium' | 'high'
+  first_seen: string; last_seen: string; occurrences: number; title: string
+  evidence?: { stage?: string; check_output?: string; logs?: string; deploy_log?: string }
+  description: IncidentDescription
+  bug_task: { id: string; num: number; status: string } | null
+  needs_human: boolean; bug_cancelled_by?: string; skipped_daily: boolean
+  deployment_id?: string; mitigated_release_id?: string
+  resolved_at?: string; resolution?: 'fixed' | 'self' | 'manual' | ''
+  history?: { at: string; status: string; by: string; note: string }[]
+}
+
+export interface MonitorConfig { enabled: boolean; check_cmd?: string; check_url?: string; logs_cmd?: string; interval_min: number }
+export type MonitorStateName = 'ok' | 'fail' | 'unknown' | 'disabled'
+export interface MonitorRun { at: string; ok: boolean; duration_ms: number; output: string }
+export interface MonitorState {
+  env_id: string; state: MonitorStateName; reason?: string
+  last_at?: string; next_at?: string
+  consecutive_fail: number; consecutive_ok: number
+  runs: MonitorRun[]
 }
 
 // ─── эксплуатация установки ─────────────────────────────────────────────
@@ -1200,13 +1316,18 @@ export function subscribe(projectId: string, handlers: {
     // Тимлид составляет план: видно всем зрителям, а не только нажавшему.
     'epic.decomposing', 'epic.plan_failed',
     // Обзор проекта (add-project-lead-view): целевая дата, конфликты и
-    // подтверждение merge меняют риски и решения.
+    // подтверждение merge меняют риски и решения. Конфликт merge ещё и
+    // возвращает задачу в разработку: фаза в цикле меняется.
     'epic.due_changed', 'task.merge_conflict', 'task.merge',
     // Исследование продукта и зависимости Epic'ов (add-product-discovery).
     'discovery.interview_added', 'discovery.interview_deleted', 'discovery.analysis_started',
     'discovery.analysis_progress', 'discovery.analysis_ready', 'discovery.analysis_failed',
     'discovery.backlog_edited', 'discovery.approved',
-    'epic.deps_changed', 'epic.waiting_deps', 'epic.deps_ready']
+    'epic.deps_changed', 'epic.waiting_deps', 'epic.deps_ready',
+    // Цикл разработки (add-sdlc-cycle): релизы, инциденты, наблюдение и
+    // задания Релиз-инженера и Инженера сопровождения.
+    'release.created', 'release.notes_ready', 'incident.opened', 'incident.updated', 'incident.resolved',
+    'monitor.state', 'ops.job']
   for (const t of evTypes) {
     es.addEventListener(t, (m) => handlers.onEvent(JSON.parse((m as MessageEvent).data)))
   }
