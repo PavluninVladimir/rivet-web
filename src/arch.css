@@ -217,7 +217,7 @@
 .arch-epic-chip .n { color: var(--role-violet); }
 .node[data-kind="architecture"] { border-style: dashed; border-color: color-mix(in oklch, var(--role-violet) 60%, var(--border));
   background: color-mix(in oklch, var(--role-violet) 7%, var(--surface)); }
-.node .n-kind { margin-left: 6px; font: 600 9px var(--font-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--role-violet); }
+.node .n-kind { margin-left: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; font: 600 9px var(--font-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--role-violet); }
 
 @media (max-width: 980px) {
   .arch-split, .arch-split-list { grid-template-columns: minmax(0, 1fr); }
