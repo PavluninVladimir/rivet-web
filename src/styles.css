@@ -130,6 +130,8 @@ h1,h2,h3,h4 { margin: 0; }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px;
   border: 1px solid var(--border); border-radius: 999px; font-size: 11.5px; color: var(--muted); }
 .chip .n { font: 600 11px var(--font-mono); color: var(--fg); }
+.chip.chip-warn { border-color: color-mix(in oklch, var(--c-review) 50%, var(--border)); background: color-mix(in oklch, var(--c-review) 8%, transparent); }
+.chip.chip-warn .n { color: var(--c-review); }
 
 /* epic header */
 .epic-head { flex: none; padding: 14px 18px 12px; border-bottom: 1px solid var(--border); }
@@ -458,10 +460,25 @@ textarea.answer { width: 100%; min-height: 64px; }
 .conn-card .meta .mono { color: var(--fg); }
 .conn-card .models { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; font-size: 11.5px; color: var(--muted); }
 .conn-card .actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+/* Пресеты провайдеров (add-native-agent): карточка-кнопка открывает окно
+   подключения с готовыми полями. */
+.preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.preset-card { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 9px 11px; text-align: left;
+  border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); font-size: 11.5px;
+  transition: border-color .12s, background-color .12s; }
+.preset-card:hover { border-color: color-mix(in oklch, var(--accent) 45%, var(--border)); background: color-mix(in oklch, var(--accent) 5%, var(--surface)); }
+.preset-card:focus-visible { outline: none; box-shadow: var(--f-ring); }
+.preset-card .head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.preset-card .head b { font-size: 13px; }
+.preset-card .url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preset-card .hint { font-size: 11px; }
 .model-rows { display: flex; flex-direction: column; gap: 6px; }
 .model-row { display: grid; grid-template-columns: 1.3fr 1.2fr 76px 76px 84px auto auto; gap: 6px; align-items: center; }
 .model-row .src { font: 10.5px var(--font-mono); color: var(--muted); white-space: nowrap; }
 .model-row.missing .src { color: var(--c-block); }
+.model-row .model-extra { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; padding: 0 0 6px; border-bottom: 1px solid var(--border); }
+.model-row .model-extra label { display: inline-flex; align-items: center; gap: 6px; font: 10.5px var(--font-mono); color: var(--muted); }
+.model-row .model-extra .f-error { flex-basis: 100%; }
 .model-rows .hdr { font: 600 10.5px var(--font-mono); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .hdr-row { display: flex; gap: 6px; align-items: end; }
 .hdr-row > * { flex: 1; }

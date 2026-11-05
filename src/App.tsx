@@ -1,7 +1,7 @@
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { api, setOnPasswordChangeRequired, setOnUnauthorized, type User } from './api/client'
 import { StoreProvider, routeHash, useStore, type Route } from './store'
-import { ErrorBoundary, ViewCrash, lazyWithReload } from './components/ErrorBoundary'
+import { ErrorBoundary, lazyWithReload } from './components/ErrorBoundary'
 import { EpicsView } from './views/EpicsView'
 import { EpicDashboard } from './views/EpicDashboard'
 import { DiscoveryView } from './views/DiscoveryView'
@@ -26,6 +26,7 @@ const ArchitectureView = lazy(lazyWithReload(() => import('./views/ArchitectureV
 import { PasswordGate, Profile } from './views/Profile'
 import { Login } from './components/Login'
 import { Palette } from './components/Palette'
+import { boundaryKey } from './components/boundaryKey'
 
 const NAV: { view: Route['view']; label: string }[] = [
   { view: 'projects', label: 'Проекты' },
@@ -155,8 +156,10 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
         </header>
         <div id="viewport">
           {/* Падение экрана не гасит консоль: навигация и боковая панель
-              работают, переход на другой адрес сбрасывает ошибку. */}
-          <ErrorBoundary resetKey={routeHash(route)} fallback={(e, reset) => <ViewCrash error={e} onRetry={reset} />}>
+              работают. key от экрана и проекта перемонтирует экран там, где
+              меняются его данные, resetKey снимает заглушку при переходе на
+              другой адрес того же экрана (задача в дашборде, вкладка). */}
+          <ErrorBoundary key={boundaryKey(route, projectId)} resetKey={routeHash(route)} what="экран" page>
           {route.view === 'projects' && <ProjectsView />}
           {route.view === 'project-settings' && <ProjectSettings key={route.id} projectId={route.id} tab={route.tab} user={user} />}
           {route.view === 'profile' && <Profile me={user} />}

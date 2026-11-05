@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, apiCurrent, apiField, apiRefs, ROLE_CAPABILITIES, ROLE_COLORS, type AgentProfile, type AgentRole, type AgentRoleInput, type ModelChoice, type RoleRef } from '../api/client'
+import { api, apiCurrent, apiField, apiRefs, ROLE_CAPABILITIES, ROLE_COLORS, type AgentRole, type AgentRoleInput, type ModelChoice, type RoleRef } from '../api/client'
 import { SideModal } from '../components/StepModal'
 import { RoleChip } from '../components/RoleChip'
 import { mergeDraft, refText, roleColorVar } from '../components/roleLabels'
@@ -15,13 +15,15 @@ import { useActions } from './AppManagement'
 // отключается; отказ из-за ссылок показывает их перечень.
 
 // Поля шаблона, которые правит форма; модель — «подключение/модель».
+// Агент один (агент Rivet, add-native-agent): поле agent форма не
+// показывает и сохраняет как было.
 type RoleFields = {
   title: string; description: string; instruction: string; color: string; capability: string
   agent: string; model: string; enabled: boolean
 }
 const FIELD_LABEL: Record<keyof RoleFields, string> = {
   title: 'название', description: 'зона ответственности', instruction: 'инструкция', color: 'цвет',
-  capability: 'capability', agent: 'профиль агента', model: 'модель', enabled: 'включение',
+  capability: 'capability', agent: 'агент', model: 'модель', enabled: 'включение',
 }
 const fieldsOf = (r: AgentRole): RoleFields => ({
   title: r.title, description: r.description, instruction: r.instruction, color: r.color,
@@ -68,7 +70,6 @@ async function saveRole(base: AgentRole, draft: RoleFields, force = false, curre
 
 export function RolesTab() {
   const { roles, refreshRoles } = useStore()
-  const [agents, setAgents] = useState<AgentProfile[]>([])
   const [choices, setChoices] = useState<ModelChoice[]>([])
   // Окно держит снимок шаблона: удаление шаблона другим администратором не
   // закрывает форму с черновиком, а сохранение сообщит об этом.
@@ -76,7 +77,6 @@ export function RolesTab() {
   const [confirmDel, setConfirmDel] = useState<string | null>(null)
   const [refs, setRefs] = useState<{ id: string; refs: RoleRef[] } | null>(null)
   const refresh = useCallback(() => {
-    api.systemAgents().then(c => setAgents(c.agents ?? [])).catch(() => {})
     api.modelChoices().then(r => setChoices(r?.choices ?? [])).catch(() => {})
     refreshRoles()
   }, [refreshRoles])
@@ -108,8 +108,8 @@ export function RolesTab() {
           <Button size="sm" variant="primary" onClick={() => setModal({ kind: 'new' })}>Новый шаблон</Button>
         </div>
         <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
-          Шаблон задаёт, кем агент выступает: инструкция уходит агенту в каждом назначении, профиль и модель служат
-          значениями по умолчанию. Из шаблонов собирается команда агентов на вкладке «Команда».
+          Шаблон задаёт, кем агент выступает: инструкция уходит агенту в каждом назначении, модель служит
+          значением по умолчанию. Из шаблонов собирается команда агентов на вкладке «Команда».
         </div>
         {roles.length === 0 && <div className="muted">Шаблонов нет или каталог недоступен.</div>}
         <div className="conn-list">
@@ -126,8 +126,7 @@ export function RolesTab() {
               {r.description && <div style={{ fontSize: 12.5 }}>{r.description}</div>}
               <div className="meta">
                 <span>capability <span className="mono">{r.capability || 'нет'}</span></span>
-                {!r.control_plane && <span>профиль <span className="mono">{r.agent || 'любой'}</span></span>}
-                <span>модель <span className="mono">{r.model ? `${r.connection_id}/${r.model}` : r.id === 'lead' ? 'из окружения' : 'по умолчанию профиля'}</span></span>
+                <span>модель <span className="mono">{r.model ? `${r.connection_id}/${r.model}` : r.id === 'lead' ? 'из окружения' : 'по умолчанию агента'}</span></span>
                 <span>изменил {r.updated_by || '—'}</span>
               </div>
               {r.instruction && <div className="role-instr" title={r.instruction}>{r.instruction}</div>}
@@ -148,14 +147,14 @@ export function RolesTab() {
           ))}
         </div>
       </div>
-      {modal?.kind === 'new' && <RoleModal agents={agents} choices={choices} taken={roles.map(r => r.id)} onClose={() => setModal(null)} onSaved={refresh} />}
-      {modal?.kind === 'edit' && <RoleModal role={modal.role} agents={agents} choices={choices} taken={[]} onClose={() => setModal(null)} onSaved={refresh} />}
+      {modal?.kind === 'new' && <RoleModal choices={choices} taken={roles.map(r => r.id)} onClose={() => setModal(null)} onSaved={refresh} />}
+      {modal?.kind === 'edit' && <RoleModal role={modal.role} choices={choices} taken={[]} onClose={() => setModal(null)} onSaved={refresh} />}
     </>
   )
 }
 
-function RoleModal({ role, agents, choices, taken, onClose, onSaved }: {
-  role?: AgentRole; agents: AgentProfile[]; choices: ModelChoice[]; taken: string[]; onClose: () => void; onSaved: () => void
+function RoleModal({ role, choices, taken, onClose, onSaved }: {
+  role?: AgentRole; choices: ModelChoice[]; taken: string[]; onClose: () => void; onSaved: () => void
 }) {
   // Версия, от которой правит форма, — снимок на момент открытия: по нему
   // видно, какие поля менял администратор, а какие — другие.
@@ -175,9 +174,8 @@ function RoleModal({ role, agents, choices, taken, onClose, onSaved }: {
     ? (!/^[a-z][a-z0-9-]{1,31}$/.test(id) ? 'латиница в нижнем регистре, цифры, дефис; 2–32 символа'
       : taken.includes(id) ? 'шаблон с таким идентификатором уже есть' : fe('id'))
     : fe('id')
-  const profiles = agents.filter(a => a.enabled || a.id === f.agent)
-  // Модели шаблона: привязки его профиля, без профиля — привязки всех
-  // включённых профилей; у Тимлида — пары подключения и модели.
+  // Модели шаблона — пары подключения и модели агента Rivet; у Тимлида —
+  // модели планировщика из тех же подключений.
   const pairs = Array.from(new Set(choices.filter(c => cp || !f.agent || c.agent === f.agent).map(c => `${c.connection_id}/${c.model}`))).sort()
 
   const save = async (force = false) => {
@@ -244,18 +242,12 @@ function RoleModal({ role, agents, choices, taken, onClose, onSaved }: {
         </Field>
       </div>
       <div className="f-grid">
-        <Field label="Профиль агента" optional error={fe('agent')} hint={cp ? 'не нужен: шаблон выполняет control plane' : 'пусто: любой агент с capability роли'}>
-          {ids => <Select ids={ids} value={cp ? '' : f.agent} disabled={cp} onChange={e => { set('agent', e.target.value); set('model', '') }}>
-            <option value="">{cp ? 'не нужен' : 'любой агент'}</option>
-            {profiles.map(a => <option key={a.id} value={a.id}>{a.name} ({a.id})</option>)}
-          </Select>}
-        </Field>
-        <Field label={lead ? 'Модель планировщика' : 'Модель по умолчанию'} optional error={fe('model') ?? fe('connection_id')}
-          hint={lead ? 'меняется, только если выбрать другую' : f.agent ? 'из привязок профиля' : 'из привязок включённых профилей'}>
+        <Field label={lead ? 'Модель планировщика' : 'Модель по умолчанию'} optional error={fe('model') ?? fe('connection_id') ?? fe('agent')}
+          hint={lead ? 'меняется, только если выбрать другую' : cp ? 'подключение / модель' : 'подключение / модель агента Rivet'}>
           {ids => <Select ids={ids} value={f.model} onChange={e => set('model', e.target.value)}>
             {/* У Тимлида пустой выбор ничего не меняет: он есть, только
                 пока планировщик и правда работает на модели из окружения. */}
-            {(!lead || !fieldsOf(role!).model) && <option value="">{lead ? 'из окружения' : 'по умолчанию профиля'}</option>}
+            {(!lead || !fieldsOf(role!).model) && <option value="">{lead ? 'из окружения' : 'по умолчанию агента'}</option>}
             {f.model && !pairs.includes(f.model) && <option value={f.model}>{f.model}</option>}
             {pairs.map(m => <option key={m} value={m}>{m}</option>)}
           </Select>}

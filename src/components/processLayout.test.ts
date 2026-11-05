@@ -38,7 +38,7 @@ test('два review и явные переходы: выключенный ша�
     { id: 'code', kind: 'code', participants: [{ agent: {} }] },
     { id: 'test', kind: 'test', enabled: false, participants: [{ agent: {} }] },
     { id: 'review', kind: 'review', participants: [{ agent: {} }, { user: { role: 'owner' } }], on: { changes: 'code' } },
-    { id: 'review2', kind: 'review', participants: [{ agent: { kind: 'codex' } }], on: { fail: 'review' } },
+    { id: 'review2', kind: 'review', participants: [{ agent: { kind: 'rivet' } }], on: { fail: 'review' } },
     { id: 'merge', kind: 'merge' },
   ] }
   const t = resolveTransitions(doc)

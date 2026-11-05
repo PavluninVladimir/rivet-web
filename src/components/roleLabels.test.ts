@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { agentModelLabel, agentVerdictNote, isAgentWorkEvent, mergeDraft, performerParts, refText, roleColorVar, runnerName, stepVerb, tripleKey, tripleOf, verdictLabel } from './roleLabels.ts'
+import { agentModelLabel, agentVerdictNote, choiceLabel, isAgentWorkEvent, mergeDraft, performerParts, refText, roleColorVar, runnerName, stepVerb, tripleKey, tripleOf, verdictLabel } from './roleLabels.ts'
 
 test('занятость агента: только два события установки', () => {
   assert.equal(isAgentWorkEvent('team.agent_busy'), true)
@@ -10,15 +10,15 @@ test('занятость агента: только два события уст
 })
 
 test('имя runner’а: отображаемое имя, иначе id', () => {
-  assert.equal(runnerName({ ID: 'claude-sonnet-1', DisplayName: 'mac-1' }), 'mac-1')
-  assert.equal(runnerName({ ID: 'claude-sonnet-1', DisplayName: '  ' }), 'claude-sonnet-1')
+  assert.equal(runnerName({ ID: 'runner-sonnet-1', DisplayName: 'mac-1' }), 'mac-1')
+  assert.equal(runnerName({ ID: 'runner-sonnet-1', DisplayName: '  ' }), 'runner-sonnet-1')
   assert.equal(runnerName(undefined, 'r-9'), 'r-9')
 })
 
 test('подпись исполнителя: роль и агент, runner мелко', () => {
   assert.deepEqual(performerParts('Разработчик', 'Макс', 'mac-1'), { main: 'Разработчик Макс', sub: 'mac-1' })
   assert.deepEqual(performerParts('Разработчик', '', 'mac-1'), { main: 'Разработчик', sub: 'mac-1' })
-  assert.deepEqual(performerParts(undefined, '', 'claude-sonnet-1'), { main: 'claude-sonnet-1', sub: '' })
+  assert.deepEqual(performerParts(undefined, '', 'runner-sonnet-1'), { main: 'runner-sonnet-1', sub: '' })
   assert.deepEqual(performerParts(undefined, 'Макс', ''), { main: 'Макс', sub: '' })
 })
 
@@ -39,12 +39,14 @@ test('цвет роли: токен палитры или приглушённы
 })
 
 test('тройка модели: ключ туда и обратно, пустая — «как в шаблоне»', () => {
-  const t = { agent: 'claude-code', connection_id: 'anthropic', model: 'claude-opus-5' }
+  const t = { agent: 'rivet', connection_id: 'anthropic', model: 'claude-opus-5' }
   assert.deepEqual(tripleOf(tripleKey(t)), t)
   assert.equal(tripleKey({ agent: '', connection_id: '', model: '' }), '')
   assert.deepEqual(tripleOf(''), { agent: '', connection_id: '', model: '' })
   assert.equal(agentModelLabel({ agent: '', connection_id: '', model: '' }, { agent: '', model: 'sonnet' }), 'sonnet (шаблон)')
-  assert.equal(agentModelLabel({ agent: 'claude-code', connection_id: 'a', model: 'opus' }, undefined), 'claude-code / opus')
+  assert.equal(agentModelLabel({ connection_id: 'a', model: 'opus' }, undefined), 'a/opus')
+  assert.equal(agentModelLabel({ connection_id: '', model: 'opus' }, undefined), 'opus')
+  assert.equal(choiceLabel({ connection_id: 'deepseek', model: 'deepseek-v4-pro' }), 'deepseek/deepseek-v4-pro')
 })
 
 test('ссылки на шаблон по видам', () => {
@@ -64,7 +66,7 @@ test('черновик: свои правки поверх актуальной 
   assert.deepEqual(mergeDraft(base, fresh, { ...base, instruction: 'новая' }).conflicts, [])
 })
 
-test('черновик: профиль и модель сливаются группой', () => {
+test('черновик: агент и модель сливаются группой', () => {
   const base = { title: 'Р', agent: 'a', model: '' }
   const r = mergeDraft(base, { ...base, agent: 'b' }, { ...base, model: 'conn/m-a' }, [['agent', 'model']])
   assert.deepEqual(r.conflicts, ['agent', 'model'])

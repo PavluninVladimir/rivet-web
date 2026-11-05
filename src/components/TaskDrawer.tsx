@@ -72,7 +72,7 @@ function overlapTail(e: Event): string {
   if (typeof p.delivered !== 'boolean') return ''
   if (p.delivered) return ' — агент предупреждён'
   const why: Record<string, string> = {
-    no_channel: 'адаптер без обратного канала',
+    no_channel: 'у runner’а нет обратного канала контекста',
     runner_offline: 'runner недоступен',
     no_runner: 'стадия уже завершилась',
   }

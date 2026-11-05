@@ -446,10 +446,9 @@ export interface Runner {
   Capabilities: string[]; Status: string; TaskID: string
   CtxPct: number | null // null — заполненность контекста неизвестна
   Draining: boolean; LastSeen: string
-  // Адаптер подключения агента и глубина его данных.
-  Adapter: string
+  // Глубина данных сессий runner'а.
   Depth: 'full' | 'partial' | 'minimal' | string
-  // Доводит ли адаптер контекст от Rivet до работающего агента
+  // Доводит ли runner контекст от Rivet до работающего агента
   // (обратный канал); без него система контекст ему не шлёт.
   ContextChannel: boolean
   // Профиль агента из каталога и защищённость канала (add-agent-profiles).
@@ -457,6 +456,8 @@ export interface Runner {
   Secure: boolean
   ProfileName: string
   DeclaredModels: string[] | null
+  // Команды агента идут в песочнице без сети (add-native-agent).
+  NetworkIsolated?: boolean
   // Инфраструктура (api-contract add-agent-roles): имя runner'а, его
   // возможности и агент команды текущей стадии. Ролей у runner'а нет:
   // RoleID и агент описывают только идущую стадию.
@@ -549,29 +550,33 @@ export function apiCurrent<T>(e: unknown): T | undefined {
   return (e.data as ErrBody)?.error?.current as T | undefined
 }
 
-// Профиль агента (api-contract add-agent-profiles).
+// Агент Rivet (api-contract add-native-agent): единственный профиль
+// каталога, агентский цикл ведёт сам runner. Модели вычисляются сервером:
+// все видимые модели включённых подключений.
+export const RIVET_AGENT = 'rivet'
 export interface AgentModelRef { connection_id: string; model: string; unavailable?: boolean }
-export interface EnvVar { name: string; value: string }
 export type SecretsMode = 'never' | 'secure' | 'always'
+// Лимиты сессии агента; отсутствующее поле — значение цикла по умолчанию.
+export interface AgentLimits { max_turns?: number; max_tokens?: number; max_minutes?: number }
 export interface AgentProfile {
-  id: string; name: string; adapter: 'claude-code' | 'wrap'; command: string
+  id: string; name: string; adapter: string
   capabilities: string[]; models: AgentModelRef[]; default_model: AgentModelRef | null
-  env?: EnvVar[]; args?: string[]; secrets: SecretsMode; enabled: boolean
+  secrets: SecretsMode; enabled: boolean
   runners: number; preset: boolean; updated_at: string; updated_by: string
+  limits?: AgentLimits
 }
-export interface ExternalAgent { id: string; models: string[]; runners: number }
-export interface AgentCatalog { agents: AgentProfile[]; external: ExternalAgent[] }
+export interface AgentCatalog { agents: AgentProfile[] }
+// Тело PUT /system/agents/rivet: сервер заменяет лимиты и модель по
+// умолчанию целиком, поэтому форма шлёт все поля.
 export interface AgentInput {
-  name: string; adapter: 'claude-code' | 'wrap'; command?: string; capabilities?: string[]
-  models?: AgentModelRef[]; default_model?: AgentModelRef | null; env?: EnvVar[]; args?: string[]
-  secrets?: SecretsMode; enabled?: boolean
+  name?: string; default_model?: AgentModelRef | null; secrets?: SecretsMode; enabled?: boolean
+  limits?: AgentLimits
 }
 export const SECRETS_MODES: { id: SecretsMode; label: string; hint: string }[] = [
   { id: 'never', label: 'никогда', hint: 'агент берёт ключи из окружения хоста runner’а' },
   { id: 'secure', label: 'по защищённому каналу', hint: 'ключи уходят runner’у только по TLS или с той же машины' },
-  { id: 'always', label: 'всегда', hint: 'ключи уходят любому runner’у с этим агентом' },
+  { id: 'always', label: 'всегда', hint: 'ключи уходят любому runner’у агента' },
 ]
-export const PLACEHOLDERS = ['{{key}}', '{{base_url}}', '{{model}}', '{{connection_id}}', '{{header:Имя}}']
 
 export interface Event {
   ID: number; TS: string; ActorKind: string; ActorID: string
@@ -879,8 +884,22 @@ export function setOnUnauthorized(fn: () => void) { onUnauthorized = fn }
 let onPasswordChangeRequired: () => void = () => {}
 export function setOnPasswordChangeRequired(fn: () => void) { onPasswordChangeRequired = fn }
 
+// Конверт ошибки {"error":{"code","message"},"field"}. Плоское тело
+// ({"error":"код","message":"…"}) старых ответов тоже разбирается:
+// иначе пользователь увидел бы пустой statusText вместо причины.
 function apiCode(data: unknown): string {
-  return (data as { error?: { code?: string } })?.error?.code ?? ''
+  const e = (data as { error?: unknown } | null)?.error
+  if (typeof e === 'string') return e
+  return (e as { code?: string } | null | undefined)?.code ?? ''
+}
+function apiMessage(data: unknown): string {
+  const d = data as { error?: unknown; message?: unknown } | null
+  const e = d?.error
+  if (e && typeof e === 'object') {
+    const m = (e as { message?: unknown }).message
+    if (typeof m === 'string' && m) return m
+  }
+  return typeof d?.message === 'string' ? d.message : ''
 }
 
 // ApiError несёт машиночитаемый код конверта ошибки (no_planner,
@@ -920,7 +939,7 @@ async function reqResp<T>(method: string, path: string, body?: unknown): Promise
   if (!resp.ok) {
     if (resp.status === 401 && path !== '/auth/login') onUnauthorized()
     if (resp.status === 403 && apiCode(data) === 'password_change_required') onPasswordChangeRequired()
-    const msg = (data as { error?: { message?: string } })?.error?.message || resp.statusText || `HTTP ${resp.status}`
+    const msg = apiMessage(data) || resp.statusText || `HTTP ${resp.status}`
     throw new ApiError(msg, apiCode(data), resp.status, data)
   }
   return { data: data as T, resp }
@@ -933,7 +952,7 @@ async function reqForm<T>(path: string, form: FormData): Promise<T> {
   const data = await resp.json().catch(() => null)
   if (!resp.ok) {
     if (resp.status === 401) onUnauthorized()
-    const msg = (data as { error?: { message?: string } })?.error?.message ?? resp.statusText
+    const msg = apiMessage(data) || resp.statusText || `HTTP ${resp.status}`
     throw new ApiError(msg, apiCode(data), resp.status, data)
   }
   return data as T
@@ -953,7 +972,7 @@ async function reqText(path: string): Promise<string> {
   if (!resp.ok) {
     if (resp.status === 401) onUnauthorized()
     const data = await resp.json().catch(() => null)
-    const msg = (data as { error?: { message?: string } })?.error?.message ?? resp.statusText
+    const msg = apiMessage(data) || resp.statusText || `HTTP ${resp.status}`
     throw new Error(msg)
   }
   return resp.text()
@@ -966,7 +985,7 @@ async function reqReport(path: string): Promise<Report> {
   if (!resp.ok) {
     if (resp.status === 401) onUnauthorized()
     const data = await resp.json().catch(() => null)
-    const msg = (data as { error?: { message?: string } })?.error?.message ?? resp.statusText
+    const msg = apiMessage(data) || resp.statusText || `HTTP ${resp.status}`
     throw new ApiError(msg, apiCode(data), resp.status, data)
   }
   const text = await resp.text()
@@ -1112,11 +1131,11 @@ export const api = {
     req<{ connection: ModelConnection; added: string[]; missing: string[] }>('POST', `/system/connections/${id}/discover`),
   putConnectionModels: (id: string, models: ModelEntry[]) =>
     req<ModelConnection>('PUT', `/system/connections/${id}/models`, { models }),
-  // Каталог агентов (api-contract add-agent-profiles).
+  connectionPresets: () => req<{ presets: ConnectionPreset[] | null }>('GET', '/system/connections/presets'),
+  // Каталог агентов: один агент Rivet (api-contract add-native-agent).
   agents: () => req<AgentCatalog>('GET', '/agents'),
   systemAgents: () => req<AgentCatalog>('GET', '/system/agents'),
-  putAgent: (id: string, input: AgentInput) => req<AgentProfile>('PUT', `/system/agents/${id}`, input),
-  deleteAgent: (id: string) => req<void>('DELETE', `/system/agents/${id}`),
+  putAgent: (input: AgentInput) => req<AgentProfile>('PUT', `/system/agents/${RIVET_AGENT}`, input),
   planner: () => req<PlannerView>('GET', '/system/planner'),
   putPlanner: (pm: { connection_id?: string; model?: string }) => req<PlannerView>('PUT', '/system/planner', pm),
   // Политики конвейера: пресеты установки (администратор) и переопределения
@@ -1416,8 +1435,15 @@ export type ConnectionAPI = 'anthropic' | 'openai'
 export interface ConnHeader { name: string; value?: string; secret: boolean }
 export interface ModelEntry {
   id: string; label: string
-  input_price?: number; output_price?: number; context_window?: number
-  source: 'discovered' | 'manual'; hidden: boolean; missing: boolean
+  // Цены в микродолларах за миллион токенов; cached_input_price — цена
+  // кешированного входа, пусто — по цене входа.
+  input_price?: number; output_price?: number; cached_input_price?: number
+  // Окно и пределы выхода в токенах (add-native-agent): max_output_tokens —
+  // предел ответа на ход, model_max_output — предельный выход модели
+  // (потолок повтора хода с обрезанным ответом). Пусто — умолчания цикла.
+  context_window?: number; max_output_tokens?: number; model_max_output?: number
+  // preset — модель из пресета провайдера, который сам список не отдаёт.
+  source: 'discovered' | 'manual' | 'preset'; hidden: boolean; missing: boolean
 }
 export interface ModelConnection {
   id: string; name: string; kind: ConnectionKind; api: ConnectionAPI; base_url: string
@@ -1428,6 +1454,16 @@ export interface ModelConnection {
 export interface ConnectionInput {
   name: string; kind: ConnectionKind; api: ConnectionAPI; base_url: string
   key?: string; headers?: { name: string; value?: string; secret: boolean }[]; enabled?: boolean
+  // Пресет провайдера (add-native-agent): пустые поля сервер заполняет из
+  // него, модели пресета сохраняются, если провайдер список не отдаёт.
+  preset?: string
+}
+// Готовое подключение к провайдеру (GET /system/connections/presets).
+export interface ConnectionPreset {
+  id: string; name: string; kind: ConnectionKind; api: ConnectionAPI; base_url: string
+  need_key: boolean
+  models: { id: string; context_window?: number; max_output_tokens?: number; model_max_output?: number }[]
+  hint?: string
 }
 export interface PlannerView {
   source: PlannerSource; connection_id?: string; model?: string; state?: string; detail?: string

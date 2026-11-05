@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { api, type Runner } from '../api/client'
+import { api, RIVET_AGENT, type Runner } from '../api/client'
 import { CtxBar, fmtAgo, StBadge } from '../components/ui'
 import { Performer } from '../components/RoleChip'
+import { agentNetworkOpen, isDeployRunner } from '../components/agentLogic'
 import { Button, TextInput, errText } from '../components/form'
 import { useStore } from '../store'
 
@@ -45,7 +46,7 @@ export function RunnersView({ admin }: { admin: boolean }) {
         )}
       </div>
       <table className="tbl">
-        <thead><tr><th>Runner</th><th>Сейчас</th><th>Профиль</th><th>Хост</th><th>Capabilities</th><th>Глубина</th><th>Контекст</th><th>Статус</th><th>Последний сигнал</th><th></th></tr></thead>
+        <thead><tr><th>Runner</th><th>Сейчас</th><th>Агент</th><th>Хост</th><th>Capabilities</th><th>Глубина</th><th>Контекст</th><th>Статус</th><th>Последний сигнал</th><th></th></tr></thead>
         <tbody>
           {runners.map(r => (
             <tr key={r.ID}>
@@ -74,16 +75,24 @@ export function RunnersView({ admin }: { admin: boolean }) {
                   ? <Performer roleId={r.RoleID} agentName={r.AgentName} />
                   : <span className="muted">{r.TaskID ? 'занят' : '—'}</span>}
               </td>
-              <td className="muted">
-                {r.ProfileName ? <>{r.ProfileName} <span className="mono">{r.Agent}</span></> : r.Agent}
-                {r.Models?.length ? <span className="mono"> · {r.Models.join(', ')}</span> : r.Model ? <span className="mono"> · {r.Model}</span> : null}
-                {!r.Catalog && <span className="chip" style={{ marginLeft: 6 }} title="профиля в каталоге агентов нет: модели и окружение runner’а свои"><span className="n">вне каталога</span></span>}
-                {r.Catalog && !r.Secure && <span className="chip" style={{ marginLeft: 6 }} title="канал без TLS и не с этой машины: секреты подключений runner’у не уходят"><span className="n">канал не защищён</span></span>}
+              <td className="muted" data-runner-agent={r.Agent || 'deploy'}>
+                {isDeployRunner(r)
+                  ? <span title="исполняет только задания выкатки, агента нет">runner выкатки</span>
+                  : <>
+                      {r.ProfileName ? <>{r.ProfileName} <span className="mono">{r.Agent}</span></> : <span className="mono">{r.Agent}</span>}
+                      {r.Models?.length ? <span className="mono"> · {r.Models.join(', ')}</span> : r.Model ? <span className="mono"> · {r.Model}</span> : null}
+                      {r.Agent !== RIVET_AGENT && <span className="chip chip-warn" style={{ marginLeft: 6 }}
+                        title="агентом может быть только агент Rivet: перезапустите runner с -agent rivet"><span className="n">агент не поддерживается</span></span>}
+                      {r.Catalog && !r.Secure && <span className="chip" style={{ marginLeft: 6 }} title="канал без TLS и не с этой машины: секреты подключений runner’у не уходят"><span className="n">канал не защищён</span></span>}
+                      {agentNetworkOpen(r) && <span className="chip chip-warn" style={{ marginLeft: 6 }} data-network-open
+                        title="runner запущен без песочницы (-unsandboxed): команды агента идут с правами runner’а и видят сеть. Песочница без сети есть на Linux с user namespaces">
+                        <span className="n">команды агента с доступом в сеть</span></span>}
+                    </>}
               </td>
               <td className="mono muted">{r.Host}</td>
               <td className="mono muted">{r.Capabilities.join(', ')}</td>
-              <td className="mono muted" title={`адаптер ${r.Adapter || 'wrap'}: глубина данных подключения; обратный канал контекста: ${r.ContextChannel ? 'есть' : 'нет'}`}>
-                {r.Depth || 'minimal'}
+              <td className="mono muted" title={isDeployRunner(r) ? 'у runner’а выкатки нет сессий агента' : `глубина данных сессий; обратный канал контекста: ${r.ContextChannel ? 'есть' : 'нет'}`}>
+                {isDeployRunner(r) ? '—' : r.Depth || 'minimal'}
               </td>
               <td><CtxBar pct={r.CtxPct} /></td>
               <td><StBadge s={r.Status} />{r.Draining && <span className="muted" style={{ marginLeft: 6, fontSize: 10.5 }}>drain</span>}</td>

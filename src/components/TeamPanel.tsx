@@ -83,8 +83,8 @@ export async function saveAgentModel(a: TeamAgent, key: string): Promise<TeamAge
 }
 
 // Варианты модели для агента. Шаблон control plane (Тимлид, Аналитик)
-// работает без runner'а и профиля: модель — пара подключения и модели,
-// повторы по профилям схлопываются; у Тимлида это модель планировщика.
+// работает без runner'а: модель — пара подключения и модели без агента;
+// у Тимлида это модель планировщика.
 export function modelOptions(choices: ModelChoice[], controlPlane: boolean): { key: string; label: string; offline: boolean }[] {
   if (!controlPlane) return choices.map(c => ({ key: tripleKey(c), label: choiceLabel(c) + (c.runner_online ? '' : ' · нет runner’а'), offline: !c.runner_online }))
   const seen = new Set<string>()
@@ -111,7 +111,7 @@ export function TeamPanel({ epicId, tasks, planning, admin }: { epicId: string; 
   const [err, setErr] = useState<{ id: string; msg: string } | null>(null)
 
   // Варианты перечитываются при каждом открытии: runner'ы и привязки
-  // профилей меняются, признак «нет runner'а» должен быть свежим.
+  // моделей меняются, признак «нет runner'а» должен быть свежим.
   const openEditor = (id: string) => {
     setEditing(id); setErr(null)
     api.modelChoices().then(r => setChoices(r?.choices ?? [])).catch(e => setErr({ id, msg: errText(e) }))
@@ -156,7 +156,7 @@ export function TeamPanel({ epicId, tasks, planning, admin }: { epicId: string; 
         {team.map(a => {
           const role = roleOf(a.role_id)
           // Тимлид — отметка о плане и модель планировщика; прочие шаблоны
-          // control plane — без профиля и runner'а.
+          // control plane — без runner'а.
           const lead = a.role_id === 'lead'
           const cp = role?.control_plane ?? lead
           const task = a.task_id ? tasks.find(t => t.ID === a.task_id) : undefined
@@ -214,7 +214,7 @@ export function TeamPanel({ epicId, tasks, planning, admin }: { epicId: string; 
               </div>
               {a.busy && a.runner_id && <CtxBar pct={ctx} />}
               {editing === a.id && curOpt?.offline && (
-                <div className="model-warn" role="status">нет online runner’а с профилем {tripleOf(cur).agent}: задачи этого агента будут ждать</div>
+                <div className="model-warn" role="status">нет online runner’а агента Rivet: задачи этого агента будут ждать</div>
               )}
               {err?.id === a.id && <div className="f-error" role="alert">{err.msg}</div>}
             </div>

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { InstallationProcessSection } from './ProcessSection'
 import { processHandlers } from './installationProcess'
-import { api, apiField, defaultProcess, type ModelChoice, type Overrides, type PolicyEngine, type PolicyVersion, type Presets, type ProjectPolicy, type RoleModelRef } from '../api/client'
+import { api, apiField, defaultProcess, RIVET_AGENT, type ModelChoice, type Overrides, type PolicyEngine, type PolicyVersion, type Presets, type ProjectPolicy, type RoleModelRef } from '../api/client'
 import { choiceLabel, tripleKey, tripleOf } from './roleLabels'
+import { dropOverride, staleOverrides } from './agentLogic'
 import { useStore } from '../store'
 import { fmtDate, fmtTokens } from './ui'
 import { Button, Checkbox, FormNote, NumberInput, Select, Switch, TagsInput, errText } from './form'
@@ -229,13 +230,21 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
   // Черновик планового бюджета месяца строкой: поле не теряет «12.» при
   // вводе дробной части. null — показывается сохранённое значение.
   const [monthDraft, setMonthDraft] = useState<string | null>(null)
-  // Модели ролей проекта (add-agent-roles): тройка «профиль, подключение,
-  // модель» из выбора установки; у шаблона с профилем — его привязки.
+  // Модели ролей проекта (add-agent-roles): тройка «агент, подключение,
+  // модель» из выбора установки; агент один — агент Rivet.
   // Плановый бюджет месяца есть только у бэкенда с обзором проекта: старый
   // поле не знает и молча его отбросил бы.
   const { roles, overviewAvailable } = useStore()
   const [choices, setChoices] = useState<ModelChoice[]>([])
-  useEffect(() => { api.modelChoices().then(r => setChoices(r?.choices ?? [])).catch(() => {}) }, [])
+  // Загрузка выбора моделей. Пока он грузится или не загрузился, строки
+  // ролей не рисуются, и их переопределения нельзя считать устаревшими:
+  // на сервере они могут быть валидны.
+  const [choicesState, setChoicesState] = useState<'loading' | 'ok' | 'failed'>('loading')
+  useEffect(() => {
+    api.modelChoices()
+      .then(r => { setChoices(r?.choices ?? []); setChoicesState('ok') })
+      .catch(() => setChoicesState('failed'))
+  }, [])
 
   const refresh = useCallback(() => {
     api.projectPolicy(projectId).then(p => {
@@ -272,6 +281,15 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
     const v = overrides[k] !== null && overrides[k] !== undefined ? (overrides[k] as Presets[PresetKey]) : presetValue(pp.effective, k)
     return k === 'daily_token_budget' && v === 0 ? null : v
   }
+  // Строки ролей, которые форма рисует: включённый шаблон с моделями агента.
+  const roleOptions = (r: { agent: string }) => choices.filter(c => !r.agent || c.agent === r.agent)
+  const shownRoles = choicesState === 'ok' && roles.length > 0
+    ? roles.filter(r => r.enabled && !r.control_plane && roleOptions(r).length > 0).map(r => r.id)
+    : null
+  // Переопределения, которых форма не рисует (агент удалён, роль не
+  // показывается): сервер не принял бы с ними новую версию, а снять их
+  // иначе нечем (P1-1 ревью add-native-agent).
+  const stale = staleOverrides(overrides, pp.agent_models, shownRoles)
   const save = async () => {
     clear()
     // NaN в JSON стал бы null и молча снял бы бюджет.
@@ -360,7 +378,7 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
           return (
             <div className="set-row" key={'agent-' + id} data-agent-model={id}>
               <div className="lbl">
-                <b>Модель агента {am.name}
+                <b>Модель по умолчанию: {am.name}
                   <span className="chip" style={{ marginLeft: 8 }}><span className="n">{inherited ? 'наследуется' : 'переопределено'}</span></span>
                 </b>
                 <span>модель по умолчанию участников <span className="mono">{id}</span> без явной модели · действует: <span className="mono">{refLabel(am.effective)}</span></span>
@@ -381,18 +399,18 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
           )
         })}
         {roles.filter(r => r.enabled && !r.control_plane).map(r => {
-          // Варианты: привязки профиля шаблона, без профиля — всех включённых.
-          const opts = choices.filter(c => !r.agent || c.agent === r.agent)
+          // Варианты: модели агента Rivet (агент шаблона, если задан).
+          const opts = roleOptions(r)
           if (opts.length === 0) return null
           const ov = overrides.role_models?.[r.id]
           const inherited = !ov
           const own: RoleModelRef | null = r.model ? { agent: r.agent, connection_id: r.connection_id, model: r.model } : null
-          // Без модели шаблона действует модель профиля с учётом
-          // переопределения агента в проекте.
-          const profEff = r.agent ? pp.agent_models?.[r.agent]?.effective : null
-          const effLabel = ov ? `${ov.agent || r.agent || 'профиль шаблона'} / ${ov.connection_id}/${ov.model}`
-            : own ? `${own.agent || 'любой профиль'} / ${own.connection_id}/${own.model}`
-            : profEff ? `${r.agent} / ${profEff.connection_id}/${profEff.model} (профиль)` : 'по умолчанию профиля'
+          // Без модели шаблона действует модель агента по умолчанию с учётом
+          // переопределения в проекте.
+          const profEff = pp.agent_models?.[r.agent || RIVET_AGENT]?.effective ?? null
+          const effLabel = ov ? `${ov.connection_id}/${ov.model}`
+            : own ? `${own.connection_id}/${own.model}`
+            : profEff ? `${profEff.connection_id}/${profEff.model} (агент)` : 'по умолчанию агента'
           const setRole = (v: RoleModelRef | null) => {
             const next = { ...(overrides.role_models ?? {}) }
             if (v) next[r.id] = v; else delete next[r.id]
@@ -400,13 +418,16 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
           }
           const cur = tripleKey(ov ?? own)
           const fErr = fieldErr(`role_models.${r.id}`)
+          // Переопределение со сторонним агентом: строка видна, сервер его не примет.
+          const badAgent = ov?.agent && ov.agent !== RIVET_AGENT ? ov.agent : ''
           return (
             <div className="set-row" key={'role-' + r.id} data-role-model={r.id}>
               <div className="lbl">
                 <b>Модель роли {r.title}
                   <span className="chip" style={{ marginLeft: 8 }}><span className="n">{inherited ? 'наследуется' : 'переопределено'}</span></span>
                 </b>
-                <span>агенты и участники роли <span className="mono">{r.id}</span> без своей модели · действует: <span className="mono">{effLabel}</span></span>
+                <span>агенты и участники роли <span className="mono">{r.id}</span> без своей модели · действует: <span className="mono">{effLabel}</span>
+                  {badAgent && <> · <span style={{ color: 'var(--c-block)' }}>агент <span className="mono">{badAgent}</span> не поддерживается: выберите модель агента Rivet или снимите переопределение</span></>}</span>
               </div>
               <div className="ctl">
                 {editable && (
@@ -415,10 +436,40 @@ export function ProjectPolicySection({ projectId, isOwner, tick }: { projectId: 
                 )}
                 <Select size="sm" aria-label={`модель роли ${r.id}`} disabled={!editable || inherited} aria-invalid={fErr ? true : undefined}
                   value={cur} onChange={e => { if (e.target.value) setRole(tripleOf(e.target.value)) }}>
-                  {!cur && <option value="">по умолчанию профиля</option>}
+                  {!cur && <option value="">по умолчанию агента</option>}
                   {cur && !opts.some(c => tripleKey(c) === cur) && <option value={cur}>{effLabel}</option>}
                   {opts.map(c => <option key={tripleKey(c)} value={tripleKey(c)}>{choiceLabel(c)}{c.runner_online ? '' : ' · нет runner’а'}</option>)}
                 </Select>
+                {fErr && <div className="f-error" role="alert">{fErr}</div>}
+              </div>
+            </div>
+          )
+        })}
+        {choicesState === 'failed' && (
+          <div className="set-row" data-choices-failed>
+            <div className="lbl">
+              <b>Модели ролей</b>
+              <span>выбор моделей не загрузился: строки ролей скрыты, их переопределения сохраняются как есть</span>
+            </div>
+          </div>
+        )}
+        {stale.map(st => {
+          const fErr = fieldErr(st.path)
+          return (
+            <div className="set-row" key={'stale-' + st.path} data-stale-override={st.path}>
+              <div className="lbl">
+                <b>{st.kind === 'agent' ? 'Модель по умолчанию' : 'Модель роли'}: <span className="mono">{st.id}</span>
+                  <span className={st.blocking ? 'chip chip-warn' : 'chip'} style={{ marginLeft: 8 }}>
+                    <span className="n">{st.kind === 'role' ? 'роль недоступна' : st.blocking ? 'агент удалён' : 'агент выключен'}</span>
+                  </span>
+                </b>
+                {st.blocking
+                  ? <span>переопределение <span className="mono">{st.value || '—'}</span> осталось от прежней настройки: {st.reason}.
+                    {' '}С ним новая версия политики не сохранится, снимите его.</span>
+                  : <span>переопределение <span className="mono">{st.value || '—'}</span>: {st.reason}. Снимать его не обязательно.</span>}
+              </div>
+              <div className="ctl">
+                {editable && <Button size="sm" onClick={() => { setOverrides(dropOverride(overrides, st)); setDirty(true) }}>снять</Button>}
                 {fErr && <div className="f-error" role="alert">{fErr}</div>}
               </div>
             </div>

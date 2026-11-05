@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { api, type AgentCatalog, type Member, type Participant, type ProcessDoc, type ProcessStep, type Runner } from '../api/client'
+import { api, RIVET_AGENT, type AgentCatalog, type Member, type Participant, type ProcessDoc, type ProcessStep, type Runner } from '../api/client'
 import { Button, Checkbox, Combo, Field, FormActions, FormNote, NumberInput, Select, TextArea, TextInput } from './form'
 import { HAS_PARTICIPANTS, KIND_LABEL, OUTCOMES, defaultTarget, newStepId, type Outcome } from './processLayout'
 import { useStore } from '../store'
@@ -18,6 +18,12 @@ const FOCUSABLE = 'input:not([disabled]), select:not([disabled]), textarea:not([
 
 export function SideModal({ title, titleId, onClose, children }: { title: ReactNode; titleId: string; onClose: () => void; children: ReactNode }) {
   const box = useRef<HTMLDivElement>(null)
+  // После закрытия фокус возвращается на элемент, который открыл окно
+  // (карточка пресета, кнопка «Изменить»), а не уходит на body. Фокус
+  // запоминается на первом рендере: к эффектам autoFocus поля уже увёл его
+  // внутрь окна.
+  const [opener] = useState(() => document.activeElement instanceof HTMLElement ? document.activeElement : null)
+  useEffect(() => () => { if (opener?.isConnected) opener.focus() }, [opener])
   useEffect(() => {
     // Фокус внутрь окна и по кругу: Tab не уходит на граф и страницу за ним.
     const el = box.current
@@ -78,19 +84,16 @@ export function StepModal({ doc, index, isNew, at, runners, members, readOnly, e
     ? structuredClone(source)
     : { id: newStepId(doc, 'review'), kind: 'review', participants: [{ agent: {} }] })
 
-  // Каталог агентов (add-agent-profiles): профили и агенты вне каталога,
-  // объявленные runner'ами; модели у профиля — его привязки.
+  // Каталог агентов (add-native-agent): один агент Rivet, его модели —
+  // модели включённых подключений. Без каталога модели берутся у runner'ов.
   const [catalog, setCatalog] = useState<AgentCatalog | null>(null)
-  // Свободный ввод агента вне списков (runner ещё не зарегистрирован).
-  const [customKind, setCustomKind] = useState<Record<number, boolean>>({})
-  useEffect(() => { api.agents().then(setCatalog).catch(() => setCatalog({ agents: [], external: [] })) }, [])
+  useEffect(() => { api.agents().then(setCatalog).catch(() => setCatalog({ agents: [] })) }, [])
   const profiles = (catalog?.agents ?? []).filter(a => a.enabled)
-  const externalKinds = Array.from(new Set([...(catalog?.external ?? []).map(e => e.id), ...runners.map(r => r.Agent).filter(k => k && !profiles.some(a => a.id === k))])).sort()
-  const profileOf = (kind?: string) => profiles.find(a => a.id === kind)
+  const profileOf = (kind?: string) => profiles.find(a => a.id === (kind || RIVET_AGENT))
   const modelsFor = (kind?: string) => {
     const prof = profileOf(kind)
     if (prof && prof.models.length > 0) return Array.from(new Set(prof.models.filter(m => !m.unavailable).map(m => m.model)))
-    return Array.from(new Set(runners.filter(r => !kind || r.Agent === kind).flatMap(r => r.Models ?? []))).sort()
+    return Array.from(new Set(runners.filter(r => r.Agent === (kind || RIVET_AGENT)).flatMap(r => r.Models ?? []))).sort()
   }
   const logins = useMemo(() => (members ?? []).map(m => m.login).sort(), [members])
   // Роли участников (add-agent-roles): включённые шаблоны, кроме шаблонов
@@ -192,24 +195,15 @@ export function StepModal({ doc, index, isNew, at, runners, members, readOnly, e
                     </Select>
                   })()}
                   {!isUser && <>
-                    {customKind[k] || (p.agent?.kind && !profiles.some(a => a.id === p.agent?.kind) && !externalKinds.includes(p.agent.kind))
-                      ? <Combo className="f-sm" aria-label="агент" options={[...profiles.map(a => a.id), ...externalKinds]} placeholder="идентификатор агента" value={p.agent?.kind ?? ''} disabled={readOnly}
-                          aria-invalid={fe(`participants[${k}].agent.kind`) ? true : undefined}
-                          onChange={e => setPart(k, { agent: { ...p.agent, kind: e.target.value || undefined } })} />
-                      : <Select size="sm" aria-label="агент" value={p.agent?.kind ?? ''} disabled={readOnly}
-                          aria-invalid={fe(`participants[${k}].agent.kind`) ? true : undefined}
-                          onChange={e => {
-                            // Смена агента сбрасывает модель: у нового её может не быть.
-                            if (e.target.value === '__custom') { setCustomKind(c => ({ ...c, [k]: true })); setPart(k, { agent: { role: p.agent?.role } }); return }
-                            setPart(k, { agent: { role: p.agent?.role, kind: e.target.value || undefined } })
-                          }}>
-                          <option value="">{roleById(p.agent?.role) ? `${roleById(p.agent?.role)!.agent || 'любой'} (роль)` : 'любой агент'}</option>
-                          {profiles.map(a => <option key={a.id} value={a.id}>{a.name} ({a.id})</option>)}
-                          {externalKinds.length > 0 && <optgroup label="вне каталога">
-                            {externalKinds.map(k2 => <option key={k2} value={k2}>{k2}</option>)}
-                          </optgroup>}
-                          <option value="__custom">другой агент…</option>
-                        </Select>}
+                    {/* Агент один — агент Rivet. Явный тип агента из старого
+                        процесса виден, пока его не сбросят. */}
+                    <Select size="sm" aria-label="агент" value={p.agent?.kind ?? ''} disabled={readOnly}
+                      aria-invalid={fe(`participants[${k}].agent.kind`) ? true : undefined}
+                      onChange={e => setPart(k, { agent: { ...p.agent, kind: e.target.value || undefined } })}>
+                      <option value="">агент Rivet</option>
+                      {p.agent?.kind && <option value={p.agent.kind}>
+                        {p.agent.kind === RIVET_AGENT ? `агент Rivet (${RIVET_AGENT})` : `${p.agent.kind} (не поддерживается)`}</option>}
+                    </Select>
                     {(() => {
                       // Модели выбираются у явного агента, иначе у агента роли.
                       const role = roleById(p.agent?.role)
@@ -245,11 +239,7 @@ export function StepModal({ doc, index, isNew, at, runners, members, readOnly, e
                         </Select>}
                   </>}
                   {!readOnly && <Button variant="quiet" size="sm" aria-label="убрать участника"
-                    onClick={() => {
-                      // Индексы участников сдвигаются: флаг свободного ввода сдвигается вместе с ними.
-                      setCustomKind(c => Object.fromEntries(Object.entries(c).filter(([i]) => Number(i) !== k).map(([i, v]) => [Number(i) > k ? Number(i) - 1 : Number(i), v])))
-                      patch({ participants: parts.filter((_, j) => j !== k) })
-                    }}>✕</Button>}
+                    onClick={() => patch({ participants: parts.filter((_, j) => j !== k) })}>✕</Button>}
                 </div>
               )
             })}
