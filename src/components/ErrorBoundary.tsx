@@ -1,11 +1,13 @@
-import { Component, type ReactNode } from 'react'
+import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { Button } from './form'
 
-// Границы ошибок консоли: падение одного экрана, схемы или документа не
-// гасит всю консоль. Ленивые чанки после обновления rivetd отдельный
-// случай: старые хэши в адресах чанков больше не существуют, сервер
-// отвечает index.html, и модуль не загружается. Тогда консоль один раз
-// перезагружает страницу сама, а при повторе просит перезагрузить.
+// Границы ошибок консоли: падение одного экрана, вкладки, схемы или
+// документа не гасит всю консоль (в React 19 без границы падает корень,
+// остаётся пустая страница без навигации). Ленивые чанки после обновления
+// rivetd отдельный случай: старые хэши в адресах чанков больше не
+// существуют, сервер отвечает index.html, и модуль не загружается. Тогда
+// консоль один раз перезагружает страницу сама, а при повторе просит
+// перезагрузить.
 
 export function isChunkError(e: unknown): boolean {
   const m = e instanceof Error ? `${e.name} ${e.message}` : String(e)
@@ -53,37 +55,56 @@ export function ChunkNotice({ what = 'этот раздел' }: { what?: string 
   )
 }
 
-interface Props { resetKey?: string; fallback: (error: unknown, reset: () => void) => ReactNode; children: ReactNode }
+// what — что не отрисовалось, в винительном падеже: «экран», «вкладку
+// «Подключения»». page — заглушка занимает место экрана (отступы .page).
+// fallback — своя заглушка вместо стандартной (схема Mermaid, документ).
+// Ошибку сбрасывают смена key у границы (экран или вкладка
+// перемонтируется), смена resetKey (дети рисуются заново без
+// перемонтирования границы) и кнопка «Повторить».
+interface Props {
+  what?: string
+  page?: boolean
+  resetKey?: string
+  fallback?: (error: unknown, reset: () => void) => ReactNode
+  children: ReactNode
+}
 
 export class ErrorBoundary extends Component<Props, { failed: boolean; error: unknown }> {
   state = { failed: false, error: null as unknown }
   static getDerivedStateFromError(error: unknown) { return { failed: true, error } }
-  componentDidCatch(error: unknown) { console.error('[rivet] экран упал', error) }
+  componentDidCatch(error: unknown, info: ErrorInfo) {
+    console.error(`[rivet] не удалось отрисовать ${this.props.what ?? 'блок'}`, error, info.componentStack)
+  }
   componentDidUpdate(prev: Props) {
     if (this.state.failed && prev.resetKey !== this.props.resetKey) this.setState({ failed: false, error: null })
   }
   render() {
-    if (this.state.failed) return this.props.fallback(this.state.error, () => this.setState({ failed: false, error: null }))
-    return this.props.children
+    if (!this.state.failed) return this.props.children
+    const reset = () => this.setState({ failed: false, error: null })
+    if (this.props.fallback) return this.props.fallback(this.state.error, reset)
+    return <ViewCrash error={this.state.error} what={this.props.what ?? 'экран'} page={this.props.page} onRetry={reset} />
   }
 }
 
-// Заглушка упавшего экрана: остальная консоль работает.
-export function ViewCrash({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+// Стандартная заглушка: остальная консоль работает. Отказ чанка, дошедший
+// до границы (автоматическая перезагрузка уже была), просит перезагрузить
+// страницу: «Повторить» тут не поможет.
+function ViewCrash({ error, what, page, onRetry }: { error: unknown; what: string; page?: boolean; onRetry: () => void }) {
   const chunk = isChunkError(error)
-  const msg = error instanceof Error ? error.message : String(error)
+  const msg = error instanceof Error ? error.message || error.name : String(error)
   return (
-    <div className="page">
-      <div className="view-crash" role="alert">
-        <b>{chunk ? 'Консоль обновилась' : 'Экран не открылся'}</b>
-        <p>{chunk
-          ? 'Установку Rivet обновили, а страница осталась от прежней версии. Перезагрузите страницу, чтобы открыть этот раздел.'
-          : <>Ошибка на этом экране: <span className="mono">{msg.slice(0, 300)}</span>. Остальные разделы работают.</>}</p>
-        <div className="f-actions" style={{ justifyContent: 'flex-start' }}>
-          <Button variant="primary" onClick={() => location.reload()}>Перезагрузить страницу</Button>
-          {!chunk && <Button onClick={onRetry}>Повторить</Button>}
+    <div className={page ? 'page' : undefined} data-error-boundary>
+      {chunk ? <ChunkNotice what={what} /> : (
+        <div className="view-crash" role="alert">
+          <b>Не удалось отрисовать {what}.</b>
+          <p>Остальная консоль работает: можно перейти в другой раздел.</p>
+          <div className="mono" style={{ margin: '0 0 12px', fontSize: 12, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{msg.slice(0, 300)}</div>
+          <div className="f-actions" style={{ justifyContent: 'flex-start' }}>
+            <Button variant="primary" onClick={onRetry}>Повторить</Button>
+            <Button onClick={() => location.reload()}>Перезагрузить страницу</Button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

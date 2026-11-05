@@ -9,6 +9,7 @@ import { ConnectionsTab } from './ConnectionsTab'
 import { AgentsTab } from './AgentsTab'
 import { RolesTab } from './RolesTab'
 import { TeamTab } from './TeamTab'
+import { ErrorBoundary } from '../components/ErrorBoundary'
 
 // Раздел «Управление приложением» (спека web): настройки уровня установки,
 // адресуемые вкладки #/app-management/<tab>. Вкладка «Политики» — место
@@ -16,7 +17,7 @@ import { TeamTab } from './TeamTab'
 
 const TABS: { id: AppTab; label: string }[] = [
   { id: 'users', label: 'Пользователи' }, { id: 'runners', label: 'Runner’ы' },
-  { id: 'agents', label: 'Агенты' }, { id: 'team', label: 'Команда' }, { id: 'roles', label: 'Шаблоны ролей' },
+  { id: 'agents', label: 'Агент Rivet' }, { id: 'team', label: 'Команда' }, { id: 'roles', label: 'Шаблоны ролей' },
   { id: 'connections', label: 'Подключения' }, { id: 'policies', label: 'Политики' },
   { id: 'usage', label: 'Usage' },
   { id: 'audit', label: 'Аудит' }, { id: 'status', label: 'Состояние' },
@@ -31,6 +32,9 @@ export function AppManagement({ me, tab }: { me: User; tab: AppTab }) {
         <span className="sub">настройки уровня установки</span>
       </div>
       <Tabs tabs={TABS} active={tab} onChange={t => nav({ view: 'app-management', tab: t })} />
+      {/* Своя граница у вкладки: сломанная вкладка не гасит раздел, другие
+          вкладки открываются как обычно. */}
+      <ErrorBoundary key={tab} what={`вкладку «${TABS.find(t => t.id === tab)?.label ?? tab}»`}>
       {tab === 'users' && <UsersTab me={me} />}
       {tab === 'runners' && <RunnerTokensTab />}
       {tab === 'agents' && <AgentsTab />}
@@ -41,6 +45,7 @@ export function AppManagement({ me, tab }: { me: User; tab: AppTab }) {
       {tab === 'usage' && <UsageView scope="installation" defaultGroup="project" title="Usage установки" sub="все проекты, метеринг установки" />}
       {tab === 'audit' && <AuditTab />}
       {tab === 'status' && <StatusTab />}
+      </ErrorBoundary>
     </div>
   )
 }
@@ -208,7 +213,7 @@ function RunnerTokensTab() {
       {banner}
       {created && (
         <SecretOnce title={`Токен регистрации «${created.name}»`} secret={created.secret}
-          hint="Показывается один раз. Передайте его runner'ам через RIVET_RUNNER_TOKEN или флаг -token."
+          hint="Показывается один раз. Сохраните его в файл с правами 0600 и передайте runner'ам путь в RIVET_RUNNER_TOKEN_FILE."
           onHide={() => setCreated(null)} />
       )}
       <div className="dw-sec">
@@ -249,8 +254,14 @@ function RunnerTokensTab() {
           Запуск runner'а на хосте с рабочими копиями:
         </div>
         <pre className="mono" style={{ fontSize: 11.5, marginTop: 4, whiteSpace: 'pre-wrap' }}>
-          {`RIVET_RUNNER_TOKEN=rrt_… rivet-runner -plane ${plane.addr}${plane.tls ? ' -tls' : ''} -id <имя> -agent claude-code -caps coding`}
+          {`RIVET_RUNNER_TOKEN_FILE=$HOME/.rivet/runner.token rivet-runner -plane ${plane.addr}${plane.tls ? ' -tls' : ''} -id <имя> -agent rivet -caps coding`}
         </pre>
+        <div className="muted" style={{ fontSize: 11.5, marginBottom: 4 }}>
+          Токен держите в файле с правами 0600: так его не видно в списке процессов (переменная <span className="mono">RIVET_RUNNER_TOKEN</span> тоже
+          работает). Агент Rivet запускает команды в песочнице без сети, она есть на Linux с user namespaces. Без неё runner
+          стартует только с <span className="mono">-unsandboxed</span>, и команды агента видят сеть. Runner выкатки
+          запускается с <span className="mono">-caps deploy</span> и без агента.
+        </div>
         <div className="muted" style={{ fontSize: 11.5 }}>
           {plane.tls
             ? <>Протокол под TLS: для своего корневого сертификата добавьте <span className="mono">-tls-ca</span>.</>
@@ -264,7 +275,7 @@ function RunnerTokensTab() {
 // ─── Аудит ──────────────────────────────────────────────────────────────
 
 const AUDIT_TYPES = ['', 'user.bootstrap', 'user.created', 'user.admin_changed', 'user.state_changed', 'user.password_reset',
-  'runner.registered', 'runner_token.created', 'runner_token.revoked',
+  'runner.registered', 'runner.rejected', 'runner_token.created', 'runner_token.revoked',
   'connection.created', 'connection.updated', 'connection.deleted', 'connection.key_replaced', 'connection.checked', 'connection.discovered', 'planner.model_changed',
   'agent.created', 'agent.updated', 'agent.deleted', 'runner.secrets_delivered']
 

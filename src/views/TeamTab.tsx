@@ -113,7 +113,7 @@ function AgentModal({ agent, roles, choices, taken, planner, onClose, onSaved }:
   const [busy, setBusy] = useState(false)
   const fe = (k: string) => err?.field === k ? err.message : undefined
   const role = roles.find(r => r.id === f.role_id)
-  // Модель Тимлида — модель планировщика; шаблоны control plane — без профиля.
+  // Модель Тимлида — модель планировщика; шаблоны control plane — без runner'а.
   const lead = f.role_id === 'lead'
   const opts = modelOptions(choices, !!role?.control_plane || lead)
   const curOpt = opts.find(o => o.key === f.model)
@@ -169,7 +169,7 @@ function AgentModal({ agent, roles, choices, taken, planner, onClose, onSaved }:
           </Select>}
         </Field>
         <Field label={lead ? 'Модель планировщика' : 'Модель'} optional error={fe('model') ?? fe('connection_id') ?? fe('agent')}
-          hint={lead ? 'общая с планировщиком; меняется, только если выбрать другую' : 'профиль / подключение / модель'}>
+          hint={lead ? 'общая с планировщиком; меняется, только если выбрать другую' : 'подключение / модель агента Rivet'}>
           {ids => <Select ids={ids} value={f.model} onChange={e => set('model', e.target.value)}>
             {!lead && <option value="">{role?.model ? `как в шаблоне (${role.model})` : 'как в шаблоне'}</option>}
             {lead && !f.model && <option value="">из окружения</option>}
@@ -178,7 +178,7 @@ function AgentModal({ agent, roles, choices, taken, planner, onClose, onSaved }:
           </Select>}
         </Field>
       </div>
-      {curOpt?.offline && <div className="model-warn" role="status">нет online runner’а с профилем {tripleOf(f.model).agent}: задачи этого агента будут ждать</div>}
+      {curOpt?.offline && <div className="model-warn" role="status">нет online runner’а агента Rivet: задачи этого агента будут ждать</div>}
       {role?.instruction && (
         <Field label="Инструкция шаблона" hint="приходит агенту первой; меняется во вкладке «Шаблоны ролей»">
           {() => <div className="tmpl-instr">{role.instruction}</div>}

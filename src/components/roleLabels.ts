@@ -39,7 +39,9 @@ export function roleColorVar(color: string | undefined): string {
   return color && KNOWN_COLORS.has(color) ? `var(--role-${color})` : 'var(--muted)'
 }
 
-// ─── модели: тройка «профиль, подключение, модель» ─────────────────────
+// ─── модели: тройка «агент, подключение, модель» ───────────────────────
+// Агент один — агент Rivet (add-native-agent): в подписях только пара
+// «подключение/модель», агент в тройке остаётся для API.
 
 export interface ModelTriple { agent: string; connection_id: string; model: string }
 export const tripleKey = (t: Partial<ModelTriple> | null | undefined): string =>
@@ -48,13 +50,13 @@ export function tripleOf(key: string): ModelTriple {
   const [agent = '', connection_id = '', model = ''] = key ? key.split('|') : []
   return { agent, connection_id, model }
 }
-export function choiceLabel(c: Pick<ModelChoice, 'agent' | 'agent_name' | 'connection_id' | 'model'>): string {
-  return `${c.agent_name || c.agent} / ${c.connection_id}/${c.model}`
+export function choiceLabel(c: Pick<ModelChoice, 'connection_id' | 'model'>): string {
+  return `${c.connection_id}/${c.model}`
 }
 
 // Модель агента команды строкой: своя тройка, иначе модель шаблона.
-export function agentModelLabel(a: Pick<TeamAgent, 'agent' | 'connection_id' | 'model'>, role: Pick<AgentRole, 'agent' | 'model'> | undefined): string {
-  if (a.model) return a.agent ? `${a.agent} / ${a.model}` : a.model
+export function agentModelLabel(a: Pick<TeamAgent, 'connection_id' | 'model'>, role: Pick<AgentRole, 'agent' | 'model'> | undefined): string {
+  if (a.model) return a.connection_id ? `${a.connection_id}/${a.model}` : a.model
   if (role?.model) return `${role.model} (шаблон)`
   return 'как в шаблоне'
 }
@@ -74,7 +76,7 @@ export function refText(r: RoleRef): string {
 // (относительно версии на момент открытия), на актуальную версию записи
 // (ответ 409 stale). Поле, которое за это время поменял и кто-то другой,
 // попадает в conflicts: молча перезаписывать его нельзя. Связанные поля
-// (профиль и модель) сливаются группой: своя правка любого забирает всю
+// (агент и модель) сливаются группой: своя правка любого забирает всю
 // группу из черновика, чужая правка группы — конфликт.
 export function mergeDraft<T extends Record<string, unknown>>(base: T, fresh: T, draft: T, linked: (keyof T)[][] = []): { fields: T; conflicts: (keyof T)[] } {
   const fields = { ...fresh }
