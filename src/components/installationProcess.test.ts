@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import type { Presets, ProcessDoc } from '../api/client'
-import { cleanLocks, processHandlers, withDefaultProcess, withLocks, withProcess } from './installationProcess.ts'
+import type { Overrides, Presets, ProcessDoc } from '../api/client'
+import { cleanLocks, processHandlers, withDefaultProcess, withLocks, withProcess, withProjectProcess } from './installationProcess.ts'
 
 const base: Presets = {
   auto_merge: true, human_review_paths: [], attempt_limit: 3, review_limit: 2,
@@ -72,4 +72,23 @@ test('ограничения без пустых ключей', () => {
   assert.equal(cleanLocks({}), null)
   assert.deepEqual(cleanLocks({ required_kinds: ['code'], min_participants: {}, human_review: false }), { required_kinds: ['code'] })
   assert.deepEqual(cleanLocks({ min_participants: { review: 1 }, human_review: true }), { min_participants: { review: 1 }, human_review: true })
+})
+
+test('сохранение процесса проекта не стирает остальные переопределения', () => {
+  // PUT политики проекта заменяет переопределения целиком: процесс уходит
+  // вместе с текущими настройками проекта, а не один.
+  const cur = {
+    auto_merge: false, attempt_limit: 5, daily_token_budget: 100000,
+    role_models: { developer: { connection_id: 'c1', model: 'm1' } }, process: null,
+  } as unknown as Overrides
+  const saved = withProjectProcess(cur, explicit)
+  assert.equal(saved.process, explicit)
+  assert.equal(saved.auto_merge, false)
+  assert.equal(saved.attempt_limit, 5)
+  assert.equal(saved.daily_token_budget, 100000)
+  assert.deepEqual((saved as unknown as { role_models: unknown }).role_models, { developer: { connection_id: 'c1', model: 'm1' } })
+  // Снятие процесса проекта тоже не трогает остальное.
+  const reset = withProjectProcess(saved, null)
+  assert.equal(reset.process, null)
+  assert.equal(reset.attempt_limit, 5)
 })

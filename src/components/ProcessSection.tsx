@@ -3,6 +3,7 @@ import { api, ApiError, defaultProcess, type Member, type ProcessDoc, type Proce
 import { ProcessGraph } from './ProcessGraph'
 import type { StepError as EditorError } from './StepModal'
 import { shortHash } from './PolicyPanel'
+import { withProjectProcess } from './installationProcess'
 import { Button, Checkbox, NumberInput, useBusy } from './form'
 
 // Секция «Процесс» (add-process-editor, add-process-graph-editor): в
@@ -67,10 +68,16 @@ export function ProjectProcessSection({ projectId, isOwner, tick }: { projectId:
     setHash(r.effective_hash)
     setDoc(structuredClone(eff))
   }
+  // PUT заменяет переопределения проекта целиком: перед сохранением процесса
+  // перечитываем текущие, чтобы не стереть остальные настройки проекта.
+  const putProcess = async (process: ProcessDoc | null) => {
+    const cur = await api.projectPolicy(projectId)
+    return api.putProjectPolicy(projectId, withProjectProcess(cur.overrides, process))
+  }
   const save = async () => {
     setErr(null); setNote('')
     try {
-      const r = await api.putProjectPolicy(projectId, { process: doc })
+      const r = await putProcess(doc)
       applySaved(r, 'project')
       setNote(`сохранена версия проекта ${r.version?.version} (${shortHash(r.version?.hash)})`)
     } catch (e) { setErr(parseError(e)) }
@@ -78,7 +85,7 @@ export function ProjectProcessSection({ projectId, isOwner, tick }: { projectId:
   const reset = async () => {
     setErr(null); setNote('')
     try {
-      const r = await api.putProjectPolicy(projectId, { process: null })
+      const r = await putProcess(null)
       applySaved(r, 'installation')
       setNote('процесс проекта снят, действует процесс установки')
     } catch (e) { setErr(parseError(e)) }
