@@ -22,7 +22,7 @@ const POLL_MS = 8000
 const REFRESH_LIMIT_MS = 120_000
 
 export function useArchitecture(projectId: string | null | undefined) {
-  const { listen, connected, projectId: streamProject } = useStore()
+  const { listen, connected, streamProjectId: streamProject } = useStore()
   const [arch, setArch] = useState<ProjectArchitecture | null>(null)
   const [err, setErr] = useState('')
   const [refreshing, setRefreshing] = useState(false)

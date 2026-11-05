@@ -81,9 +81,16 @@ function Evidence({ title, text }: { title: string; text?: string }) {
 }
 
 function IncidentCard({ id, login, onChanged }: { id: string; login: string; onChanged: () => void }) {
-  const { eventTick, nav } = useStore()
+  const { eventTick, nav, projectId } = useStore()
   const [inc, setInc] = useState<Incident | null>(null)
   const owner = useIsOwner(inc?.project_id ?? null, login)
+  // Инцидент другого проекта по адресу этого: адрес исправляется на проект
+  // инцидента без записи в истории.
+  useEffect(() => {
+    if (inc?.id === id && inc.project_id && projectId && inc.project_id !== projectId) {
+      nav({ view: 'incidents', pid: inc.project_id, id }, { replace: true })
+    }
+  }, [inc, id, projectId, nav])
   // loadErr — ошибка чтения карточки, actErr — ошибка действия владельца:
   // удачное перечитывание снимает первую, следующее действие — вторую.
   const [loadErr, setLoadErr] = useState('')

@@ -1,95 +1,60 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ApiError, api, subscribe, type AgentRole, type Attention, type CyclePeriod, type CyclePhaseId, type Event, type OverviewPeriod, type Project, type Runner, type TeamAgent } from './api/client'
-import { parsePeriod, throttleWithRecheck } from './components/overviewLogic'
+import { ApiError, api, subscribe, type AgentRole, type Attention, type Event, type Project, type Runner, type TeamAgent } from './api/client'
+import { throttleWithRecheck } from './components/overviewLogic'
 import { isAgentWorkEvent } from './components/roleLabels'
-import { isPhase } from './components/cycleGeometry'
-import { archRouteHash, parseArchRoute, type ArchRoute } from './components/archModel'
+import { parseHash, resolveLegacy, routeHash, routeProject, withProject, type NavTarget, type Parsed, type Route } from './routes'
+
+// Адреса и маршруты — в routes.ts (add-project-navigation): экраны
+// проекта под #/p/<проект>/…, экраны установки без проекта. Типы и сборка
+// адреса переэкспортируются, чтобы экраны импортировали их отсюда.
+export { APP_TABS, SETTINGS_TABS, routeHash, type AppTab, type NavTarget, type Route, type SettingsTab } from './routes'
 
 // Не чаще раза в столько миллисекунд команда и runner'ы перечитываются по
 // занятости агентов установки.
 const AGENT_WORK_MS = 2000
+// Поток несёт события одного проекта: эскалации и «Мои шаги» остальных
+// проектов перечитываются раз в столько миллисекунд, пока вкладка видна
+// (до потока установки scope=all из add-work-board).
+const COUNTERS_POLL_MS = 30_000
 
-// Маршрут — hash-навигация: #/epics, #/epic/<id>, #/task/<id> поверх epic и т.п.
-// Вкладки раздела «Управление приложением» адресуемы: #/app-management/<tab>.
-export const APP_TABS = ['users', 'runners', 'agents', 'team', 'roles', 'connections', 'policies', 'usage', 'audit', 'status'] as const
-export type AppTab = typeof APP_TABS[number]
-// Вкладки настроек проекта: #/project/<id>/settings/<tab> (add-project-settings-tabs).
-export const SETTINGS_TABS = ['general', 'members', 'process', 'policies', 'environments'] as const
-export type SettingsTab = typeof SETTINGS_TABS[number]
-
-export type Route =
-  | { view: 'projects' } | { view: 'epics' } | { view: 'tasks' } | { view: 'team' }
-  | { view: 'runners' } | { view: 'activity' } | { view: 'usage' } | { view: 'mysteps' }
-  | { view: 'app-management'; tab: AppTab } | { view: 'profile' }
-  | { view: 'epic'; id: string; taskId?: string }
-  | { view: 'project-settings'; id: string; tab: SettingsTab }
-  // Обзор текущего проекта, период в адресе: #/overview/30d (add-project-lead-view).
-  | { view: 'overview'; period: OverviewPeriod }
-  // Исследование продукта (add-product-discovery): runId — открытая версия
-  // из истории, без него показывается текущая.
-  | { view: 'discovery'; runId?: string }
-  // Цикл разработки проекта (add-sdlc-cycle): фаза и период в адресе.
-  | { view: 'cycle'; id: string; phase?: CyclePhaseId; period?: CyclePeriod }
-  | { view: 'releases'; id?: string } | { view: 'incidents'; id?: string }
-  // Архитектура проекта (add-architecture-c4): вкладка, уровень C4 или
-  // выбор на вкладке, выбранный элемент и фильтр — в адресе.
-  | ({ view: 'architecture' } & ArchRoute)
-
-const PERIODS: CyclePeriod[] = ['today', '7d', '30d']
-
-function parseHash(): Route {
-  const [h, query = ''] = location.hash.replace(/^#\/?/, '').split('?')
-  const [a, b, c, d] = h.split('/')
-  if (a === 'project' && b && c === 'cycle') {
-    const q = new URLSearchParams(query)
-    const phase = q.get('phase'), period = q.get('period') as CyclePeriod | null
-    return { view: 'cycle', id: b, phase: isPhase(phase) ? phase : undefined, period: period && PERIODS.includes(period) ? period : undefined }
-  }
-  if (a === 'releases' || a === 'incidents') return b ? { view: a, id: b } : { view: a }
-  if (a === 'architecture') return { view: 'architecture', ...parseArchRoute([b, c, d], query) }
-  if (a === 'epic' && b) {
-    return c === 'task' && d ? { view: 'epic', id: b, taskId: d } : { view: 'epic', id: b }
-  }
-  if (a === 'discovery') return b ? { view: 'discovery', runId: b } : { view: 'discovery' }
-  if (a === 'project' && b && c === 'settings') {
-    return { view: 'project-settings', id: b, tab: (SETTINGS_TABS as readonly string[]).includes(d) ? d as SettingsTab : 'general' }
-  }
-  if (a === 'overview') return { view: 'overview', period: parsePeriod(b) }
-  if (a === 'app-management') {
-    // Старый адрес вкладки «Модели» ведёт на «Подключения» (add-model-connections).
-    const tab = b === 'models' ? 'connections' : b
-    return { view: 'app-management', tab: (APP_TABS as readonly string[]).includes(tab) ? tab as AppTab : 'users' }
-  }
-  if (a === 'projects' || a === 'tasks' || a === 'team' || a === 'runners' || a === 'activity'
-    || a === 'usage' || a === 'profile' || a === 'mysteps') return { view: a }
-  return { view: 'epics' }
+// Последний открытый проект: в него ведут старые адреса без проекта и
+// пустой адрес (спека web «Совместимость старых адресов»). Только удобство
+// этого браузера: без хранилища консоль работает, просто открывает
+// «Проекты».
+const LAST_PROJECT_KEY = 'rivet.lastProject'
+function readLastProject(): string | null {
+  try { return localStorage.getItem(LAST_PROJECT_KEY) } catch { return null }
+}
+function writeLastProject(pid: string | null) {
+  try {
+    if (pid) localStorage.setItem(LAST_PROJECT_KEY, pid)
+    else localStorage.removeItem(LAST_PROJECT_KEY)
+  } catch { /* хранилище недоступно */ }
 }
 
-export function routeHash(r: Route): string {
-  if (r.view === 'cycle') {
-    const q = new URLSearchParams()
-    if (r.phase) q.set('phase', r.phase)
-    if (r.period) q.set('period', r.period)
-    const qs = q.toString()
-    return `#/project/${r.id}/cycle${qs ? '?' + qs : ''}`
-  }
-  if (r.view === 'releases' || r.view === 'incidents') return r.id ? `#/${r.view}/${r.id}` : `#/${r.view}`
-  if (r.view === 'epic') return r.taskId ? `#/epic/${r.id}/task/${r.taskId}` : `#/epic/${r.id}`
-  if (r.view === 'project-settings') return r.tab === 'general' ? `#/project/${r.id}/settings` : `#/project/${r.id}/settings/${r.tab}`
-  if (r.view === 'app-management') return `#/app-management/${r.tab}`
-  if (r.view === 'overview') return r.period === '7d' ? '#/overview' : `#/overview/${r.period}`
-  if (r.view === 'discovery') return r.runId ? `#/discovery/${r.runId}` : '#/discovery'
-  if (r.view === 'architecture') return archRouteHash(r)
-  return `#/${r.view}`
-}
+// Сообщение над экраном (проект из адреса не найден). hash — адрес, на
+// котором оно показано: переход на другой адрес его снимает.
+export interface Notice { text: string; hash: string }
 
 interface Store {
   route: Route
-  // replace — без новой записи в истории браузера (перебор фаз стрелками).
-  nav: (r: Route, opts?: { replace?: boolean }) => void
+  // Переход по адресу. Цель экрана проекта без pid получает текущий
+  // проект. replace — без новой записи в истории браузера (перебор фаз
+  // стрелками, исправление адреса).
+  nav: (r: NavTarget, opts?: { replace?: boolean }) => void
+  // Адрес ссылки с той же подстановкой проекта.
+  href: (r: NavTarget) => string
   projects: Project[]
+  // Проект для экранов и боковой панели: проект адреса, а на экранах
+  // установки — открытый до перехода к ним. null — вне проекта.
   projectId: string | null
-  setProjectId: (id: string) => void
+  // Проект потока событий: открытый, иначе последний, иначе первый
+  // доступный. Поток нужен и вне проекта: связь, счётчики, runner'ы.
+  streamProjectId: string | null
+  // Старый адрес Epic'а ждёт ответа о проекте Epic'а: экран не рисуется.
+  resolving: boolean
+  notice: Notice | null
+  dismissNotice: () => void
   attention: Attention[]
   // mySteps — сколько запусков ждёт текущего пользователя (add-process-humans).
   mySteps: number
@@ -138,10 +103,34 @@ const DISCOVERY_RELOAD = /^(discovery\.|epic\.(decomposing|decomposed|plan_faile
 const Ctx = createContext<Store | null>(null)
 export const useStore = () => useContext(Ctx)!
 
+// Маршрут адреса до разрешения старых адресов: новый адрес рисуется
+// сразу, старый и пустой ждут эффекта синхронизации.
+function initialRoute(): { route: Route; resolving: boolean } {
+  const p = parseHash(location.hash)
+  return p.kind === 'route' ? { route: p.route, resolving: false } : { route: { view: 'projects' }, resolving: true }
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [route, setRoute] = useState<Route>(parseHash())
+  const [initial] = useState(initialRoute)
+  const [route, setRoute] = useState<Route>(initial.route)
+  const [resolving, setResolving] = useState(initial.resolving)
+  const [notice, setNotice] = useState<Notice | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
-  const [projectId, setProjectId] = useState<string | null>(null)
+  // loaded — список получен и по нему можно проверять доступ; tried —
+  // была хотя бы одна попытка: старый адрес не ждёт вечно, если сервер не
+  // ответил.
+  const [projectsLoaded, setProjectsLoaded] = useState(false)
+  const [projectsTried, setProjectsTried] = useState(false)
+  // Старый или пустой адрес без своего проекта ждёт списка проектов:
+  // последний открытый проект берётся, только если он ещё доступен.
+  const [waiting, setWaiting] = useState<{ p: Exclude<Parsed, { kind: 'route' }>; seq: number } | null>(null)
+  // Проект, открытый до перехода к экрану установки: панель продолжает
+  // показывать его разделы, пока пользователь не вернулся к «Проектам».
+  const [context, setContext] = useState<string | null>(routeProject(initial.route))
+  // Последний открытый проект этой вкладки. Хранилище общее для вкладок:
+  // поток вне проекта не должен переключаться, когда проект открыли в
+  // соседней вкладке.
+  const [lastPid, setLastPid] = useState(readLastProject)
   const [attention, setAttention] = useState<Attention[]>([])
   const [mySteps, setMySteps] = useState(0)
   const [roles, setRoles] = useState<AgentRole[]>([])
@@ -164,29 +153,136 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [overviewAvailable, setOverviewAvailable] = useState(true)
   const deployLogsRef = useRef(new Map<string, string>())
 
-  const nav = useCallback((r: Route, opts?: { replace?: boolean }) => {
-    if (opts?.replace) {
-      // replaceState не шлёт hashchange: маршрут обновляется сам.
-      history.replaceState(history.state, '', routeHash(r))
-      setRoute(parseHash())
+  // Синхронизация с адресом. Адрес — источник истины: маршрут всегда из
+  // него. Неканонический адрес (#/p/<id>, лишние части) заменяется своей
+  // формой, старый и пустой — новым адресом, всё без записи в истории.
+  // Старый адрес со своим проектом берёт его, старый адрес Epic'а — проект
+  // самого Epic'а, остальные ждут списка проектов (последний открытый).
+  // Ответ, пришедший после ухода на другой адрес, отбрасывается.
+  const syncSeq = useRef(0)
+  const replaceRoute = useCallback((r: Route) => {
+    history.replaceState(history.state, '', routeHash(r))
+    setRoute(r); setResolving(false); setWaiting(null)
+  }, [])
+  const sync = useCallback(() => {
+    const seq = ++syncSeq.current
+    const hash = location.hash
+    // Сообщение живёт на своём адресе: переход в другое место его снимает.
+    setNotice(n => (n && n.hash === hash ? n : null))
+    const p = parseHash(hash)
+    if (p.kind === 'route') {
+      const canon = routeHash(p.route)
+      if (canon !== hash) history.replaceState(history.state, '', canon)
+      setRoute(p.route); setResolving(false); setWaiting(null)
       return
     }
-    location.hash = routeHash(r)
-  }, [])
+    setResolving(true)
+    if (p.kind === 'legacy' && p.target.pid) { replaceRoute(resolveLegacy(p, null)); return }
+    if (p.kind === 'legacy' && p.target.view === 'epic') {
+      const t = p.target
+      api.epic(t.id)
+        .then(v => {
+          if (seq !== syncSeq.current) return
+          if (v.ProjectID) replaceRoute(withProject(t, v.ProjectID)); else setWaiting({ p, seq })
+        })
+        .catch(() => { if (seq === syncSeq.current) setWaiting({ p, seq }) })
+      return
+    }
+    setWaiting({ p, seq })
+  }, [replaceRoute])
   useEffect(() => {
-    const onHash = () => setRoute(parseHash())
-    addEventListener('hashchange', onHash)
-    return () => removeEventListener('hashchange', onHash)
-  }, [])
+    sync()
+    addEventListener('hashchange', sync)
+    return () => removeEventListener('hashchange', sync)
+  }, [sync])
+
+  const routePid = routeProject(route)
+  // Проект адреса открывает проект, «Проекты» его закрывают, остальные
+  // экраны установки оставляют открытым прежний.
+  useEffect(() => {
+    if (routePid) setContext(routePid)
+    else if (route.view === 'projects') setContext(null)
+  }, [routePid, route.view])
+  const projectId = routePid ?? (route.view === 'projects' ? null : context)
+  // Последний проект — для nav и href без явного проекта. Ref, а не
+  // зависимость: nav остаётся тем же между рендерами.
+  const projectRef = useRef(projectId)
+  projectRef.current = projectId
+
+  const nav = useCallback((t: NavTarget, opts?: { replace?: boolean }) => {
+    const hash = routeHash(withProject(t, projectRef.current))
+    if (opts?.replace) {
+      // replaceState не шлёт hashchange: маршрут обновляется сам.
+      history.replaceState(history.state, '', hash)
+      sync()
+      return
+    }
+    // Переход на текущий адрес hashchange не даёт: сообщение снимается здесь.
+    if (hash === location.hash) { setNotice(null); return }
+    location.hash = hash
+  }, [sync])
+  const href = useCallback((t: NavTarget) => routeHash(withProject(t, projectId)), [projectId])
+  const dismissNotice = useCallback(() => setNotice(null), [])
 
   const refreshProjects = useCallback(() => {
     api.projects().then(ps => {
-      const list = ps ?? []
-      setProjects(list)
-      setProjectId(cur => cur ?? list[0]?.ID ?? null)
-    }).catch(() => {})
+      setProjects(ps ?? [])
+      setProjectsLoaded(true)
+    }).catch(() => {}).finally(() => setProjectsTried(true))
   }, [])
   useEffect(refreshProjects, [refreshProjects])
+
+  // Старый или пустой адрес без своего проекта: последний открытый проект,
+  // если он есть в списке. Недоступный последний проект стирается молча, и
+  // открываются «Проекты»: пользователь этот адрес не набирал. Без ответа
+  // сервера о списке берётся сохранённый проект как есть.
+  useEffect(() => {
+    if (!waiting || !projectsTried) return
+    if (waiting.seq !== syncSeq.current) { setWaiting(null); return }
+    let last = readLastProject()
+    if (last && projectsLoaded && !projects.some(p => p.ID === last)) {
+      const gone = last
+      writeLastProject(null)
+      setLastPid(l => (l === gone ? null : l))
+      last = null
+    }
+    replaceRoute(resolveLegacy(waiting.p, last))
+  }, [waiting, projectsTried, projectsLoaded, projects, replaceRoute])
+
+  // Проект адреса должен быть среди доступных. Если его нет, список
+  // перечитывается один раз: проект мог появиться только что (мастер).
+  // Нет и после этого — сообщение и «Проекты»; ошибка загрузки проверку не
+  // запускает. Найденный проект запоминается как последний открытый.
+  useEffect(() => {
+    if (!routePid || !projectsLoaded) return
+    if (projects.some(p => p.ID === routePid)) { writeLastProject(routePid); setLastPid(routePid); return }
+    let live = true
+    api.projects().then(ps => {
+      if (!live) return
+      const list = ps ?? []
+      if (list.some(p => p.ID === routePid)) { setProjects(list); return }
+      if (readLastProject() === routePid) writeLastProject(null)
+      setLastPid(l => (l === routePid ? null : l))
+      setNotice({ text: 'Проект из адреса не найден или у вас нет к нему доступа.', hash: routeHash({ view: 'projects' }) })
+      nav({ view: 'projects' }, { replace: true })
+    }).catch(() => {})
+    return () => { live = false }
+  }, [routePid, projects, projectsLoaded, nav])
+
+  // Поток событий нужен и вне проекта: индикатор связи, «Мои шаги»,
+  // события установки для runner'ов и команды. Поток открывается только на
+  // доступный проект: открытый, иначе последний открытый, иначе первый.
+  // Проект из адреса до проверки доступа потока не получает, а пока старый
+  // адрес разрешается, поток не открывается вовсе: иначе он открылся бы на
+  // прежнем проекте и сразу переоткрылся.
+  // Старый адрес внутри консоли (вставленный, «Назад», #/) поток не
+  // переоткрывает: пока он разрешается, остаётся прежний поток. При старте
+  // прежнего нет, и поток ждёт разрешения.
+  const known = (pid: string | null) => !!pid && projects.some(p => p.ID === pid)
+  const streamRef = useRef<string | null>(null)
+  const streamProjectId = resolving ? streamRef.current
+    : known(projectId) ? projectId : known(lastPid) ? lastPid : projects[0]?.ID ?? null
+  streamRef.current = streamProjectId
   // Пауза по бюджету снимается сама на новых сутках без события: список
   // проектов перечитывается в ближайший paused_until.
   useEffect(() => {
@@ -198,14 +294,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(id)
   }, [projects, refreshProjects])
 
+  // Перечитывания идут из событий, опроса и экранов: применяется ответ
+  // только последнего запроса.
+  const attentionSeq = useRef(0)
   const refreshAttention = useCallback(() => {
-    api.attention().then(a => setAttention(a ?? [])).catch(() => {})
+    const seq = ++attentionSeq.current
+    api.attention().then(a => { if (seq === attentionSeq.current) setAttention(a ?? []) }).catch(() => {})
   }, [])
   useEffect(refreshAttention, [refreshAttention])
+  const stepsSeq = useRef(0)
   const refreshMySteps = useCallback(() => {
-    api.mySteps().then(s => setMySteps((s ?? []).length)).catch(() => {})
+    const seq = ++stepsSeq.current
+    api.mySteps().then(s => { if (seq === stepsSeq.current) setMySteps((s ?? []).length) }).catch(() => {})
   }, [])
   useEffect(refreshMySteps, [refreshMySteps])
+  // Эскалации и «Мои шаги» других проектов (спека web «Счётчики эскалаций
+  // по проектам»): опрос, пока вкладка видна, и сразу при возвращении на неё.
+  // Тот же опрос дозагружает список проектов, если при старте он не пришёл:
+  // без него нет потока, проверки доступа и имени проекта.
+  const projectsLoadedRef = useRef(projectsLoaded)
+  projectsLoadedRef.current = projectsLoaded
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return
+      refreshAttention(); refreshMySteps()
+      if (!projectsLoadedRef.current) refreshProjects()
+    }
+    const id = setInterval(refresh, COUNTERS_POLL_MS)
+    document.addEventListener('visibilitychange', refresh)
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', refresh) }
+  }, [refreshAttention, refreshMySteps, refreshProjects])
   // Каталоги перечитываются по SSE-событиям и переподключению: применяется
   // ответ только последнего запроса, запоздавший старый не возвращает
   // прежние данные. Старый бэкенд без /roles и /team отвечает 404: каталог
@@ -233,12 +351,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [])
   useEffect(refreshRunners, [refreshRunners])
   const roleOf = useCallback((id: string | undefined) => id ? roles.find(r => r.id === id) : undefined, [roles])
+  // Проба обзора — на доступном проекте потока: 404 недоступного проекта
+  // не значит, что у бэкенда нет обзора.
   useEffect(() => {
-    if (!projectId) return
+    if (!streamProjectId) return
     let live = true
-    api.overviewProbe(projectId).then(ok => { if (live) setOverviewAvailable(ok) })
+    api.overviewProbe(streamProjectId).then(ok => { if (live) setOverviewAvailable(ok) })
     return () => { live = false }
-  }, [projectId])
+  }, [streamProjectId])
+  // Старый бэкенд без обзора: вход в проект и адрес обзора ведут в Epic’и.
+  useEffect(() => {
+    if (!overviewAvailable && route.view === 'overview') nav({ view: 'epics', pid: route.pid }, { replace: true })
+  }, [overviewAvailable, route, nav])
 
   // Занятость агентов приходит со всей установки (team.agent_busy и
   // team.agent_free), на каждую стадию любого проекта. Она перечитывает
@@ -250,8 +374,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => () => agentWork.cancel(), [agentWork])
 
   useEffect(() => {
-    if (!projectId) return
-    return subscribe(projectId, {
+    if (!streamProjectId) return
+    return subscribe(streamProjectId, {
       onEvent: (e) => {
         if (isAgentWorkEvent(e.Type)) {
           agentWork.call()
@@ -314,14 +438,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       },
     })
-  }, [projectId, refreshAttention, refreshProjects, refreshRoles, refreshTeam, refreshRunners, refreshMySteps, agentWork])
+  }, [streamProjectId, refreshAttention, refreshProjects, refreshRoles, refreshTeam, refreshRunners, refreshMySteps, agentWork])
   // Лента событий относится к выбранному проекту; новый поток — первое
   // подключение, а не переподключение.
-  useEffect(() => { setRecent([]); opened.current = false }, [projectId])
+  useEffect(() => { setRecent([]); opened.current = false }, [streamProjectId])
 
   return (
     <Ctx.Provider value={{
-      route, nav, projects, projectId, setProjectId,
+      route, nav, href, projects, projectId, streamProjectId, resolving, notice, dismissNotice,
       attention, mySteps, connected, tick, eventTick, lastEvent, recent, reconnects, discoveryTick, logs: logsRef.current,
       deployLogs: deployLogsRef.current, refreshProjects, refreshAttention, refreshMySteps,
       roles, roleOf, refreshRoles, team, refreshTeam, runners, refreshRunners,

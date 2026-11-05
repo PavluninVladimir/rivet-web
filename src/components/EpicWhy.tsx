@@ -18,7 +18,7 @@ export function EpicWaiting({ epic }: { epic: EpicView }) {
       {refs.map((r, i) => (
         <span key={r.id}>
           {i > 0 && ', '}
-          <a onClick={() => nav({ view: 'epic', id: r.id })}>«{r.title}»</a>
+          <a onClick={() => nav({ view: 'epic', pid: epic.ProjectID, id: r.id })}>«{r.title}»</a>
           {r.status === 'archived' && ' (в архиве, снимите зависимость)'}
         </span>
       ))}
@@ -28,7 +28,7 @@ export function EpicWaiting({ epic }: { epic: EpicView }) {
 }
 
 export function EpicWhy({ epic, login, onChanged }: { epic: EpicView; login?: string; onChanged: () => void }) {
-  const { nav, projectId, setProjectId } = useStore()
+  const { nav } = useStore()
   const [isOwner, setIsOwner] = useState(false)
   const [epics, setEpics] = useState<Epic[]>([])
   const [editing, setEditing] = useState<string[] | null>(null)
@@ -54,12 +54,8 @@ export function EpicWhy({ epic, login, onChanged }: { epic: EpicView; login?: st
   const editable = isOwner && !closed && !isSystemEpic(epic)
   if (!supported) return null
   if (!epic.Discovery && !epic.Priority && deps.length === 0 && !editable) return null
-  // Версия исследования — в проекте Epic'а: переключаем проект, если
-  // в консоли выбран другой.
-  const openRun = (runId: string) => {
-    if (projectId !== epic.ProjectID) setProjectId(epic.ProjectID)
-    nav({ view: 'discovery', runId })
-  }
+  // Версия исследования — в проекте Epic'а: проект — часть адреса.
+  const openRun = (runId: string) => nav({ view: 'discovery', pid: epic.ProjectID, runId })
   // Варианты правки: Epic'и проекта без архивных, без самого Epic'а и без
   // системных, плюс уже выбранные архивные — их видно и можно снять.
   const options = epics.filter(e => e.ID !== epic.ID && !isSystemEpic(e)
@@ -110,7 +106,7 @@ export function EpicWhy({ epic, login, onChanged }: { epic: EpicView; login?: st
               {deps.length === 0 && <span className="muted" style={{ fontSize: 12.5 }}>зависимостей нет</span>}
               {deps.map(id => (
                 <span key={id} className="chip">
-                  <a onClick={() => nav({ view: 'epic', id })}>{title(id)}</a>
+                  <a onClick={() => nav({ view: 'epic', pid: epic.ProjectID, id })}>{title(id)}</a>
                   {status(id) && <span className="n">{status(id)}</span>}
                 </span>
               ))}

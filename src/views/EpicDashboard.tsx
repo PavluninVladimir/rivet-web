@@ -12,7 +12,7 @@ import { useStore } from '../store'
 
 const SEG_ORDER = ['done', 'running', 'testing', 'fixing', 'review', 'ready', 'queued', 'blocked', 'failed', 'cancelled']
 
-export function EpicDashboard({ epicId, taskId, admin = false, login }: { epicId: string; taskId?: string; admin?: boolean; login?: string }) {
+export function EpicDashboard({ projectId, epicId, taskId, admin = false, login }: { projectId: string; epicId: string; taskId?: string; admin?: boolean; login?: string }) {
   const { nav, tick, attention, projects, refreshAttention } = useStore()
   const [epic, setEpic] = useState<EpicView | null>(null)
   const [mode, setMode] = useState<'graph' | 'list'>('graph')
@@ -30,6 +30,13 @@ export function EpicDashboard({ epicId, taskId, admin = false, login }: { epicId
     api.epic(epicId).then(setEpic).catch(e => setErr(String(e)))
   }, [epicId])
   useEffect(refresh, [refresh, tick])
+  // Epic другого проекта по адресу этого (старая ссылка, ссылка без
+  // проекта): адрес исправляется на проект Epic'а без записи в истории.
+  useEffect(() => {
+    if (epic?.ID === epicId && epic.ProjectID && epic.ProjectID !== projectId) {
+      nav({ view: 'epic', pid: epic.ProjectID, id: epicId, taskId }, { replace: true })
+    }
+  }, [epic, epicId, projectId, taskId, nav])
 
   const tasks: Task[] = useMemo(() => epic?.tasks ?? [], [epic])
   const counts = useMemo(() => {

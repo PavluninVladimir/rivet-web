@@ -90,7 +90,8 @@ export function OutsideDocsNote({ o, compact }: { o: OutsideDocs; compact?: bool
 }
 
 export function DescribeTaskStatus({ task, compact }: { task: ArchitectureTask; compact?: boolean }) {
-  const { roleOf, team } = useStore()
+  // Задача описания — в проекте показанной архитектуры, то есть текущем.
+  const { roleOf, team, href } = useStore()
   const facts = useTaskFacts(task)
   const active = taskActive(task.status)
   const role = roleOf(task.role ?? undefined)
@@ -115,8 +116,8 @@ export function DescribeTaskStatus({ task, compact }: { task: ArchitectureTask; 
       {facts?.wait && active && <div className="arch-task-wait muted">ожидание: {facts.wait}</div>}
       {facts?.outside && <OutsideDocsNote o={facts.outside} compact={compact} />}
       <div className="arch-task-links">
-        <a href={routeHash({ view: 'epic', id: task.epic_id, taskId: task.task_id })}>task-{task.task_num} →</a>
-        <a className="muted" href={routeHash({ view: 'epic', id: task.epic_id })}>Epic описания</a>
+        <a href={href({ view: 'epic', id: task.epic_id, taskId: task.task_id })}>task-{task.task_num} →</a>
+        <a className="muted" href={href({ view: 'epic', id: task.epic_id })}>Epic описания</a>
       </div>
     </div>
   )
@@ -168,8 +169,8 @@ export function DescribeButton({ projectId, onStarted, label = 'Описать �
       {err && (
         <span className="arch-describe-err" role="alert">
           {err.text}
-          {err.task?.task_id && <> <a href={routeHash({ view: 'epic', id: err.task.epic_id, taskId: err.task.task_id })}>Открыть задачу →</a></>}
-          {err.settings && <> <a href={routeHash({ view: 'project-settings', id: projectId, tab: 'general' })}>Настройки проекта →</a></>}
+          {err.task?.task_id && <> <a href={routeHash({ view: 'epic', pid: projectId, id: err.task.epic_id, taskId: err.task.task_id })}>Открыть задачу →</a></>}
+          {err.settings && <> <a href={routeHash({ view: 'project-settings', pid: projectId, tab: 'general' })}>Настройки проекта →</a></>}
         </span>
       )}
     </div>
@@ -181,7 +182,7 @@ export function CredentialsHint({ projectId }: { projectId: string }) {
   return (
     <span className="arch-describe-err" role="alert">
       У проекта нет собственных учётных данных хостинга: Rivet не читает и не описывает архитектуру через общий токен установки.{' '}
-      <a href={routeHash({ view: 'project-settings', id: projectId, tab: 'general' })}>Подключить токен проекта →</a>
+      <a href={routeHash({ view: 'project-settings', pid: projectId, tab: 'general' })}>Подключить токен проекта →</a>
     </span>
   )
 }
@@ -195,7 +196,7 @@ export function ArchErrorText({ arch, projectId, compact }: { arch: ProjectArchi
       <b>{info.title}.</b>
       {info.showReason && arch.error && <div className="muted">причина: <span className="mono">{arch.error}</span></div>}
       {!compact && <div className="muted">{info.hint}</div>}
-      {info.settings && <a href={routeHash({ view: 'project-settings', id: projectId, tab: 'general' })}>Подключить токен проекта →</a>}
+      {info.settings && <a href={routeHash({ view: 'project-settings', pid: projectId, tab: 'general' })}>Подключить токен проекта →</a>}
     </div>
   )
 }

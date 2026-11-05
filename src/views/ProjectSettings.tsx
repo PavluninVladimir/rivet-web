@@ -82,7 +82,7 @@ export function ProjectSettings({ projectId, tab, user }: { projectId: string; t
         <h1>Настройки проекта</h1>
         <span className="sub">{project.Name}{isOwner ? '' : ' · только просмотр'}</span>
       </div>
-      <Tabs tabs={TABS} active={tab} onChange={t => nav({ view: 'project-settings', id: projectId, tab: t })} />
+      <Tabs tabs={TABS} active={tab} onChange={t => nav({ view: 'project-settings', pid: projectId, tab: t })} />
       {noteHere && <div style={{ marginBottom: 8 }}><FormNote err={noteHere.err} ok={noteHere.ok} /></div>}
 
       {panel('general', () => (

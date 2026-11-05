@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, type Epic, type Task } from '../api/client'
 import { ClaimControl, StBadge } from '../components/ui'
 import { Performer } from '../components/RoleChip'
 import { useStore } from '../store'
 
-// Сквозной список задач проекта + очередь needs attention.
+// Сквозной список задач проекта + очередь needs attention. Эскалации —
+// только текущего проекта (add-project-navigation): остальные видны
+// счётчиками в списке проектов.
 export function TasksView() {
-  const { projectId, nav, tick, attention, refreshAttention } = useStore()
+  const { projectId, nav, tick, attention: all, refreshAttention } = useStore()
+  const attention = useMemo(() => all.filter(a => a.ProjectID === projectId), [all, projectId])
   const [rows, setRows] = useState<{ epic: Epic; task: Task }[]>([])
   const [q, setQ] = useState('')
 
@@ -46,7 +49,7 @@ export function TasksView() {
                 // Окружения живут на странице настроек проекта, туда и ведём.
                 return (
                   <button key={a.ID} className="att-card"
-                    onClick={() => nav({ view: 'project-settings', id: a.ProjectID, tab: 'environments' })}>
+                    onClick={() => nav({ view: 'project-settings', pid: a.ProjectID, tab: 'environments' })}>
                     <div className="att-top">
                       <span className="tid mono">deploy</span>
                       <span className="att-reason">{a.Reason}</span>
@@ -64,7 +67,7 @@ export function TasksView() {
               if (!a.TaskID) {
                 return (
                   <button key={a.ID} className="att-card"
-                    onClick={() => nav({ view: 'project-settings', id: a.ProjectID, tab: 'policies' })}>
+                    onClick={() => nav({ view: 'project-settings', pid: a.ProjectID, tab: 'policies' })}>
                     <div className="att-top">
                       <span className="tid mono">проект</span>
                       <span className="att-reason">{a.Reason}</span>
@@ -80,7 +83,7 @@ export function TasksView() {
               const row = rows.find(r => r.task.ID === a.TaskID)
               return (
                 <button key={a.ID} className="att-card"
-                  onClick={() => row && nav({ view: 'epic', id: row.epic.ID, taskId: a.TaskID })}>
+                  onClick={() => row && nav({ view: 'epic', pid: a.ProjectID, id: row.epic.ID, taskId: a.TaskID })}>
                   <div className="att-top">
                     <span className="tid mono">task-{row?.task.Num ?? '?'}</span>
                     <span className="att-reason">{a.Reason}</span>
