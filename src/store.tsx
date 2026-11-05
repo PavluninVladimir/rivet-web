@@ -3,6 +3,7 @@ import { ApiError, api, subscribe, type AgentRole, type Attention, type CyclePer
 import { parsePeriod, throttleWithRecheck } from './components/overviewLogic'
 import { isAgentWorkEvent } from './components/roleLabels'
 import { isPhase } from './components/cycleGeometry'
+import { archRouteHash, parseArchRoute, type ArchRoute } from './components/archModel'
 
 // Не чаще раза в столько миллисекунд команда и runner'ы перечитываются по
 // занятости агентов установки.
@@ -30,6 +31,9 @@ export type Route =
   // Цикл разработки проекта (add-sdlc-cycle): фаза и период в адресе.
   | { view: 'cycle'; id: string; phase?: CyclePhaseId; period?: CyclePeriod }
   | { view: 'releases'; id?: string } | { view: 'incidents'; id?: string }
+  // Архитектура проекта (add-architecture-c4): вкладка, уровень C4 или
+  // выбор на вкладке, выбранный элемент и фильтр — в адресе.
+  | ({ view: 'architecture' } & ArchRoute)
 
 const PERIODS: CyclePeriod[] = ['today', '7d', '30d']
 
@@ -42,6 +46,7 @@ function parseHash(): Route {
     return { view: 'cycle', id: b, phase: isPhase(phase) ? phase : undefined, period: period && PERIODS.includes(period) ? period : undefined }
   }
   if (a === 'releases' || a === 'incidents') return b ? { view: a, id: b } : { view: a }
+  if (a === 'architecture') return { view: 'architecture', ...parseArchRoute([b, c, d], query) }
   if (a === 'epic' && b) {
     return c === 'task' && d ? { view: 'epic', id: b, taskId: d } : { view: 'epic', id: b }
   }
@@ -74,6 +79,7 @@ export function routeHash(r: Route): string {
   if (r.view === 'app-management') return `#/app-management/${r.tab}`
   if (r.view === 'overview') return r.period === '7d' ? '#/overview' : `#/overview/${r.period}`
   if (r.view === 'discovery') return r.runId ? `#/discovery/${r.runId}` : '#/discovery'
+  if (r.view === 'architecture') return archRouteHash(r)
   return `#/${r.view}`
 }
 
@@ -255,7 +261,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setRecent(r => (r.some(x => x.ID === e.ID) ? r : [e, ...r].slice(0, 60)))
         setTick(t => t + 1)
         setEventTick(t => t + 1)
-        for (const fn of listenersRef.current) fn(e)
+        for (const fn of listenersRef.current) {
+          try { fn(e) } catch { /* слушатель экрана не ломает поток */ }
+        }
         if (DISCOVERY_RELOAD.test(e.Type)) setDiscoveryTick(t => t + 1)
         // policy.decision пишется, когда движок не дал решения: вместе с
         // ним появляется эскалация уровня проекта, своего события у неё нет.

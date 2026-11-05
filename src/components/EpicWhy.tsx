@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, isMaintenance, type Epic, type EpicView, type Need } from '../api/client'
+import { api, isSystemEpic, type Epic, type EpicView, type Need } from '../api/client'
 import { Button, Field, FormActions, FormNote, Select, errText, useBusy } from './form'
 import { IMPORTANCE_LABEL, KIND_LABEL, waitingText } from './discovery'
 import { useStore } from '../store'
@@ -49,9 +49,9 @@ export function EpicWhy({ epic, login, onChanged }: { epic: EpicView; login?: st
   const deps = epic.DependsOn ?? []
   const needs: Need[] = epic.Discovery?.needs ?? []
   const closed = epic.Status === 'done' || epic.Status === 'archived'
-  // Epic «Сопровождение» в зависимостях не участвует (add-sdlc-cycle):
-  // редактора у него нет.
-  const editable = isOwner && !closed && !isMaintenance(epic)
+  // Системные Epic'и («Сопровождение», «Архитектура проекта») в
+  // зависимостях не участвуют: редактора у них нет.
+  const editable = isOwner && !closed && !isSystemEpic(epic)
   if (!supported) return null
   if (!epic.Discovery && !epic.Priority && deps.length === 0 && !editable) return null
   // Версия исследования — в проекте Epic'а: переключаем проект, если
@@ -61,8 +61,8 @@ export function EpicWhy({ epic, login, onChanged }: { epic: EpicView; login?: st
     nav({ view: 'discovery', runId })
   }
   // Варианты правки: Epic'и проекта без архивных, без самого Epic'а и без
-  // «Сопровождения», плюс уже выбранные архивные — их видно и можно снять.
-  const options = epics.filter(e => e.ID !== epic.ID && !isMaintenance(e)
+  // системных, плюс уже выбранные архивные — их видно и можно снять.
+  const options = epics.filter(e => e.ID !== epic.ID && !isSystemEpic(e)
     && (e.Status !== 'archived' || (editing ?? []).includes(e.ID)))
 
   const save = () => run(async () => {

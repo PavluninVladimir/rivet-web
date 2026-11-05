@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { api, setOnPasswordChangeRequired, setOnUnauthorized, type User } from './api/client'
-import { StoreProvider, useStore, type Route } from './store'
+import { StoreProvider, routeHash, useStore, type Route } from './store'
+import { ErrorBoundary, ViewCrash, lazyWithReload } from './components/ErrorBoundary'
 import { EpicsView } from './views/EpicsView'
 import { EpicDashboard } from './views/EpicDashboard'
 import { DiscoveryView } from './views/DiscoveryView'
@@ -17,6 +18,11 @@ import { CycleView } from './views/CycleView'
 import { ReleasesView } from './views/ReleasesView'
 import { IncidentsView } from './views/IncidentsView'
 import { AppManagement } from './views/AppManagement'
+// Представление архитектуры грузится отдельным чанком: основной бандл
+// не растёт ради экрана, который открывают не каждый раз.
+// После обновления rivetd старого чанка нет: одна автоматическая
+// перезагрузка, потом сообщение на экране (ErrorBoundary ниже).
+const ArchitectureView = lazy(lazyWithReload(() => import('./views/ArchitectureView').then(m => ({ default: m.ArchitectureView }))))
 import { PasswordGate, Profile } from './views/Profile'
 import { Login } from './components/Login'
 import { Palette } from './components/Palette'
@@ -31,6 +37,7 @@ const NAV: { view: Route['view']; label: string }[] = [
   { view: 'discovery', label: 'Исследование' },
   { view: 'epics', label: 'Epic’и' },
   { view: 'tasks', label: 'Задачи' },
+  { view: 'architecture', label: 'Архитектура' },
   { view: 'team', label: 'Команда' },
   { view: 'mysteps', label: 'Мои шаги' },
   { view: 'runners', label: 'Runner’ы' },
@@ -78,6 +85,7 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
   const go = (v: Route['view']) => {
     if (v === 'cycle') { if (projectId) nav({ view: 'cycle', id: projectId }) }
     else if (v === 'overview') nav({ view: 'overview', period: '7d' })
+    else if (v === 'architecture') nav({ view: 'architecture', tab: 'hld' })
     else nav({ view: v } as Route)
   }
 
@@ -146,6 +154,9 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
           </button>
         </header>
         <div id="viewport">
+          {/* Падение экрана не гасит консоль: навигация и боковая панель
+              работают, переход на другой адрес сбрасывает ошибку. */}
+          <ErrorBoundary resetKey={routeHash(route)} fallback={(e, reset) => <ViewCrash error={e} onRetry={reset} />}>
           {route.view === 'projects' && <ProjectsView />}
           {route.view === 'project-settings' && <ProjectSettings key={route.id} projectId={route.id} tab={route.tab} user={user} />}
           {route.view === 'profile' && <Profile me={user} />}
@@ -167,6 +178,12 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
           {route.view === 'cycle' && <CycleView key={route.id} projectId={route.id} phase={route.phase} period={route.period} admin={user.admin} />}
           {route.view === 'releases' && <ReleasesView id={route.id} login={user.login} />}
           {route.view === 'incidents' && <IncidentsView id={route.id} login={user.login} />}
+          {route.view === 'architecture' && (
+            <Suspense fallback={<div className="page"><span className="muted">Загрузка…</span></div>}>
+              <ArchitectureView key={projectId ?? ''} route={route} />
+            </Suspense>
+          )}
+          </ErrorBoundary>
         </div>
       </div>
 
