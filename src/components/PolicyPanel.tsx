@@ -15,12 +15,12 @@ import { Button, Checkbox, FormNote, NumberInput, Select, Switch, TagsInput, err
 // из прототипа не делаются (design, сверка с прототипом).
 
 type PresetKey = 'auto_merge' | 'human_review_paths' | 'attempt_limit' | 'review_limit' | 'daily_token_budget' | 'auto_publish'
-  | 'tester_agent' | 'test_paths'
+  | 'tester_agent' | 'test_paths' | 'auto_describe_architecture'
 
 // Значения по умолчанию новых пресетов (api-contract add-agent-roles):
 // старый бэкенд их не отдаёт, форма показывает действующие по умолчанию.
 export const DEFAULT_TEST_PATHS = ['test/**', 'tests/**', '**/*_test.*', '**/*.test.*', '**/*.spec.*']
-const PRESET_DEFAULTS: Partial<Record<PresetKey, Presets[PresetKey]>> = { tester_agent: true, test_paths: DEFAULT_TEST_PATHS }
+const PRESET_DEFAULTS: Partial<Record<PresetKey, Presets[PresetKey]>> = { tester_agent: true, test_paths: DEFAULT_TEST_PATHS, auto_describe_architecture: true }
 function presetValue(p: Presets, k: PresetKey): Presets[PresetKey] {
   return p[k] ?? PRESET_DEFAULTS[k] ?? p[k]
 }
@@ -34,6 +34,7 @@ const ROWS: { key: PresetKey; label: string; hint: string }[] = [
   { key: 'auto_publish', label: 'Автопубликация после merge', hint: 'разрешить окружениям с автозапуском публиковаться' },
   { key: 'tester_agent', label: 'Тестировщик на шаге test', hint: 'агент-тестировщик дописывает тесты по критериям; выкл: только проверки проекта. Действует на процесс по умолчанию, в своём процессе тестировщик задаётся участником шага test' },
   { key: 'test_paths', label: 'Шаблоны тестовых файлов', hint: 'тестировщик меняет только такие файлы, правки вне них откатываются' },
+  { key: 'auto_describe_architecture', label: 'Автоописание архитектуры', hint: 'если в репозитории нет описания архитектуры, Архитектор описывает проект после подключения репозитория или при запуске первого Epic; один раз на проект. Вручную описание ставится в «Архитектуре»' },
 ]
 
 export function shortHash(h: string | undefined | null): string {
@@ -66,6 +67,7 @@ function PresetControl({ k, value, disabled, onChange }: {
     case 'auto_merge':
     case 'auto_publish':
     case 'tester_agent':
+    case 'auto_describe_architecture':
       return <Switch on={Boolean(value)} disabled={disabled} onChange={onChange} />
     case 'human_review_paths':
       return <PathsInput value={(value as string[]) ?? []} disabled={disabled} onChange={onChange} />
@@ -80,7 +82,7 @@ function PresetControl({ k, value, disabled, onChange }: {
 }
 
 function fmtValue(k: PresetKey, v: Presets[PresetKey]): string {
-  if (k === 'auto_merge' || k === 'auto_publish' || k === 'tester_agent') return v ? 'вкл' : 'выкл'
+  if (k === 'auto_merge' || k === 'auto_publish' || k === 'tester_agent' || k === 'auto_describe_architecture') return v ? 'вкл' : 'выкл'
   // Пустые шаблоны тестов на сервере значат «по умолчанию», а не «нет».
   if (k === 'test_paths') return (v as string[] | undefined)?.length ? (v as string[]).join(', ') : `по умолчанию (${DEFAULT_TEST_PATHS.join(', ')})`
   if (k === 'human_review_paths') return (v as string[] | undefined)?.length ? (v as string[]).join(', ') : 'нет'

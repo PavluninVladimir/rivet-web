@@ -41,6 +41,11 @@ export function EpicsView() {
             <tr key={e.ID} className="rowlink" onClick={() => nav({ view: 'epic', id: e.ID })}>
               <td>
                 {e.Title}
+                {e.Kind === 'architecture' && (
+                  <span className="chip arch-epic-chip" style={{ marginLeft: 8 }} title="Системный Epic: описание архитектуры проекта">
+                    <span className="n">архитектура</span>
+                  </span>
+                )}
                 {e.SourceKey && (
                   <span className="chip" style={{ marginLeft: 8 }} title={`импортировано: ${e.SourceKey}`}>
                     <span className="n">история · {e.Created.slice(0, 10)}</span>

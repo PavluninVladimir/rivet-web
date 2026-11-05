@@ -1,0 +1,236 @@
+/* Архитектура проекта (add-architecture-c4, add-architecture-erd-sequence-adr):
+   представление «Архитектура», блок на дашборде Epic, схемы Mermaid в тёмной
+   теме токенами консоли. */
+
+.arch-page { max-width: 1440px; }
+.arch-page .tabs { margin-top: 12px; }
+
+/* полоса снимка */
+.arch-strip { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 12px;
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); font-size: 12.5px; }
+.arch-strip a { color: var(--accent); }
+.arch-strip-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.arch-st { display: inline-flex; align-items: center; gap: 5px; font: 600 9.5px var(--font-mono);
+  letter-spacing: .07em; text-transform: uppercase; color: var(--c-queue); white-space: nowrap; }
+.arch-st::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.arch-st-ok { color: var(--c-done); }
+.arch-st-invalid { color: var(--c-block); }
+.arch-st-error { color: var(--c-fail); }
+.arch-st-pending::before { animation: pulse 1.4s infinite; }
+.arch-warn { margin-top: 8px; padding: 8px 10px; border-radius: 6px; font-size: 12.5px;
+  border: 1px solid color-mix(in oklch, var(--c-review) 45%, transparent);
+  background: color-mix(in oklch, var(--c-review) 9%, transparent); }
+.arch-warn a { color: var(--accent); cursor: pointer; }
+.arch-warn-defects { margin: 6px 0; padding-left: 18px; font-size: 12px; }
+.arch-warn-defects li { margin: 2px 0; }
+
+/* пустые состояния и задача описания */
+.arch-empty { padding: 18px 20px; border: 1px dashed var(--border); border-radius: var(--r-lg); margin-top: 12px; max-width: 760px; }
+.arch-empty > p { margin: 0 0 12px; color: var(--muted); line-height: 1.55; }
+.arch-describe-wrap { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.arch-describe { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.arch-describe-err { font-size: 12px; color: var(--c-block); }
+.arch-describe-err a { color: var(--accent); cursor: pointer; }
+.arch-task { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; min-width: 320px;
+  border: 1px solid var(--border); border-left: 2px solid var(--role-violet); border-radius: var(--r); background: var(--surface); }
+.arch-task.compact { min-width: 0; width: 100%; padding: 8px 10px; }
+.arch-task[data-task-status="failed"] { border-left-color: var(--c-fail); }
+.arch-task-head { display: flex; align-items: center; gap: 10px; }
+.arch-task-head b { font-size: 12.5px; }
+.arch-task-head .st { margin-left: auto; }
+.arch-task-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; }
+.arch-task-links { display: flex; gap: 12px; font-size: 12px; }
+.arch-task-links a { color: var(--accent); cursor: pointer; }
+.arch-task-links a.muted { color: var(--muted); }
+.arch-task-wait { font-size: 12px; }
+.arch-outside { font-size: 12px; padding: 6px 8px; border-radius: 4px; color: var(--fg);
+  border: 1px solid color-mix(in oklch, var(--c-block) 45%, transparent); background: color-mix(in oklch, var(--c-block) 8%, transparent); }
+.arch-outside b { font-weight: 600; color: var(--c-block); }
+.arch-outside ul { margin: 4px 0 0; padding-left: 18px; }
+.arch-outside li { margin: 1px 0; }
+
+/* схемы */
+.arch-canvas { position: relative; border: 1px solid var(--border); border-radius: var(--r-lg);
+  background: var(--surface); padding: 12px; overflow: auto; min-height: 120px; }
+.arch-hint { font-size: 11px; margin-top: 8px; }
+.mmd-wrap { position: relative; }
+.mmd svg { display: block; margin: 0 auto; height: auto; }
+.mmd-loading { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; }
+.mmd-error { border: 1px solid color-mix(in oklch, var(--c-block) 45%, transparent); border-radius: var(--r);
+  background: color-mix(in oklch, var(--c-block) 6%, transparent); padding: 8px 10px; }
+.mmd-error-head { font-size: 12px; color: var(--c-block); margin-bottom: 6px; }
+.mmd-error-head .mono { display: block; margin-top: 4px; white-space: pre-wrap; word-break: break-word; font-size: 11.5px; }
+.mmd-src { margin: 0; font: 11.5px/1.5 var(--font-mono); color: var(--muted); white-space: pre-wrap; word-break: break-word; max-height: 360px; overflow: auto; }
+.mmd .mmd-node { cursor: pointer; }
+.mmd .mmd-node:focus { outline: none; }
+.mmd .mmd-node:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mmd-c4 svg g.person-man:focus-visible rect, .mmd-c4 svg g.person-man:focus-visible path { stroke: var(--accent) !important; stroke-width: 2.5px !important; }
+.mmd-zoom { position: absolute; top: -4px; right: -4px; z-index: 1; font: 500 10.5px var(--font-mono); color: var(--muted);
+  border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; background: var(--surface); }
+.mmd-zoom:hover { color: var(--fg); }
+.mmd-wrap.natural .mmd { overflow: auto; }
+
+/* Mermaid C4 рисует связи, подписи границ и стрелки жёстко заданными
+   #444444 и чёрным: на тёмном фоне они не видны, перекрашиваем токенами. */
+.mmd-c4 svg line[stroke="#444444"], .mmd-c4 svg path[stroke="#444444"] { stroke: var(--muted) !important; }
+.mmd-c4 svg text[fill="#444444"], .mmd-c4 svg text[fill="black"] { fill: color-mix(in oklch, var(--fg) 78%, var(--muted)) !important; }
+.mmd-c4 svg text[fill="#444444"][font-style="italic"] { fill: var(--muted) !important; }
+.mmd-c4 svg rect[stroke="#444444"] { stroke: color-mix(in oklch, var(--muted) 70%, var(--border)) !important; }
+.mmd-c4 svg marker path { fill: var(--muted) !important; stroke: var(--muted) !important; }
+.mmd-c4 svg > text, .mmd-c4 svg g > text.title { fill: var(--fg) !important; }
+.mmd-c4 svg g.person-man.drill rect, .mmd-c4 svg g.person-man.drill path { stroke-width: 1.5px; }
+.mmd-c4 svg g.person-man:hover rect, .mmd-c4 svg g.person-man:hover path { stroke: var(--fg) !important; }
+.mmd-c4 svg g.person-man.sel rect, .mmd-c4 svg g.person-man.sel path { stroke: var(--c-review) !important; stroke-width: 2.5px !important; }
+.mmd-sequence svg rect.actor, .mmd-sequence svg text.actor { cursor: pointer; }
+
+/* C4: крошки, схема и список элементов */
+.arch-crumbs { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 12.5px; margin-bottom: 10px; }
+.arch-crumbs a { color: var(--accent); cursor: pointer; text-decoration: none; }
+.arch-crumbs .sep { margin-left: 7px; opacity: .45; }
+.arch-crumbs-title { margin-left: auto; font-size: 11.5px; }
+.arch-split { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: start; }
+.arch-split-list { grid-template-columns: 300px minmax(0, 1fr); }
+.arch-side { display: flex; flex-direction: column; gap: 7px; max-height: calc(100vh - 230px); overflow: auto; }
+.arch-side h3, .arch-h3 { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 6px 0 2px; }
+.arch-h3 { margin: 16px 0 8px; }
+.arch-h2 { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
+.arch-p { margin: 0 0 10px; line-height: 1.5; }
+.arch-el, .arch-card { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: var(--r); background: var(--surface); text-align: left; }
+.arch-el-main { display: flex; flex-direction: column; gap: 3px; text-align: left; width: 100%; border-radius: 4px; }
+.arch-el-main:focus-visible, .arch-entity-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.arch-el:hover { border-color: color-mix(in oklch, var(--border) 30%, var(--muted)); }
+.arch-el.on { border-color: var(--c-review); }
+.arch-card { cursor: default; border-color: var(--c-review); background: color-mix(in oklch, var(--c-review) 5%, var(--surface)); }
+.arch-card p { margin: 4px 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.arch-card a { color: var(--accent); cursor: pointer; }
+.arch-el-top { display: flex; align-items: center; gap: 6px; }
+.arch-el-name { font-size: 12.5px; font-weight: 600; }
+.arch-el-tech { font-size: 11px; }
+.arch-el-acts { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 3px; }
+.arch-kind { font: 600 9.5px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+.arch-kind.k-person { color: var(--role-violet); }
+.arch-kind.k-database, .arch-kind.k-queue { color: var(--role-teal); }
+.arch-kind.k-component { color: var(--c-ready); }
+.arch-ext { font: 500 9.5px var(--font-mono); color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+.arch-drill { margin-left: auto; font-size: 11.5px; font-weight: 500; color: var(--accent); text-decoration: none; }
+.arch-drill:hover { text-decoration: underline; }
+.arch-links { display: inline-flex; gap: 4px; }
+.arch-links .chip, .arch-elref, .adr-f { cursor: pointer; font-size: 11px; padding: 1px 8px 1px 7px; text-decoration: none; }
+.arch-links .chip:hover:not(.off), .arch-elref:not(.off):hover, .adr-f:hover { border-color: var(--accent); color: var(--fg); }
+.arch-links .chip.off { opacity: .45; cursor: default; }
+.arch-elref.off { cursor: default; opacity: .7; }
+.arch-x { margin-left: auto; color: var(--muted); font-size: 14px; line-height: 1; padding: 0 2px; }
+.arch-x:hover { color: var(--fg); }
+.arch-filter { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; margin-bottom: 4px; }
+.arch-filter .arch-x { margin-left: 2px; }
+.arch-filter a { color: var(--accent); cursor: pointer; }
+
+/* список слева (сценарии, решения) */
+.arch-list { display: flex; flex-direction: column; gap: 6px; max-height: calc(100vh - 230px); overflow: auto; }
+.arch-li { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: var(--r); background: var(--surface); text-align: left; font-size: 12px; }
+.arch-li b { font-size: 12.5px; font-weight: 600; }
+.arch-li:hover { border-color: color-mix(in oklch, var(--border) 30%, var(--muted)); }
+.arch-li.on { border-color: var(--accent); box-shadow: inset 2px 0 0 var(--accent); }
+.arch-li-top { display: flex; align-items: center; gap: 8px; font-size: 11.5px; }
+.arch-li-els { font-size: 11px; }
+.arch-main { min-width: 0; }
+.arch-parts { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 8px 0; font-size: 12px; }
+
+/* решения */
+.arch-adr-filter { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; }
+.adr-f { opacity: .6; }
+.adr-f.on { opacity: 1; border-color: color-mix(in oklch, var(--accent) 60%, var(--border)); color: var(--fg); }
+.adr-st { font: 600 9.5px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; padding: 1px 6px; border-radius: 4px;
+  color: var(--c-queue); background: color-mix(in oklch, currentColor 14%, transparent); }
+.adr-accepted { color: var(--c-done); }
+.adr-proposed { color: var(--c-review); }
+.adr-superseded { color: var(--c-queue); }
+.adr-deprecated { color: var(--c-fix); }
+.adr-rejected { color: var(--c-block); }
+.arch-decision .arch-li-top { margin-bottom: 4px; }
+.arch-file { margin-left: auto; font-size: 11px; color: var(--accent); }
+.arch-supersedes { font-size: 12px; margin: 4px 0; }
+.arch-decision a, .arch-warn a { color: var(--accent); cursor: pointer; }
+
+/* ERD */
+.arch-seg { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: var(--r); margin-bottom: 10px; flex-wrap: wrap; }
+.arch-seg button { padding: 4px 10px; border-radius: 4px; font-size: 12px; color: var(--muted); }
+.arch-seg button:hover { color: var(--fg); }
+.arch-seg button.on { background: var(--fg-soft); color: var(--fg); }
+.arch-store { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12.5px; margin-bottom: 10px; }
+.arch-store a { color: var(--accent); cursor: pointer; }
+.arch-entities { display: flex; flex-direction: column; gap: 12px; }
+.arch-entity { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
+.arch-entity.on { border-color: var(--c-review); }
+.arch-entity > header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; font-size: 12.5px; border-bottom: 1px solid var(--border); }
+.arch-entity-name { text-align: left; border-radius: 4px; }
+.arch-entity > header .arch-links { margin-left: auto; }
+.arch-entity .tbl td, .arch-entity .tbl th { padding-left: 12px; }
+.arch-keys { white-space: nowrap; }
+.arch-key { display: inline-block; font: 600 9.5px var(--font-mono); padding: 1px 5px; border-radius: 4px; margin-right: 4px;
+  background: color-mix(in oklch, currentColor 14%, transparent); }
+.arch-key.pk { color: var(--c-review); }
+.arch-key.fk { color: var(--accent); }
+.arch-key.uk { color: var(--role-teal); }
+.arch-rels { margin: 0; padding: 8px 12px 10px 28px; font-size: 12px; }
+
+/* проверка */
+.arch-sev { font: 600 9.5px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--c-review); }
+.arch-sev-error { color: var(--c-block); }
+
+/* Markdown (HLD, тела ADR) */
+.arch-doc { max-width: 980px; }
+.doc-md { font-size: 13px; line-height: 1.6; }
+.doc-md .md-h { font-weight: 600; margin: 18px 0 8px; }
+.doc-md .md-h1 { font-size: 17px; margin-top: 4px; }
+.doc-md .md-h2 { font-size: 14.5px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+.doc-md .md-h3, .doc-md .md-h4, .doc-md .md-h5, .doc-md .md-h6 { font-size: 13px; }
+.doc-md p { margin: 0 0 10px; }
+.doc-md ul, .doc-md ol { margin: 0 0 10px; padding-left: 22px; }
+.doc-md li { margin: 2px 0; }
+.doc-md code { font: 12px var(--font-mono); background: var(--fg-soft); border-radius: 4px; padding: 1px 4px; }
+.doc-md a { color: var(--accent); }
+.doc-md blockquote { margin: 0 0 10px; padding: 4px 12px; border-left: 2px solid var(--border); color: var(--muted); }
+.doc-md hr { border: 0; border-top: 1px solid var(--border); margin: 16px 0; }
+.doc-md .md-code { margin: 0 0 12px; padding: 10px 12px; background: var(--term-bg); border: 1px solid var(--border); border-radius: var(--r);
+  font: 12px/1.5 var(--font-mono); white-space: pre-wrap; word-break: break-word; overflow: auto; }
+.doc-md .md-table { overflow: auto; margin: 0 0 12px; }
+.doc-md .md-table .tbl td { vertical-align: top; }
+.doc-md .mmd-wrap { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); padding: 12px; margin: 0 0 12px; }
+
+/* дашборд Epic: правая колонка — команда и блок архитектуры */
+.epic-side { display: flex; flex-direction: column; min-height: 0; background: var(--surface); }
+.epic-side > .rail { flex: 1 1 0; min-height: 140px; }
+.arch-block { flex: none; display: flex; flex-direction: column; min-height: 0; max-height: 50%; border-top: 1px solid var(--border); }
+.arch-block .rail-head { white-space: nowrap; }
+.arch-block .arch-open { margin-left: auto; font-size: 11.5px; color: var(--accent); cursor: pointer; text-decoration: none; }
+.arch-block-body { overflow: auto; padding: 0 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.arch-thumb { border: 1px solid var(--border); border-radius: var(--r); background: var(--bg); padding: 6px; cursor: pointer; }
+.arch-thumb:hover { border-color: var(--accent); }
+.arch-thumb .mmd-loading { position: static; padding: 18px 0; }
+.arch-block-note { font-size: 11.5px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* системный Epic и задача описания на графе */
+.arch-epic-chip { border-color: color-mix(in oklch, var(--role-violet) 55%, var(--border)); }
+.arch-epic-chip .n { color: var(--role-violet); }
+.node[data-kind="architecture"] { border-style: dashed; border-color: color-mix(in oklch, var(--role-violet) 60%, var(--border));
+  background: color-mix(in oklch, var(--role-violet) 7%, var(--surface)); }
+.node .n-kind { margin-left: 6px; font: 600 9px var(--font-mono); letter-spacing: .05em; text-transform: uppercase; color: var(--role-violet); }
+
+@media (max-width: 980px) {
+  .arch-split, .arch-split-list { grid-template-columns: minmax(0, 1fr); }
+  .arch-side, .arch-list { max-height: none; }
+}
+
+/* Длинные имена без пробелов переносятся, а не режутся краем колонки. */
+.arch-el-name, .arch-li b, .arch-card b, .arch-entity-name b, .arch-task-head b { overflow-wrap: anywhere; }
+.arch-error-text { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; }
+.arch-error-text a { color: var(--accent); }
+.view-crash { max-width: 640px; padding: 16px 18px; border: 1px solid color-mix(in oklch, var(--c-block) 45%, transparent);
+  border-radius: var(--r-lg); background: color-mix(in oklch, var(--c-block) 6%, transparent); }
+.view-crash b { font-size: 14px; }
+.view-crash p { margin: 8px 0 12px; color: var(--muted); line-height: 1.5; }
+.arch-outside-msg { margin-top: 3px; color: var(--muted); }
+.arch-hint-line { margin-top: 4px; }

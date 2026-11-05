@@ -6,6 +6,7 @@ import { ClaimControl, fmtCost, fmtDate, fmtDuration, fmtTokens, StBadge } from 
 import { Performer } from '../components/RoleChip'
 import { TeamPanel } from '../components/TeamPanel'
 import { EpicWaiting, EpicWhy } from '../components/EpicWhy'
+import { ArchitectureBlock } from '../components/ArchitectureBlock'
 import { Button, Field, FormActions, FormNote, NumberInput, Select, TextArea, TextInput, errText, useBusy } from '../components/form'
 import { useStore } from '../store'
 
@@ -58,6 +59,9 @@ export function EpicDashboard({ epicId, taskId, admin = false, login }: { epicId
   if (!epic) return <div className="page">{err || 'Загрузка…'}</div>
 
   const total = tasks.reduce((s, t) => s + t.Estimate, 0) || 1
+  // Системный Epic описания архитектуры (add-architecture-c4): задачи в
+  // него не добавляются и он не декомпозируется.
+  const isArch = epic.Kind === 'architecture'
   const epicAtt = attention.filter(a => tasks.some(t => t.ID === a.TaskID))
 
   const usageByTask = new Map<string, UsageRow>((epic.usage ?? []).map(u => [u.key, u]))
@@ -91,8 +95,9 @@ export function EpicDashboard({ epicId, taskId, admin = false, login }: { epicId
           <span className="epic-id">EPIC</span>
           <h1>{epic.Title}</h1>
           <StBadge s={epic.Status} />
+          {isArch && <span className="chip arch-epic-chip" title="Системный Epic: задача описания архитектуры проекта, без плана и декомпозиции"><span className="n">архитектура</span></span>}
           <div className="epic-actions">
-            {epic.Status === 'planned' && tasks.length === 0 &&
+            {epic.Status === 'planned' && tasks.length === 0 && !isArch &&
               <Button busy={busy} busyLabel="декомпозиция…" onClick={act(async () => {
                 setPlanning(true)
                 try { await api.decompose(epic.ID) } finally { setPlanning(false) }
@@ -102,7 +107,7 @@ export function EpicDashboard({ epicId, taskId, admin = false, login }: { epicId
             {epic.Status === 'paused' && <Button variant="primary" busy={busy} onClick={act(() => api.epicAction(epic.ID, 'resume'))}>Возобновить</Button>}
             {['planned', 'paused', 'done'].includes(epic.Status) &&
               <Button busy={busy} onClick={act(() => api.epicAction(epic.ID, 'archive'))}>Архивировать</Button>}
-            {!['done', 'archived'].includes(epic.Status) &&
+            {!['done', 'archived'].includes(epic.Status) && !isArch &&
               <Button onClick={() => setAdding(true)}>Добавить задачу</Button>}
           </div>
         </div>
@@ -235,7 +240,10 @@ export function EpicDashboard({ epicId, taskId, admin = false, login }: { epicId
             )}
         </div>
 
-        <TeamPanel epicId={epic.ID} tasks={tasks} planning={planning} admin={admin} />
+        <div className="epic-side">
+          <TeamPanel epicId={epic.ID} tasks={tasks} planning={planning} admin={admin} />
+          <ArchitectureBlock projectId={epic.ProjectID} />
+        </div>
       </div>
 
       {taskId && <TaskDrawer taskId={taskId} onClose={closeTask} onChanged={refresh}

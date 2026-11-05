@@ -34,6 +34,27 @@ export interface Task {
   // на runner и переход в done; старый бэкенд их не отдаёт.
   StartedAt?: string | null
   DoneAt?: string | null
+  // Вид задачи (api-contract add-architecture-c4): work — задача плана,
+  // architecture — описание архитектуры проекта. Старый бэкенд поле не
+  // отдаёт, тогда задача обычная.
+  Kind?: 'work' | 'architecture' | string
+  // Причина провала failed-задачи (GET /tasks/{id}); null у остальных и
+  // в списках задач.
+  failure?: TaskFailure | null
+}
+
+// Причина провала (api-contract add-architecture-c4). У задачи описания
+// reason — architecture_outside_docs (PR меняет файлы вне
+// docs/architecture) или architecture_files_truncated (список файлов PR
+// неполный, границу проверить нельзя).
+export interface TaskFailure {
+  reason: 'architecture_outside_docs' | 'architecture_files_truncated' | string
+  message?: string
+  // Не больше 50 путей вне docs/architecture.
+  files?: string[] | null
+  files_total?: number | null
+  // Внешний merge на хостинге уже прошёл.
+  merged?: boolean | null
 }
 
 export interface Epic {
@@ -55,13 +76,19 @@ export interface Epic {
   DependsOn?: string[] | null
   WaitingFor?: EpicRef[] | null
   Discovery?: EpicDiscovery | null
-  // Вид Epic'а (api-contract add-sdlc-cycle): maintenance — системный Epic
-  // «Сопровождение» с задачами-багами, в зависимостях не участвует.
+  // Вид Epic'а (api-contract add-sdlc-cycle, add-architecture-c4):
+  // maintenance — системный Epic «Сопровождение» с задачами-багами, в
+  // зависимостях не участвует, architecture — системный Epic задачи
+  // описания архитектуры, в нём нет плана и декомпозиции.
   Kind?: 'work' | 'architecture' | 'explore' | 'maintenance' | string
 }
 
 // isMaintenance — системный Epic «Сопровождение» (add-sdlc-cycle).
 export const isMaintenance = (e: Pick<Epic, 'Kind'>) => e.Kind === 'maintenance'
+// isSystemEpic — системный Epic («Сопровождение», «Архитектура проекта»):
+// живёт вне плана и в зависимостях не участвует. Старый бэкенд вид не
+// отдаёт, тогда Epic обычный.
+export const isSystemEpic = (e: Pick<Epic, 'Kind'>) => !!e.Kind && e.Kind !== 'work'
 
 export type Priority = 'must' | 'should' | 'could'
 export interface EpicRef { id: string; title: string; status: Epic['Status'] | string }
@@ -256,6 +283,8 @@ export interface Presets {
   // Плановый бюджет месяца в долларах (add-project-lead-view): только
   // для прогноза, задаётся в политике проекта.
   monthly_budget_usd?: number | null
+  // Автоописание архитектуры (add-architecture-c4): по умолчанию true.
+  auto_describe_architecture?: boolean
 }
 
 // Переопределения проекта: null — наследуется от установки;
@@ -280,6 +309,7 @@ export interface Overrides {
   // Плановый бюджет месяца, $ (add-project-lead-view): больше 0 или null —
   // не задан. У установки его нет.
   monthly_budget_usd?: number | null
+  auto_describe_architecture?: boolean | null
 }
 export interface RoleModelRef { agent: string; connection_id: string; model: string }
 
@@ -769,6 +799,9 @@ export interface EpicOverview {
   spend: Amount
   token_budget: number | null
   budget_forecast_tokens: number | null
+  // Системный Epic (api-contract add-architecture-c4): в число активных и в
+  // прогноз не входит. Старый бэкенд поле не отдаёт.
+  system?: boolean
 }
 export type DecisionKind = 'plan_approval' | 'escalation' | 'merge_confirmation' | 'my_step'
 export interface Decision {
@@ -871,6 +904,11 @@ export function errCode(e: unknown): string {
 }
 
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
+  return (await reqResp<T>(method, path, body)).data
+}
+
+// Ответ вместе с HTTP-ответом: нужен, когда важны заголовки (Date).
+async function reqResp<T>(method: string, path: string, body?: unknown): Promise<{ data: T; resp: Response }> {
   // Аутентификация — httpOnly-cookie сессии, браузер шлёт её сам (same-origin).
   const resp = await fetch(`/api/v1${path}`, {
     method,
@@ -885,7 +923,7 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
     const msg = (data as { error?: { message?: string } })?.error?.message || resp.statusText || `HTTP ${resp.status}`
     throw new ApiError(msg, apiCode(data), resp.status, data)
   }
-  return data as T
+  return { data: data as T, resp }
 }
 
 // Multipart-запрос (загрузка интервью файлом): Content-Type с границей
@@ -899,6 +937,13 @@ async function reqForm<T>(path: string, form: FormData): Promise<T> {
     throw new ApiError(msg, apiCode(data), resp.status, data)
   }
   return data as T
+}
+
+// Время сервера из заголовка Date (точность до секунды); null, если
+// заголовка нет.
+export function serverTimeOf(resp: Response): number | null {
+  const d = Date.parse(resp.headers.get('Date') ?? '')
+  return Number.isFinite(d) ? d : null
 }
 
 // Транскрипт приходит как text/plain, а не JSON — отдельный путь без
@@ -1144,6 +1189,23 @@ export const api = {
   resolveIncident: (id: string, comment: string) => req<Incident>('POST', `/incidents/${id}/resolve`, { comment }),
   rebugIncident: (id: string) => req<Incident>('POST', `/incidents/${id}/bug`),
   monitor: (envId: string) => req<MonitorState>('GET', `/environments/${envId}/monitor`),
+
+  // Архитектура проекта (api-contract add-architecture-c4): снимок,
+  // постановка задачи описания и обновление снимка по запросу.
+  architecture: (projectId: string) =>
+    req<ProjectArchitecture>('GET', `/projects/${projectId}/architecture`),
+  // Снимок и время сервера на момент ответа: по нему отсекается реплей
+  // истории потока без сравнения с часами браузера.
+  architectureAt: async (projectId: string) => {
+    const { data, resp } = await reqResp<ProjectArchitecture>('GET', `/projects/${projectId}/architecture`)
+    return { data, serverTime: serverTimeOf(resp) }
+  },
+  describeArchitecture: (projectId: string) =>
+    req<{ epic_id: string; task_id: string }>('POST', `/projects/${projectId}/architecture/describe`),
+  // 202 pending — чтение запущено, придёт project.architecture_updated;
+  // 200 fresh — чтение пропущено (снимок свежий), события не будет.
+  refreshArchitecture: (projectId: string) =>
+    req<{ status: 'pending' | 'fresh' | string; retry_after_s?: number }>('POST', `/projects/${projectId}/architecture/refresh`),
 }
 
 // ─── цикл разработки (api-contract add-sdlc-cycle) ──────────────────────
@@ -1222,6 +1284,103 @@ export interface MonitorState {
   last_at?: string; next_at?: string
   consecutive_fail: number; consecutive_ok: number
   runs: MonitorRun[]
+}
+
+// ─── архитектура проекта (api-contract add-architecture-c4, add-architecture-erd-sequence-adr) ──
+
+export type ArchStatus = 'pending' | 'absent' | 'ok' | 'invalid' | 'error'
+// Схема: заголовок и исходный текст Mermaid без ограждения блока кода.
+export interface ArchView { title: string; mermaid: string }
+export type C4Kind = 'person' | 'system' | 'container' | 'database' | 'queue' | 'component'
+export interface C4Element {
+  id: string; kind: C4Kind | string; name: string; description: string; technology: string
+  external: boolean
+  // Система у контейнера, контейнер у компонента, null у людей и систем.
+  parent: string | null
+  // Псевдоним элемента на схемах Mermaid.
+  alias?: string
+}
+export interface ArchDefect {
+  severity: 'error' | 'warning' | string
+  rule: string; file: string; location?: string; message: string
+}
+export interface ArchPrinciple { id: string; title: string; rationale: string }
+export interface ErdAttribute {
+  name: string; type: string; pk: boolean
+  fk: { to: string; attribute: string } | null
+  nullable: boolean; unique: boolean; description: string
+}
+export interface ErdEntity {
+  id: string; name: string
+  // Хранилища (id элементов C4 вида database), где лежит сущность.
+  stores: string[]
+  attributes: ErdAttribute[]
+  relations: { to: string; cardinality: string; label: string; derived: boolean }[]
+}
+export interface Erd {
+  all: ArchView | null
+  stores: { store_id: string; title: string; view: ArchView }[]
+  entities: ErdEntity[]
+}
+export interface ScenarioParticipant { id: string; name: string; alias: string; kind: 'person' | 'participant' | string }
+export interface ScenarioView {
+  id: string; title: string; description: string
+  process: string | null
+  participants: ScenarioParticipant[]
+  view: ArchView
+}
+export type DecisionStatus = 'proposed' | 'accepted' | 'superseded' | 'deprecated' | 'rejected'
+export interface Decision {
+  number: number; slug: string; title: string; status: DecisionStatus | string; date: string
+  elements: string[]; supersedes: number[]; superseded_by: number | null
+  // Тело в Markdown (MADR) и путь файла от корня репозитория.
+  body: string; path: string
+}
+export interface ElementLinks { decisions: number[]; scenarios: string[] }
+export interface ArchitectureData {
+  system: { name: string; description: string }
+  principles: ArchPrinciple[]
+  elements: C4Element[]
+  views: {
+    context: ArchView
+    containers: { system_id: string; view: ArchView }[]
+    components: { container_id: string; view: ArchView }[]
+    deployment: ArchView | null
+  }
+  hld: string
+  dsl: string
+  erd: Erd
+  scenarios: ScenarioView[]
+  decisions: Decision[]
+  // Элементы, упомянутые в решениях и сценариях: id → номера и id.
+  links: Record<string, ElementLinks>
+}
+// Задача описания: незавершённая, а без неё последняя неудачная.
+// role и runner — null, когда шаг никто не ведёт.
+export interface ArchitectureTask {
+  epic_id: string; task_id: string; task_num: number; status: TaskStatus | string
+  step_id: string; role: string | null; runner: string | null
+  trigger: 'connect' | 'epic_start' | 'manual' | string
+  // Причина отказа упавшей задачи; старый бэкенд не отдаёт.
+  failure?: TaskFailure | null
+}
+export interface ProjectArchitecture {
+  project_id: string
+  status: ArchStatus | string
+  sha: string | null
+  read_at: string | null
+  error: string | null
+  // Вид ошибки при status error: host — сбой хостинга, limit — превышены
+  // лимиты чтения, data — описание не разобрано, no_credentials — у
+  // проекта нет своих учётных данных. Старый бэкенд поле не отдаёт.
+  error_kind?: 'host' | 'limit' | 'data' | 'no_credentials' | string | null
+  defects: ArchDefect[]
+  // Каталог описания на хостинге.
+  source: { branch: string; path: string; url: string }
+  current: ArchitectureData | null
+  // Последняя корректная версия при invalid и error.
+  last_valid: { sha: string; read_at: string | null; data: ArchitectureData } | null
+  task: ArchitectureTask | null
 }
 
 // ─── эксплуатация установки ─────────────────────────────────────────────
@@ -1327,7 +1486,11 @@ export function subscribe(projectId: string, handlers: {
     // Цикл разработки (add-sdlc-cycle): релизы, инциденты, наблюдение и
     // задания Релиз-инженера и Инженера сопровождения.
     'release.created', 'release.notes_ready', 'incident.opened', 'incident.updated', 'incident.resolved',
-    'monitor.state', 'ops.job']
+    'monitor.state', 'ops.job',
+    // Архитектура проекта (add-architecture-c4): новый снимок и постановка
+    // задачи описания. Событие несёт только SHA и статус, снимок
+    // перечитывается запросом.
+    'project.architecture_updated', 'architecture.describe_started']
   for (const t of evTypes) {
     es.addEventListener(t, (m) => handlers.onEvent(JSON.parse((m as MessageEvent).data)))
   }

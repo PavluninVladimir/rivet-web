@@ -98,8 +98,12 @@ export function depOptions(backlog: BacklogEpic[], key: string, projectEpics: Pi
   const self = backlog.find(e => e.key === key)
   const out = backlog.filter(e => e.key !== key).map(e => ({ value: e.key, label: `${e.key} · ${e.title || 'без названия'}` }))
   for (const p of projectEpics) {
-    // Epic «Сопровождение» (add-sdlc-cycle) в зависимостях не участвует.
-    if (p.Status === 'archived' || p.Kind === 'maintenance' || linked.has(p.ID) || p.ID === self?.existing_epic) continue
+    // Системные Epic'и («Сопровождение», «Архитектура проекта») в
+    // зависимостях не участвуют. Проверка та же, что isSystemEpic в
+    // api/client: модуль импортирует оттуда только типы, чтобы юнит-тест
+    // шёл без браузера.
+    const system = !!p.Kind && p.Kind !== 'work'
+    if (p.Status === 'archived' || system || linked.has(p.ID) || p.ID === self?.existing_epic) continue
     out.push({ value: p.ID, label: `Epic проекта · ${p.Title}` })
   }
   return out

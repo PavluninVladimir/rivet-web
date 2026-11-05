@@ -210,7 +210,10 @@ function EpicCard({ e, isOwner, onChanged, openEpic, openTask }: {
       <div className="top">
         <LinkButton className="title" onClick={() => openEpic(e.id)} title="дашборд Epic’а">{e.title}</LinkButton>
         <StBadge s={e.status} />
-        <span className="ov-risk">{risk.label}</span>
+        {/* Системный Epic живёт вне плана: в графике он не бывает, риск
+            виден, только когда есть причина. */}
+        {e.system && <span className="chip sm" title="системный Epic: не входит в число активных и в прогноз">системный</span>}
+        {(!e.system || (e.risk.reasons ?? []).length > 0) && <span className="ov-risk">{risk.label}</span>}
       </div>
       <div className="row" style={{ gap: 8, alignItems: 'center' }}>
         <span className="mono" style={{ fontWeight: 600 }}>{pct}%</span>
@@ -229,6 +232,7 @@ function EpicCard({ e, isOwner, onChanged, openEpic, openTask }: {
       </div>
       <div className="meta">
         {e.status === 'done' ? <span>завершён</span>
+          : e.system ? <span>прогноз не считается: системный Epic</span>
           : f.available && f.at
             ? <span title={`осталось ${fmtNum(f.remaining_units)} ед.`}>
                 прогноз: <b>{fmtDate(f.at)}</b>
@@ -240,7 +244,7 @@ function EpicCard({ e, isOwner, onChanged, openEpic, openTask }: {
         {edit === null
           ? <>
               <span>срок: <b>{e.due_at ? fmtDate(e.due_at) : 'не задан'}</b></span>
-              {isOwner && e.status !== 'done' && (
+              {isOwner && e.status !== 'done' && !e.system && (
                 <Button variant="quiet" size="sm" aria-label="изменить целевую дату" onClick={() => setEdit(toLocalInput(e.due_at))}>✎</Button>
               )}
             </>

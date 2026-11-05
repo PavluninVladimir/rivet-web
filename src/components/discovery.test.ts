@@ -54,15 +54,17 @@ test('варианты зависимостей: бэклог и Epic’и пр�
     { ID: 'x2', Title: 'Связанный', Status: 'planned' as const },
     { ID: 'x3', Title: 'Старый', Status: 'archived' as const },
     { ID: 'x4', Title: 'Сопровождение', Status: 'running' as const, Kind: 'maintenance' },
+    { ID: 'x5', Title: 'Архитектура проекта', Status: 'running' as const, Kind: 'architecture' },
+    { ID: 'x6', Title: 'Обычный', Status: 'planned' as const, Kind: 'work' },
   ]
-  // Сопровождение (add-sdlc-cycle) в варианты не попадает.
+  // Системные Epic'и (Сопровождение, Архитектура проекта) в варианты не попадают.
   const opts = depOptions(backlog, 'e2', project).map(o => o.value)
-  assert.deepEqual(opts, ['e1', 'x1'])
+  assert.deepEqual(opts, ['e1', 'x1', 'x6'])
   // Выбранный архивный Epic не теряется: вариант с пометкой.
   const all = withMissing(depOptions(backlog, 'e2', project), ['x3', 'gone'], project)
-  assert.deepEqual(all.map(o => o.value), ['e1', 'x1', 'x3', 'gone'])
-  assert.match(all[2].label, /в архиве/)
-  assert.match(all[3].label, /не найден/)
+  assert.deepEqual(all.map(o => o.value), ['e1', 'x1', 'x6', 'x3', 'gone'])
+  assert.match(all[3].label, /в архиве/)
+  assert.match(all[4].label, /не найден/)
 })
 
 test('проверка полей строки как на сервере', () => {

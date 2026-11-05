@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, stColor, type Event, type OverlapPayload, type Session, type StepPayload, type Task, type StepRun } from '../api/client'
+import { api, errCode, stColor, type Event, type OverlapPayload, type Session, type StepPayload, type Task, type StepRun } from '../api/client'
+import { MERGE_ERROR_TEXT, outsideDocsEvent, outsideDocsFailure, outsideDocsOf } from './archModel'
+import { OutsideDocsNote, rejectTitle } from './ArchitectureParts'
 
 // stepOf валидирует payload session.step: он runner-controlled, битые типы
 // не должны ронять рендер деталки.
@@ -191,7 +193,13 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
   const act = (fn: () => Promise<unknown>) => async () => {
     if (busyRef.current) return
     busyRef.current = true; setErr(''); setBusy(true)
-    try { await fn(); onChanged(); refresh() } catch (e) { setErr(String(e)) } finally { busyRef.current = false; setBusy(false) }
+    try { await fn(); onChanged(); refresh() } catch (e) {
+      // Отказы merge задачи описания — понятным текстом; задача после них
+      // меняет статус, поэтому деталка перечитывается.
+      const known = MERGE_ERROR_TEXT[errCode(e)]
+      setErr(known ?? String(e))
+      if (known) { onChanged(); refresh() }
+    } finally { busyRef.current = false; setBusy(false) }
   }
 
   if (!task) return null
@@ -206,6 +214,14 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
     setEditing(true)
   }
   const deferred = task.Status === 'review' ? mergeDeferred(timeline) : null
+  // Задача описания архитектуры: PR меняет файлы вне docs/architecture,
+  // merge отклонён (или внешний merge уже прошёл) — add-architecture-c4.
+  // Причина — из поля failure задачи; старый бэкенд его не отдаёт, тогда
+  // поиск по событиям (видны только первые 200 событий задачи).
+  const outside = task.Kind === 'architecture' && task.Status === 'failed'
+    ? outsideDocsFailure(task.failure) ?? outsideDocsOf(timeline) : null
+  // Причина провала прочих задач: сообщение из failure.
+  const failMsg = task.Status === 'failed' && !outside && task.failure?.message ? task.failure.message : ''
 
   return (
     <aside id="drawer">
@@ -300,6 +316,21 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
               {' · политика '}<span className="mono">{shortHash(String(deferred.Payload?.policy_version ?? ''))}</span>
             </p>
             {task.PRURL && <Button variant="primary" size="sm" busy={busy} onClick={act(() => api.merge(task.ID))}>Подтвердить merge</Button>}
+          </div>
+        )}
+        {outside && (
+          <div className="dw-sec" data-outside-docs>
+            <h3>{outside.merged ? 'Внешний merge задачи описания' : 'Merge отклонён'}</h3>
+            <OutsideDocsNote o={outside} />
+            <p className="muted" style={{ fontSize: 12, margin: '6px 0 0' }}>
+              Задача описания меняет только docs/architecture. Поставьте описание заново в разделе «Архитектура» или верните задачу агенту сессией доработки.
+            </p>
+          </div>
+        )}
+        {failMsg && (
+          <div className="dw-sec" data-failure>
+            <h3>Причина провала</h3>
+            <p style={{ fontSize: 12.5, margin: 0 }}>{failMsg}</p>
           </div>
         )}
         {['blocked', 'failed', 'review'].includes(task.Status) && (
@@ -493,6 +524,17 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
               const bad = e.Type.includes('denied') || e.Type === 'task.merge_failed'
                 || step?.ok === false || e.Text.includes('заблокирована')
               const wait = waitTail(e)
+              const od = outsideDocsEvent(e)
+              if (od) {
+                return (
+                  <div key={e.ID} className="tl-row bad">
+                    <span className="t">{timeShort(e.TS)}</span>
+                    <span>{chips}{rejectTitle(od)}
+                      {od.files.length > 0 && <span className="mono muted"> · {od.files.slice(0, 5).join(', ')}{od.total > 5 ? ` +${od.total - 5}` : ''}</span>}
+                    </span>
+                  </div>
+                )
+              }
               return (
                 <div key={e.ID} className={'tl-row' + (bad ? ' bad' : '')
                     + (e.Type === 'task.review_passed' || wait.warn ? ' warn' : '')}>
