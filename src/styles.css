@@ -75,6 +75,31 @@ h1,h2,h3,h4 { margin: 0; }
 .nav-item .count.warn { color: var(--c-block); }
 .side-foot { margin-top: auto; padding: 10px 14px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted); }
 .side-foot .line { display: flex; align-items: center; gap: 7px; }
+.side-user { color: inherit; text-decoration: none; border-radius: 3px; }
+.side-user:hover { color: var(--fg); }
+/* Блок проекта и группа установки (add-project-navigation). */
+.side-project { display: flex; flex-direction: column; gap: 6px; padding: 2px 8px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
+.side-back { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: var(--r);
+  color: var(--muted); font-size: 12px; text-decoration: none; }
+.side-back:hover { color: var(--fg); background: var(--fg-soft); }
+.side-project-select { width: 100%; font-weight: 600; }
+.side-project-name { padding: 2px 8px; font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sidebar nav.side-install { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.side-group { padding: 0 8px 4px; font: 500 9.5px var(--font-mono); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.side-install .nav-item { padding: 4px 8px; font-size: 12px; }
+.count { font: 500 10px var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.count.warn { color: var(--c-block); }
+.side-back .count { margin-left: auto; }
+.nav-item:focus-visible, .side-back:focus-visible, .side-user:focus-visible, .crumb a:focus-visible, .proj-link:focus-visible {
+  outline: none; box-shadow: var(--f-ring); border-radius: var(--r); }
+.proj-link { color: inherit; text-decoration: none; }
+.proj-link:hover { text-decoration: underline; }
+.nav-notice { display: flex; align-items: center; gap: 10px; margin: 12px 18px 0; padding: 8px 12px; border-radius: var(--r);
+  border: 1px solid color-mix(in oklch, var(--c-block) 45%, var(--border)); background: color-mix(in oklch, var(--c-block) 10%, transparent); }
+.nav-notice span { flex: 1; }
+/* Специфичнее .btn: кнопка «Меню» есть только на узком экране. */
+#topbar .menu-btn { display: none; }
+.side-backdrop { display: none; }
 .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .dot.ok { background: var(--c-done); }
 .dot.bad { background: var(--c-block); }
@@ -89,12 +114,33 @@ h1,h2,h3,h4 { margin: 0; }
 .crumb .sep { opacity: .45; }
 .crumb b { color: var(--fg); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .crumb a { color: var(--muted); cursor: pointer; }
+.crumb { overflow: hidden; }
+.crumb a { white-space: nowrap; text-decoration: none; }
+.crumb a:hover { color: var(--fg); }
+/* Узкий экран (спека web «Доступность навигации»): панель выезжает по
+   кнопке «Меню», закрытая панель скрыта и не попадает в порядок Tab. */
+@media (max-width: 720px) {
+  #app { grid-template-columns: 1fr; }
+  #sidebar { position: fixed; top: 0; bottom: 0; left: 0; width: min(260px, 85vw); z-index: 45;
+    transform: translateX(-100%); visibility: hidden; box-shadow: var(--shadow);
+    transition: transform .18s ease, visibility 0s linear .18s; }
+  #sidebar.open { transform: none; visibility: visible; transition: transform .18s ease; }
+  .side-backdrop { display: block; position: fixed; inset: 0; z-index: 44; background: oklch(0% 0 0 / .45); }
+  #topbar .menu-btn { display: inline-flex; flex: none; }
+  #topbar { padding: 0 10px; gap: 8px; }
+  .kbtn-text { display: none; }
+}
+@media (max-width: 720px) and (prefers-reduced-motion: reduce) {
+  #sidebar, #sidebar.open { transition: none; }
+}
 .kbtn { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--muted);
   border: 1px solid var(--border); border-radius: var(--r); padding: 4px 9px; font-size: 12px; }
 .kbtn:hover { color: var(--fg); }
 .kbd { font: 500 10px var(--font-mono); border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 1px 4px; color: var(--muted); }
 
 #viewport { flex: 1; min-height: 0; position: relative; overflow: auto; }
+/* Фокус после выбора пункта в меню узкого экрана: цель, а не элемент управления. */
+#viewport:focus { outline: none; }
 .view-epic { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
 
 /* buttons / statuses / chips */

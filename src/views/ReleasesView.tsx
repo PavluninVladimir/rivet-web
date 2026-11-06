@@ -55,7 +55,7 @@ export function ReleasesView({ id, login }: { id?: string; login: string }) {
 }
 
 function ReleaseCard({ id, login, onChanged }: { id: string; login: string; onChanged: () => void }) {
-  const { eventTick, nav } = useStore()
+  const { eventTick, nav, projectId } = useStore()
   const [r, setR] = useState<Release | null>(null)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -68,6 +68,13 @@ function ReleaseCard({ id, login, onChanged }: { id: string; login: string; onCh
       .catch(e => { if (n === seq.current) setErr(errText(e)) })
   }, [id, eventTick])
   const owner = useIsOwner(r?.project_id ?? null, login)
+  // Релиз другого проекта по адресу этого: адрес исправляется на проект
+  // релиза без записи в истории (спека web «Проект в адресе экранов проекта»).
+  useEffect(() => {
+    if (r?.id === id && r.project_id && projectId && r.project_id !== projectId) {
+      nav({ view: 'releases', pid: r.project_id, id }, { replace: true })
+    }
+  }, [r, id, projectId, nav])
   const regen = async () => {
     setBusy(true); setErr('')
     try { setR(await api.regenerateNotes(id)); onChanged() }

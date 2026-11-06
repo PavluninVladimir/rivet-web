@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { ApiError, api, type CycleAgent, type CycleArtifact, type CycleItem, type CyclePeriod, type CyclePhase, type CyclePhaseId, type CycleView as View, type Environment, type Event, type Incident, type ModelChoice, type Release, type TeamAgent } from '../api/client'
 import { BugRef } from '../components/BugRef'
-import { useStore, type Route } from '../store'
+import { useStore, type NavTarget, type Route } from '../store'
+import { useMedia } from '../components/useMedia'
 import { BACK_ARCS, CENTER, PHASES, PHASE_COLOR, PHASE_TITLE, RADIUS, VIEW, backLabelPoint, backPath, eventPhase, forwardArc, isCycleEvent, liveTransitions, nodePercent, safeExternal, travelPath } from '../components/cycleGeometry'
 import { modelOptions, saveAgentModel } from '../components/TeamPanel'
 import { roleColorVar, tripleKey } from '../components/roleLabels'
@@ -18,18 +19,6 @@ const PERIODS: { id: CyclePeriod; label: string }[] = [
 ]
 const REFETCH_MS = 3000
 const MOVE_MS = 600
-
-function useMedia(query: string): boolean {
-  const [on, setOn] = useState(() => typeof matchMedia === 'function' && matchMedia(query).matches)
-  useEffect(() => {
-    if (typeof matchMedia !== 'function') return
-    const m = matchMedia(query)
-    const fn = () => setOn(m.matches)
-    m.addEventListener('change', fn)
-    return () => m.removeEventListener('change', fn)
-  }, [query])
-  return on
-}
 
 const initials = (name: string) => name.trim().slice(0, 1).toUpperCase() || '?'
 
@@ -72,7 +61,7 @@ export function CycleView({ projectId, phase, period = '7d', admin }: {
   const reduced = useMedia('(prefers-reduced-motion: reduce)')
   const narrow = useMedia('(max-width: 900px)')
   const go = useCallback((patch: Partial<Extract<Route, { view: 'cycle' }>>, replace = false) =>
-    nav({ view: 'cycle', id: projectId, phase, period, ...patch }, { replace }), [nav, projectId, phase, period])
+    nav({ view: 'cycle', pid: projectId, phase, period, ...patch }, { replace }), [nav, projectId, phase, period])
 
   // Перечитывание агрегата не чаще раза в 3 секунды после событий проекта
   // и сразу после переподключения потока. Смена периода снимает
@@ -382,7 +371,7 @@ function PhasePanel({ p, projectId, admin, extra, onClose }: {
     // (add-product-discovery).
     else if (it.kind === 'analysis') nav({ view: 'discovery', runId: it.id })
     else if (it.kind === 'material') nav({ view: 'discovery' })
-    else if (it.kind === 'deployment' || it.kind === 'environment') nav({ view: 'project-settings', id: projectId, tab: 'environments' })
+    else if (it.kind === 'deployment' || it.kind === 'environment') nav({ view: 'project-settings', pid: projectId, tab: 'environments' })
   }
   const openArt = (a: CycleArtifact) => {
     const ext = safeExternal(a.ref.url)
@@ -392,14 +381,14 @@ function PhasePanel({ p, projectId, admin, extra, onClose }: {
     else if (a.ref.view === 'release') nav({ view: 'releases', id: a.ref.id })
     else if (a.ref.view === 'incident') nav({ view: 'incidents', id: a.ref.id })
   }
-  const links: { label: string; to: Route }[] = []
+  const links: { label: string; to: NavTarget }[] = []
   if (p.id === 'discovery') links.push({ label: 'Исследование', to: { view: 'discovery' } })
   if (p.id === 'planning' || p.id === 'development' || p.id === 'testing' || p.id === 'review') {
     links.push({ label: 'Epic’и проекта', to: { view: 'epics' } })
     if (overviewAvailable) links.push({ label: 'Обзор', to: { view: 'overview', period: '7d' } })
   }
-  if (p.id === 'release') links.push({ label: 'Релизы', to: { view: 'releases' } }, { label: 'Окружения', to: { view: 'project-settings', id: projectId, tab: 'environments' } })
-  if (p.id === 'operations') links.push({ label: 'Инциденты', to: { view: 'incidents' } }, { label: 'Наблюдение окружений', to: { view: 'project-settings', id: projectId, tab: 'environments' } })
+  if (p.id === 'release') links.push({ label: 'Релизы', to: { view: 'releases' } }, { label: 'Окружения', to: { view: 'project-settings', pid: projectId, tab: 'environments' } })
+  if (p.id === 'operations') links.push({ label: 'Инциденты', to: { view: 'incidents' } }, { label: 'Наблюдение окружений', to: { view: 'project-settings', pid: projectId, tab: 'environments' } })
   const c = p.counters
   return (
     <aside className="cycle-panel" style={{ ['--ph' as string]: PHASE_COLOR[p.id] }}

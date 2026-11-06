@@ -107,7 +107,7 @@ export function OverviewView({ period, user }: { period: OverviewPeriod; user: U
     const t = decisionTarget(d)
     if (!t) return
     if (t.view === 'environments' || t.view === 'policies') {
-      if (projectId) nav({ view: 'project-settings', id: projectId, tab: t.view })
+      if (projectId) nav({ view: 'project-settings', pid: projectId, tab: t.view })
     } else nav(t)
   }
 
@@ -160,7 +160,7 @@ export function OverviewView({ period, user }: { period: OverviewPeriod; user: U
         <div className="two-col">
           <TeamLoadPanel data={shown} />
           <MoneyPanel data={shown} isOwner={isOwner}
-            openPolicy={() => nav({ view: 'project-settings', id: projectId, tab: 'policies' })} />
+            openPolicy={() => nav({ view: 'project-settings', pid: projectId, tab: 'policies' })} />
         </div>
 
         <DeliveryPanel data={shown} openTask={openTask} openEpic={id => nav({ view: 'epic', id })} />

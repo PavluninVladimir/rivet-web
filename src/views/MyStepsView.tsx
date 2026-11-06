@@ -76,7 +76,7 @@ export function MyStepsView() {
               <span className="att-reason">{it.step.kind.toUpperCase()} · {it.step.title}</span>
               <span className="mono muted" title="ждёт с">{timeShort(it.created_at)}</span>
             </div>
-            <a className="att-task" onClick={() => nav({ view: 'epic', id: it.epic.id, taskId: it.task.id })}>
+            <a className="att-task" onClick={() => nav({ view: 'epic', pid: it.project.id, id: it.epic.id, taskId: it.task.id })}>
               task-{it.task.num}: {it.task.title}
             </a>
             <div className="muted" style={{ fontSize: 12 }}>{it.project.title} · {it.epic.title} · адресовано: {it.addressed}</div>

@@ -10,19 +10,18 @@ import { useArchitecture } from './useArchitecture'
 // описания или кнопка. Целевые схемы изменения с подсветкой появятся с
 // add-epic-explore: у бэкенда пока нет снимка изменения Epic.
 export function ArchitectureBlock({ projectId }: { projectId: string }) {
-  const { nav, projectId: current, setProjectId } = useStore()
+  const { nav } = useStore()
   const { arch, err, refresh, live } = useArchitecture(projectId)
   const shown = shownSnapshot(arch)
-  const href = routeHash({ view: 'architecture', tab: 'c4' })
-  // Представление показывает текущий проект: сначала переключаемся на
-  // проект Epic.
-  const select = () => { if (current !== projectId) setProjectId(projectId) }
-  const open = () => { select(); nav({ view: 'architecture', tab: 'c4' }) }
+  // Архитектура открывается в проекте Epic'а: проект — часть адреса.
+  const target = { view: 'architecture', pid: projectId, tab: 'c4' } as const
+  const href = routeHash(target)
+  const open = () => nav(target)
   return (
     <section className="arch-block" aria-label="Архитектура проекта">
       <div className="rail-head">
         <h2>Архитектура проекта</h2>
-        <a className="arch-open" href={href} onClick={select}>открыть →</a>
+        <a className="arch-open" href={href}>открыть →</a>
       </div>
       <div className="arch-block-body">
         {!arch && <div className="muted">{err || 'Загрузка…'}</div>}
