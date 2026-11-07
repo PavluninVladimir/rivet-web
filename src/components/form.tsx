@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes, type ButtonHTMLAttributes, type KeyboardEvent } from 'react'
 import { ApiError } from '../api/client'
+import { addTags } from './tags'
 
 // Система элементов форм (redesign-console-forms, спека clients/web
 // «Система элементов форм»): нативные элементы под капотом, единые
@@ -78,14 +79,16 @@ export function PasswordInput({ ids, ...rest }: InputHTMLAttributes<HTMLInputEle
 }
 
 // Теги: Enter и запятая добавляют, Backspace на пустом поле снимает последний.
-export function TagsInput({ ids, value, onChange, placeholder, disabled, mono = true }: {
-  ids?: Ids; value: string[]; onChange: (v: string[]) => void; placeholder?: string; disabled?: boolean; mono?: boolean
+// split режет черновик на несколько тегов (вставка списка через запятую);
+// без него черновик даёт один тег.
+export function TagsInput({ ids, value, onChange, placeholder, disabled, mono = true, split }: {
+  ids?: Ids; value: string[]; onChange: (v: string[]) => void; placeholder?: string; disabled?: boolean; mono?: boolean; split?: RegExp
 }) {
   const [draft, setDraft] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const commit = () => {
-    const t = draft.trim().replace(/,+$/, '')
-    if (t && !value.includes(t)) onChange([...value, t])
+    const next = addTags(value, draft, split)
+    if (next.length !== value.length) onChange(next)
     setDraft('')
   }
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
