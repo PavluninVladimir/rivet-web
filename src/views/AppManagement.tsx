@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { api, type Event, type RunnerToken, type SystemStatus, type User } from '../api/client'
 import { fmtAgo, fmtDate, SecretOnce, statusColor, Tabs, timeShort } from '../components/ui'
 import { InstallationPolicyPanel } from '../components/PolicyPanel'
-import { Button, Checkbox, Field, FormActions, FormNote, PasswordInput, Select, TextInput, errText, useBusy } from '../components/form'
+import { Button, Checkbox, Field, FormActions, FormNote, PasswordInput, Select, TagsInput, TextInput, errText, fieldError, useBusy } from '../components/form'
+import { bindingGroups, planeFromStatus, runnerCommand, type Plane } from '../components/runnerTokens'
 import { useStore, type AppTab } from '../store'
 import { UsageView } from './UsageView'
 import { ConnectionsTab } from './ConnectionsTab'
@@ -161,26 +162,29 @@ function UsersTab({ me }: { me: User }) {
 
 // ─── Runner'ы: токены регистрации ───────────────────────────────────────
 
+// Сколько последних отказов регистрации показывает вкладка. Полная лента
+// в «Аудите».
+const REJECTIONS_SHOWN = 5
+
 function RunnerTokensTab() {
+  const { nav } = useStore()
   const [tokens, setTokens] = useState<RunnerToken[]>([])
+  const [rejections, setRejections] = useState<Event[]>([])
   const [created, setCreated] = useState<{ name: string; secret: string } | null>(null)
-  const [form, setForm] = useState({ name: '', expires: '' })
-  // Адрес протокола и TLS — из состояния установки, чтобы команда запуска
-  // runner'а была верной для нестандартного порта и TLS-only установки.
-  const [plane, setPlane] = useState<{ addr: string; tls: boolean }>({ addr: `${location.hostname}:8090`, tls: false })
+  const [form, setForm] = useState<{ name: string; expires: string; runners: string[] }>({ name: '', expires: '', runners: [] })
+  const [runnersErr, setRunnersErr] = useState('')
+  // Адрес протокола, TLS и mTLS берутся из состояния установки, чтобы команда
+  // запуска runner'а была верной для нестандартного порта и TLS-only
+  // установки.
+  const [plane, setPlane] = useState<Plane>({ addr: `${location.hostname}:8090`, tls: false, clientCert: false })
   const refresh = useCallback(() => {
     api.runnerTokens().then(t => setTokens(t ?? [])).catch(() => {})
+    api.events({ scope: 'installation', type: 'runner.rejected', latest: true, limit: REJECTIONS_SHOWN })
+      // latest отдаёт последние события по возрастанию: свежий отказ сверху.
+      .then(e => setRejections((e ?? []).slice().reverse())).catch(() => {})
     api.systemStatus().then(s => {
-      const d = s.components.find(c => c.name === 'runners')?.data as { grpc_addr?: string; tls?: boolean } | undefined
-      if (!d?.grpc_addr) return
-      // Адрес прослушивания вида ":8090", "0.0.0.0:8090" или "[::]:8090" —
-      // подставляем хост консоли; порт — после последнего двоеточия.
-      const i = d.grpc_addr.lastIndexOf(':')
-      const host = i >= 0 ? d.grpc_addr.slice(0, i) : d.grpc_addr
-      const port = i >= 0 ? d.grpc_addr.slice(i + 1) : ''
-      const wildcard = host === '' || host === '0.0.0.0' || host === '[::]' || host === '::'
-      const h = wildcard ? location.hostname : host
-      setPlane({ addr: port ? `${h}:${port}` : d.grpc_addr, tls: !!d.tls })
+      const p = planeFromStatus(s.components.find(c => c.name === 'runners')?.data as Parameters<typeof planeFromStatus>[0], location.hostname)
+      if (p) setPlane(p)
     }).catch(() => {})
   }, [])
   useEffect(refresh, [refresh])
@@ -191,10 +195,29 @@ function RunnerTokensTab() {
   const active = tokens.filter(t => !t.revoked_at && !expired(t))
   const revoked = tokens.filter(t => t.revoked_at || expired(t))
 
+  const bindings = (t: RunnerToken) => {
+    if (!t.runners) return <span className="muted">—</span>
+    const groups = bindingGroups(t.runners)
+    // Отозванный или истёкший токен без привязок уже ни к кому не привяжется.
+    if (groups.length === 0) return <span className="muted" style={{ fontSize: 11.5 }}>
+      {t.revoked_at || expired(t) ? 'не привязан' : 'привяжется к первому зарегистрированному runner’у'}</span>
+    return (
+      <div className="tok-bind">
+        {groups.map(g => (
+          <div key={g.source}>
+            <span className="muted">{g.label}</span>
+            {g.ids.map(id => <span key={id} className="f-tag ro">{id}</span>)}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   const row = (t: RunnerToken) => (
     <tr key={t.id} className={t.revoked_at || expired(t) ? 'muted' : ''}>
       <td>{t.name}</td>
       <td className="mono muted">{t.prefix}…</td>
+      <td>{bindings(t)}</td>
       <td className="muted">{fmtDate(t.created_at)} · {t.created_by}</td>
       <td className="muted">{t.expires_at ? fmtDate(t.expires_at) : 'бессрочно'}</td>
       <td className="muted">{t.last_used_at ? fmtAgo(t.last_used_at) : 'не использовался'}</td>
@@ -208,6 +231,25 @@ function RunnerTokensTab() {
     </tr>
   )
 
+  // Выпуск: ошибка списка runner'ов показывается у поля, остальные у кнопки
+  // формы. Успех: однократный показ секрета над вкладкой.
+  const [creating, runCreate] = useBusy()
+  const [createErr, setCreateErr] = useState('')
+  const create = () => runCreate(async () => {
+    setRunnersErr(''); setCreateErr('')
+    try {
+      const res = await api.createRunnerToken(form.name, form.expires ? new Date(form.expires).toISOString() : undefined,
+        form.runners.length ? form.runners : undefined)
+      setCreated({ name: res.token.name, secret: res.secret })
+      setForm({ name: '', expires: '', runners: [] })
+      refresh()
+    } catch (e) {
+      const fe = fieldError(e, 'runner_ids')
+      if (fe) setRunnersErr(fe)
+      else setCreateErr(errText(e))
+    }
+  })
+
   return (
     <>
       {banner}
@@ -219,53 +261,71 @@ function RunnerTokensTab() {
       <div className="dw-sec">
         <h3>Токены регистрации</h3>
         <div className="muted" style={{ fontSize: 12.5, marginBottom: 8 }}>
-          Runner подключается к control plane только с токеном регистрации. Один токен можно раздать нескольким runner'ам.
-          Отзыв закрывает новые подключения, уже открытые соединения доживают до обрыва: для немедленного вывода используйте drain.
+          Runner подключается к control plane только с токеном регистрации, выпущенным для его идентификатора.
+          Один токен можно выпустить для нескольких runner'ов одного хоста, токен без списка привяжется к первому
+          зарегистрированному. Отзыв закрывает новые подключения, уже открытые соединения доживают до обрыва: для
+          немедленного вывода используйте drain.
         </div>
         <table className="tbl">
-          <thead><tr><th>Имя</th><th>Префикс</th><th>Создан</th><th>Срок</th><th>Использован</th><th></th></tr></thead>
+          <thead><tr><th>Имя</th><th>Префикс</th><th>Runner’ы</th><th>Создан</th><th>Срок</th><th>Использован</th><th></th></tr></thead>
           <tbody>
             {active.map(row)}
-            {active.length === 0 && <tr><td colSpan={6} className="muted">Действующих токенов нет — runner'ы не смогут подключиться.</td></tr>}
+            {active.length === 0 && <tr><td colSpan={7} className="muted">Действующих токенов нет, runner'ы не смогут подключиться.</td></tr>}
             {revoked.map(row)}
           </tbody>
         </table>
       </div>
+      <div className="dw-sec">
+        <div className="row" style={{ marginBottom: 6 }}>
+          <h3 style={{ margin: 0 }}>Последние отказы регистрации</h3>
+          <Button size="sm" variant="quiet" style={{ marginLeft: 'auto' }} onClick={() => nav({ view: 'app-management', tab: 'audit' })}>Все в «Аудите»</Button>
+        </div>
+        {rejections.map(e => (
+          <div key={e.ID} className="act-row rej-row">
+            <span className="t" title={fmtDate(e.TS)}>{fmtDate(e.TS).slice(0, 10)} {timeShort(e.TS)}</span>
+            <span className="who mono">{e.ActorID}</span>
+            <span>{String(e.Payload?.reason ?? e.Text)}{e.Payload?.token_name ? <span className="muted"> · токен «{String(e.Payload.token_name)}»</span> : null}</span>
+          </div>
+        ))}
+        {rejections.length === 0 && <div className="muted" style={{ fontSize: 12.5 }}>Отказов не было.</div>}
+      </div>
       <div className="dw-sec f-form" style={{ maxWidth: 760 }}>
         <h3>Новый токен</h3>
-        <div className="f-grid" style={{ gridTemplateColumns: '1fr auto auto', alignItems: 'end' }}>
+        <div className="f-grid" style={{ gridTemplateColumns: '1fr auto', alignItems: 'end' }}>
           <Field label="Имя">
-            {ids => <TextInput ids={ids} placeholder="Имя (например, office-fleet)" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />}
+            {ids => <TextInput ids={ids} placeholder="Имя (например, office-host)" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />}
           </Field>
           <Field label="Срок действия" optional>
             {ids => <TextInput ids={ids} type="datetime-local" title="срок действия (пусто — бессрочно)" value={form.expires}
               onChange={e => setForm({ ...form, expires: e.target.value })} />}
           </Field>
-          <Button variant="primary" busy={busy} disabled={!form.name}
-            onClick={act(async () => {
-              const res = await api.createRunnerToken(form.name, form.expires ? new Date(form.expires).toISOString() : undefined)
-              setCreated({ name: res.token.name, secret: res.secret })
-              setForm({ name: '', expires: '' })
-            }, 'токен создан')}>
-            Создать
-          </Button>
         </div>
+        <Field label="Runner’ы" optional error={runnersErr || undefined}
+          hint="Идентификаторы runner'ов (-id), для которых выпускается токен: Enter или запятая добавляют, список можно вставить через запятую или пробел. Если список пуст, токен привяжется к первому runner'у, который с ним зарегистрируется.">
+          {ids => <TagsInput ids={ids} value={form.runners} placeholder="local-worker, local-reviewer" split={/[\s,]+/}
+            onChange={v => { setForm({ ...form, runners: v }); setRunnersErr('') }} />}
+        </Field>
+        <FormActions note={createErr ? <FormNote err={createErr} /> : undefined}>
+          <Button variant="primary" busy={creating} disabled={!form.name || busy} onClick={create}>Создать</Button>
+        </FormActions>
         <div className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>
           Запуск runner'а на хосте с рабочими копиями:
         </div>
         <pre className="mono" style={{ fontSize: 11.5, marginTop: 4, whiteSpace: 'pre-wrap' }}>
-          {`RIVET_RUNNER_TOKEN_FILE=$HOME/.rivet/runner.token rivet-runner -plane ${plane.addr}${plane.tls ? ' -tls' : ''} -id <имя> -agent rivet -caps coding`}
+          {runnerCommand(plane, form.runners[0] ?? '')}
         </pre>
         <div className="muted" style={{ fontSize: 11.5, marginBottom: 4 }}>
           Токен держите в файле с правами 0600: так его не видно в списке процессов (переменная <span className="mono">RIVET_RUNNER_TOKEN</span> тоже
-          работает). Агент Rivet запускает команды в песочнице без сети, она есть на Linux с user namespaces. Без неё runner
-          стартует только с <span className="mono">-unsandboxed</span>, и команды агента видят сеть. Runner выкатки
-          запускается с <span className="mono">-caps deploy</span> и без агента.
+          работает). <span className="mono">-id</span> должен совпадать с runner'ом, для которого выпущен токен. Агент Rivet запускает команды в
+          песочнице без сети, она есть на Linux с user namespaces. Без неё runner стартует только с <span className="mono">-unsandboxed</span>,
+          и команды агента видят сеть. Runner выкатки запускается с <span className="mono">-caps deploy</span> и без агента.
         </div>
         <div className="muted" style={{ fontSize: 11.5 }}>
-          {plane.tls
-            ? <>Протокол под TLS: для своего корневого сертификата добавьте <span className="mono">-tls-ca</span>.</>
-            : <>Протокол без TLS: токен идёт открытым текстом, порт должен быть закрыт периметром (включается <span className="mono">RIVET_GRPC_TLS_CERT/KEY</span> на rivetd).</>}
+          {plane.clientCert
+            ? <>Протокол требует клиентский сертификат (mTLS): Common Name или DNS-имя сертификата равно <span className="mono">-id</span>, ключ в файле с правами 0600. Для своего корня сервера добавьте <span className="mono">-tls-ca</span>.</>
+            : plane.tls
+              ? <>Протокол под TLS: для своего корневого сертификата добавьте <span className="mono">-tls-ca</span>. Клиентские сертификаты включаются <span className="mono">RIVET_GRPC_CLIENT_CA</span> на rivetd.</>
+              : <>Протокол без TLS: токен идёт открытым текстом, порт должен быть закрыт периметром (включается <span className="mono">RIVET_GRPC_TLS_CERT/KEY</span> на rivetd).</>}
         </div>
       </div>
     </>
@@ -275,7 +335,7 @@ function RunnerTokensTab() {
 // ─── Аудит ──────────────────────────────────────────────────────────────
 
 const AUDIT_TYPES = ['', 'user.bootstrap', 'user.created', 'user.admin_changed', 'user.state_changed', 'user.password_reset',
-  'runner.registered', 'runner.rejected', 'runner_token.created', 'runner_token.revoked',
+  'runner.registered', 'runner.rejected', 'runner_token.created', 'runner_token.bound', 'runner_token.revoked',
   'connection.created', 'connection.updated', 'connection.deleted', 'connection.key_replaced', 'connection.checked', 'connection.discovered', 'planner.model_changed',
   'agent.created', 'agent.updated', 'agent.deleted', 'runner.secrets_delivered']
 

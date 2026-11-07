@@ -110,6 +110,8 @@ select.f-sm { padding-right: 22px; }
 .f-tag button { color: var(--muted); padding: 0 3px; border-radius: 3px; line-height: 1; }
 .f-tag button:hover { color: var(--fg); background: var(--fg-soft); }
 .f-tag button:focus-visible { outline: none; box-shadow: var(--f-ring); }
+/* Тег только для чтения (привязки токена runner'а): без кнопки снятия. */
+.f-tag.ro { padding-right: 7px; }
 .f-tags > input { flex: 1; min-width: 80px; height: 20px; padding: 0 4px; background: none; border: 0; box-shadow: none; }
 .f-tags > input:focus-visible { box-shadow: none; }
 

@@ -1119,8 +1119,10 @@ export const api = {
   // Эксплуатация установки (api-contract add-operations-management), только администратору.
   systemStatus: () => req<SystemStatus>('GET', '/system/status'),
   runnerTokens: () => req<RunnerToken[]>('GET', '/runner-tokens'),
-  createRunnerToken: (name: string, expires_at?: string) =>
-    req<{ token: RunnerToken; secret: string }>('POST', '/runner-tokens', { name, expires_at }),
+  // runner_ids: для каких runner'ов выпущен токен. С пустым списком привяжется к
+  // первому зарегистрированному (add-runner-identity).
+  createRunnerToken: (name: string, expires_at?: string, runner_ids?: string[]) =>
+    req<{ token: RunnerToken; secret: string }>('POST', '/runner-tokens', { name, expires_at, runner_ids }),
   revokeRunnerToken: (id: string) => req<void>('DELETE', `/runner-tokens/${id}`),
   // Подключения к моделям и модель декомпозиции (api-contract add-model-connections).
   connections: () => req<ModelConnection[]>('GET', '/system/connections'),
@@ -1427,7 +1429,15 @@ export interface RunnerToken {
   id: string; name: string; prefix: string
   created_at: string; created_by: string
   expires_at: string | null; last_used_at: string | null; revoked_at: string | null
+  // Привязки токена (add-runner-identity). Пустой список: привяжется к первому
+  // зарегистрированному runner'у. Поля нет у бэкенда до привязок.
+  runners?: RunnerBinding[]
 }
+
+// issue: выпущен для runner'а, first_use: привязан при первой
+// регистрации, migration: перенесён при обновлении с общего токена.
+export type RunnerBindingSource = 'issue' | 'first_use' | 'migration'
+export interface RunnerBinding { runner_id: string; source: RunnerBindingSource; bound_at: string }
 
 // Подключение к провайдеру, агрегатору или локальному серверу моделей.
 export type ConnectionKind = 'vendor' | 'aggregator' | 'local'
