@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api, type AccessToken, type User } from '../api/client'
 import { Button, Field, FormActions, FormNote, PasswordInput, TextInput, errText, useBusy } from '../components/form'
+import { SourceAnchor, useAbout } from '../components/SourceLink'
 
 // Профиль (спека web «Профиль пользователя»): смена своего пароля и работа
-// со своими personal access tokens. Доступен любому вошедшему.
+// со своими personal access tokens. Доступен любому вошедшему из подвала
+// боковой панели на любом экране, поэтому здесь же ссылка на исходный код
+// работающей версии (спека source-availability).
 
 export function Profile({ me }: { me: User }) {
   const [tokens, setTokens] = useState<AccessToken[]>([])
@@ -15,6 +18,7 @@ export function Profile({ me }: { me: User }) {
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [busy, run] = useBusy()
+  const about = useAbout()
 
   const refresh = useCallback(() => {
     api.tokens().then(t => setTokens(t ?? [])).catch(e => setErr(errText(e)))
@@ -94,6 +98,13 @@ export function Profile({ me }: { me: User }) {
           </Button>
         </div>
       </div>
+
+      {about && (
+        <div className="dw-sec">
+          <h3>О системе</h3>
+          <SourceAnchor about={about} />
+        </div>
+      )}
     </div>
   )
 }
@@ -119,10 +130,10 @@ export function PasswordGate({ onDone }: { onDone: () => void }) {
       <form className="login-card f-form" onSubmit={e => { e.preventDefault(); void submit() }}>
         <h1 style={{ fontSize: 15 }}>Смена пароля</h1>
         <div className="muted" style={{ fontSize: 12.5 }}>
-          Пароль сброшен администратором. Задайте новый, чтобы продолжить работу.
+          Пароль нужно сменить: его сбросил администратор или он совпадает с паролем из документации Rivet. Задайте новый, чтобы продолжить работу.
         </div>
-        <Field label="Выданный пароль">
-          {ids => <PasswordInput ids={ids} placeholder="Выданный пароль" autoFocus value={current} onChange={e => setCurrent(e.target.value)} />}
+        <Field label="Текущий пароль" hint="выданный администратором или прежний">
+          {ids => <PasswordInput ids={ids} placeholder="Текущий пароль" autoFocus value={current} onChange={e => setCurrent(e.target.value)} />}
         </Field>
         <Field label="Новый пароль" hint="не короче 8 символов" error={err || undefined}>
           {ids => <PasswordInput ids={ids} placeholder="Новый пароль (от 8 символов)" autoComplete="new-password"

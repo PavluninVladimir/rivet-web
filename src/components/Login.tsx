@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { api, type User } from '../api/client'
 import { Button, Field, FormActions, FormNote, PasswordInput, TextInput, useBusy } from './form'
+import { SourceLink } from './SourceLink'
 
 // Экран входа (спека web «Вход в консоль»): до аутентификации данных
 // установки не видно. Собран из токенов прототипа: центрированная карточка,
-// тёмная тема, моно-акценты; поля по системе форм консоли.
+// тёмная тема, моно-акценты; поля по системе форм консоли. Под карточкой
+// ссылка на исходный код (спека source-availability): видна без входа.
 export function Login({ onLogin }: { onLogin: (u: User) => void }) {
   const [login, setLogin] = useState('')
   const [password, setPassword] = useState('')
@@ -44,6 +46,7 @@ export function Login({ onLogin }: { onLogin: (u: User) => void }) {
         </FormActions>
         <FormNote />
       </form>
+      <SourceLink />
     </div>
   )
 }
