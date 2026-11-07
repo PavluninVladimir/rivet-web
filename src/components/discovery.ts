@@ -1,4 +1,4 @@
-import type { BacklogEpic, DecomposeState, Dropped, Epic, EpicRef, Need, Persona, Quote, Run, RunStatus } from '../api/client'
+import type { BacklogEpic, DecomposeState, Dropped, Epic, EpicRef, FeedbackCoverage, Need, Persona, Quote, Run, RunStatus } from '../api/client'
 
 // Подписи и расчёты представления «Исследование» (add-product-discovery):
 // чистые функции без React, чтобы проверяться юнит-тестом.
@@ -216,4 +216,65 @@ export function linkLabel(e: Pick<BacklogEpic, 'existing_epic'>, projectEpics: P
 // Размер интервью: символы и строки.
 export function sizeText(chars: number, lines: number): string {
   return `${chars.toLocaleString('ru-RU')} симв. · ${lines} стр.`
+}
+
+// ─── отзывы пользователей (add-user-feedback) ───────────────────────────
+
+// Лимиты отзыва (api-contract POST /discovery/feedback).
+export const FEEDBACK_MAX = 2000
+export const FEEDBACK_SOURCE_MAX = 200
+
+// runeCount — длина в символах (code points), как считает сервер.
+export function runeCount(s: string): number { return [...s].length }
+
+// feedbackFieldErrors — проверка формы отзыва до отправки, обе ошибки
+// сразу: пустые поля и длина в символах. Сервер проверяет то же самое.
+export function feedbackFieldErrors(text: string, source: string): Record<string, string> {
+  const errs: Record<string, string> = {}
+  if (!text.trim()) errs.text = 'введите текст отзыва'
+  else if (runeCount(text) > FEEDBACK_MAX) errs.text = `отзыв длиннее ${FEEDBACK_MAX} символов`
+  const src = source.trim().replace(/\s+/g, ' ')
+  if (!src) errs.source = 'укажите источник, например «менеджер Анна, чат поддержки»'
+  else if (runeCount(src) > FEEDBACK_SOURCE_MAX) errs.source = `источник длиннее ${FEEDBACK_SOURCE_MAX} символов`
+  return errs
+}
+
+// unaccountedText — «1 отзыв не учтён», «3 отзыва не учтены», «5 отзывов
+// не учтено»; пусто при нуле.
+export function unaccountedText(n: number): string {
+  if (!n || n < 0) return ''
+  const d = n % 10, h = n % 100
+  if (d === 1 && h !== 11) return `${n} отзыв не учтён`
+  if (d >= 2 && d <= 4 && (h < 12 || h > 14)) return `${n} отзыва не учтены`
+  return `${n} отзывов не учтено`
+}
+
+// feedbackNote — пояснение под заголовком раздела отзывов. Отзыв в наборе
+// последней версии ещё не значит, что Аналитик его читал: если во вход
+// синтеза вошли не все отзывы версии, текст говорит об этом прямо.
+export function feedbackNote(unaccounted: number, count: number, coverage: FeedbackCoverage | null | undefined): string {
+  const note = unaccountedText(unaccounted)
+  if (note) return `${note}. Следующий анализ учтёт новые отзывы вместе с интервью.`
+  if (!count) return 'Отзывов пока нет.'
+  if (coverage && coverage.total > 0 && coverage.synthesized < coverage.total) {
+    const why: string[] = []
+    if (coverage.without_findings) why.push(`без находок ${coverage.without_findings}`)
+    if (coverage.trimmed) why.push(`убрано сокращением ${coverage.trimmed}`)
+    return `Все отзывы в последней версии исследования, в синтез вошли ${coverage.synthesized} из ${coverage.total}${why.length ? ': ' + why.join(', ') : ''}.`
+  }
+  return 'Все отзывы учтены последней версией исследования.'
+}
+
+// feedbackExcerpt — начало текста отзыва одной строкой.
+export function feedbackExcerpt(text: string | undefined, max = 140): string {
+  const s = (text ?? '').replace(/\s+/g, ' ').trim()
+  if ([...s].length <= max) return s
+  return [...s].slice(0, max - 1).join('').trimEnd() + '…'
+}
+
+// quoteSource — откуда цитата: «интервью «Анна», строка 3» или «отзыв
+// «менеджер Анна», строка 1». У отзыва источник в respondent_role.
+export function quoteSource(q: Pick<Quote, 'interview_title' | 'respondent_role' | 'kind' | 'line'>): string {
+  if (q.kind === 'feedback') return `отзыв «${q.respondent_role || q.interview_title}», строка ${q.line}`
+  return `интервью «${q.interview_title}», строка ${q.line}`
 }

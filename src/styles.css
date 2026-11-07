@@ -605,6 +605,8 @@ textarea.answer { width: 100%; min-height: 64px; }
 .disc-status { border: 1px solid var(--border); border-radius: var(--r-lg); padding: 10px 12px; background: var(--surface); }
 .disc-status .progress { height: 5px; }
 .disc-defects { margin: 8px 0 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
+/* Отзывы пользователей (add-user-feedback): форма не шире читаемой строки. */
+.disc-feedback .feedback-form { max-width: 720px; margin: 10px 0 14px; }
 .disc-personas { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
 .persona-card { border-left: 3px solid var(--pc); }
 .disc-group { margin-bottom: 12px; }

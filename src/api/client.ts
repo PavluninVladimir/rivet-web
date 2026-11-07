@@ -96,11 +96,14 @@ export interface EpicDiscovery { run_id: string; version: number; needs: Need[] 
 
 // ─── исследование продукта (api-contract add-product-discovery) ─────────
 
+// Материал исследования: интервью или отзыв пользователя (add-user-feedback).
+// У отзыва источник в source (он же respondent_role), название «Отзыв · <источник>».
 export interface Interview {
-  id: string; title: string; respondent_role: string; held_at?: string
+  id: string; kind?: 'interview' | 'feedback'; title: string; respondent_role: string; source?: string; held_at?: string
   chars: number; lines: number; created_by: string; created_at: string
   deleted?: boolean
   text?: string // только в GET .../interviews/{iid}
+  excerpt?: string // начало текста отзыва в списке отзывов
 }
 export type RunStatus = 'running' | 'ready' | 'failed' | 'approved' | 'superseded'
 export interface RunSummary {
@@ -108,7 +111,8 @@ export interface RunSummary {
   finished_at?: string; agent_name?: string; model: string; outdated: boolean
 }
 export interface Persona { id: string; name: string; description: string; interviews: string[] | null }
-export interface Quote { interview: string; interview_title: string; respondent_role: string; line: number; text: string }
+// kind: 'feedback' — цитата из отзыва пользователя (add-user-feedback), у интервью поля нет.
+export interface Quote { interview: string; interview_title: string; respondent_role: string; kind?: 'feedback'; line: number; text: string }
 export interface Need {
   id: string; title: string; kind: 'pain' | 'need' | 'wish'; persona: string
   importance: 'high' | 'medium' | 'low'; evidence: Quote[] | null
@@ -143,8 +147,20 @@ export interface Run extends RunSummary {
   approved: { at: string; by: string; epics: ApprovedEpic[] | null } | null
   started_at: string
 }
-export interface DiscoveryState { interviews: Interview[] | null; current: Run | null; versions: RunSummary[] | null }
+export interface DiscoveryState {
+  interviews: Interview[] | null; current: Run | null; versions: RunSummary[] | null
+  // Отзывы пользователей новыми первыми с текстом и число неучтённых
+  // последней готовой версией (add-user-feedback). Нет у старого rivetd.
+  feedback?: Interview[] | null; feedback_unaccounted?: number
+  // Отзывы последней готовой версии: сколько в версии и сколько вошло во
+  // вход синтеза (при сотнях отзывов вход сокращается).
+  feedback_coverage?: FeedbackCoverage | null
+}
+// without_findings — отзывы без подтверждённых находок, trimmed — целиком
+// убранные сокращением входа синтеза.
+export interface FeedbackCoverage { total: number; synthesized: number; without_findings?: number; trimmed?: number }
 export interface NewInterview { title: string; respondent_role: string; held_at?: string; text: string }
+export interface NewFeedback { text: string; source: string }
 
 // Оценка стоимости плана по истории usage (api-contract add-cost-transparency).
 export interface CostEstimate {
@@ -1179,6 +1195,7 @@ export const api = {
   },
   interview: (projectId: string, id: string) => req<Interview>('GET', `/projects/${projectId}/discovery/interviews/${id}`),
   deleteInterview: (projectId: string, id: string) => req<void>('DELETE', `/projects/${projectId}/discovery/interviews/${id}`),
+  addFeedback: (projectId: string, fb: NewFeedback) => req<Interview>('POST', `/projects/${projectId}/discovery/feedback`, fb),
   startAnalysis: (projectId: string) => req<Run>('POST', `/projects/${projectId}/discovery/analyses`),
   analysis: (projectId: string, id: string) => req<Run>('GET', `/projects/${projectId}/discovery/analyses/${id}`),
   putBacklog: (projectId: string, id: string, backlogRev: number, epics: BacklogEpic[]) =>
@@ -1254,6 +1271,8 @@ export interface CycleArtifact { kind: string; id: string; title: string; at: st
 export interface CyclePhase {
   id: CyclePhaseId; title: string; role: string; no_data: boolean; hint?: string
   counters: { active: number; waiting: number; needs_human: number; done_period: number }
+  // Неучтённые отзывы пользователей, только у фазы discovery (add-user-feedback).
+  feedback_unaccounted?: number
   template_only: boolean
   agents: CycleAgent[]; items: CycleItem[]; artifacts: CycleArtifact[]
 }
@@ -1528,6 +1547,9 @@ export function subscribe(projectId: string, handlers: {
     'discovery.interview_added', 'discovery.interview_deleted', 'discovery.analysis_started',
     'discovery.analysis_progress', 'discovery.analysis_ready', 'discovery.analysis_failed',
     'discovery.backlog_edited', 'discovery.approved',
+    // Отзыв пользователя (add-user-feedback): счётчик неучтённых в
+    // «Исследовании» и на экране цикла.
+    'feedback.created',
     'epic.deps_changed', 'epic.waiting_deps', 'epic.deps_ready',
     // Цикл разработки (add-sdlc-cycle): релизы, инциденты, наблюдение и
     // задания Релиз-инженера и Инженера сопровождения.

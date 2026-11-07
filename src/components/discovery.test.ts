@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {
   analystName, backlogField, decomposeText, depOptions, droppedSummary, emptyEpic, highlightRange, linkLabel,
   needsByPersona, nextHumanKey, progressPct, progressText, quoteLines, removeEpic, usageText, validateRow, waitingText,
-  runIsOlder, withMissing,
+  runIsOlder, withMissing, unaccountedText, feedbackExcerpt, quoteSource, feedbackFieldErrors, runeCount, feedbackNote,
 } from './discovery.ts'
 
 const run = (over: Record<string, unknown> = {}) => ({
@@ -109,4 +109,48 @@ test('версия из ответа сохранения не заменяет�
   assert.equal(runIsOlder({ id: 'r1', backlog_rev: 3, status: 'ready' }, saved), false)
   assert.equal(runIsOlder({ id: 'r1', backlog_rev: 2, status: 'ready' }, { id: 'r1', backlog_rev: 2, status: 'approved' }), true)
   assert.equal(runIsOlder({ id: 'r2', backlog_rev: 1, status: 'running' }, saved), false)
+})
+
+test('отзывы: число неучтённых и начало текста', () => {
+  assert.equal(unaccountedText(0), '')
+  assert.equal(unaccountedText(1), '1 отзыв не учтён')
+  assert.equal(unaccountedText(3), '3 отзыва не учтены')
+  assert.equal(unaccountedText(5), '5 отзывов не учтено')
+  assert.equal(unaccountedText(11), '11 отзывов не учтено')
+  assert.equal(unaccountedText(12), '12 отзывов не учтено')
+  assert.equal(unaccountedText(21), '21 отзыв не учтён')
+  assert.equal(unaccountedText(24), '24 отзыва не учтены')
+  assert.equal(feedbackExcerpt('  После импорта\nпропали   телефоны '), 'После импорта пропали телефоны')
+  assert.equal(feedbackExcerpt('я'.repeat(10), 5), 'яяяя…')
+  assert.equal(feedbackExcerpt(undefined), '')
+})
+
+test('источник цитаты: интервью или отзыв', () => {
+  assert.equal(quoteSource({ interview_title: 'Анна', respondent_role: 'Менеджер', line: 3 }), 'интервью «Анна», строка 3')
+  assert.equal(quoteSource({ interview_title: 'Отзыв · менеджер Анна', respondent_role: 'менеджер Анна', kind: 'feedback', line: 1 }),
+    'отзыв «менеджер Анна», строка 1')
+})
+
+test('форма отзыва: обе ошибки сразу, длина в символах, а не в UTF-16', () => {
+  assert.deepEqual(Object.keys(feedbackFieldErrors('  ', '')).sort(), ['source', 'text'])
+  assert.deepEqual(feedbackFieldErrors('Ужас', 'чат'), {})
+  const emoji = '😀'.repeat(2000)
+  assert.equal(emoji.length, 4000)
+  assert.equal(runeCount(emoji), 2000)
+  assert.deepEqual(feedbackFieldErrors(emoji, 'чат'), {})
+  assert.ok(feedbackFieldErrors(emoji + 'я', 'чат').text)
+  assert.deepEqual(feedbackFieldErrors('текст', '  менеджер\n Анна  '), {})
+  assert.ok(feedbackFieldErrors('текст', 'я'.repeat(201)).source)
+})
+
+test('пояснение к отзывам: неучтённые, все в версии, не все в синтезе', () => {
+  assert.equal(feedbackNote(0, 0, null), 'Отзывов пока нет.')
+  assert.equal(feedbackNote(2, 2, null), '2 отзыва не учтены. Следующий анализ учтёт новые отзывы вместе с интервью.')
+  assert.equal(feedbackNote(0, 2, { total: 2, synthesized: 2 }), 'Все отзывы учтены последней версией исследования.')
+  assert.equal(feedbackNote(0, 2, null), 'Все отзывы учтены последней версией исследования.')
+  assert.equal(feedbackNote(0, 500, { total: 500, synthesized: 84 }), 'Все отзывы в последней версии исследования, в синтез вошли 84 из 500.')
+  assert.equal(feedbackNote(0, 500, { total: 500, synthesized: 84, without_findings: 16, trimmed: 400 }),
+    'Все отзывы в последней версии исследования, в синтез вошли 84 из 500: без находок 16, убрано сокращением 400.')
+  assert.equal(feedbackNote(0, 3, { total: 3, synthesized: 2, without_findings: 1, trimmed: 0 }),
+    'Все отзывы в последней версии исследования, в синтез вошли 2 из 3: без находок 1.')
 })
