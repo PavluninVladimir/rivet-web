@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { api, type Check, type CreateProjectInput, type ProbeResult, type Project } from '../api/client'
 import { Button, Field, FormActions, FormNote, PasswordInput, Select, TextInput, errText, useBusy } from './form'
+import { providerLabel } from './ui'
 
 // Пошаговый мастер создания проекта (спека web «Мастер создания проекта»):
 // репозиторий → проверки → подтверждение. Вперёд с первого шага можно
@@ -10,6 +11,13 @@ import { Button, Field, FormActions, FormNote, PasswordInput, Select, TextInput,
 
 type Step = 'repo' | 'checks' | 'confirm'
 type Mode = 'connect' | 'create'
+
+// Пример адреса репозитория по хостингу.
+const URL_EXAMPLE: Record<string, string> = {
+  github: 'https://github.com/owner/name',
+  gitlab: 'https://gitlab.com/group/name',
+  gitea: 'https://gitea.example.com/owner/name',
+}
 
 const REASON_LABEL: Record<string, string> = {
   not_found: 'Репозиторий не найден',
@@ -78,6 +86,8 @@ export function ProjectWizard({ onClose, onCreated }: {
   const nameErr = touched.name && !name.trim() ? 'Укажите название проекта' : undefined
   const urlErr = touched.url && mode === 'connect' && !repoURL.trim() ? 'Укажите адрес репозитория' : undefined
   const canLeaveRepo = !!name.trim() && !!probe?.ok
+  // У Gitea облачного инстанса по умолчанию нет: адрес инстанса обязателен.
+  const selfHostedOnly = provider === 'gitea'
 
   return (
     <div className="modal-wrap" onClick={onClose}>
@@ -102,6 +112,7 @@ export function ProjectWizard({ onClose, onCreated }: {
                 {ids => <Select ids={ids} value={provider} onChange={e => { setProvider(e.target.value); setProbe(null); setProbeErr('') }}>
                   <option value="github">GitHub</option>
                   <option value="gitlab">GitLab</option>
+                  <option value="gitea">Gitea / Forgejo</option>
                 </Select>}
               </Field>
               <Field label="Репозиторий">
@@ -112,14 +123,15 @@ export function ProjectWizard({ onClose, onCreated }: {
               </Field>
             </div>
             {mode === 'connect' ? (
-              <Field label="Адрес репозитория" error={probeErr || urlErr} hint="например, https://github.com/owner/name">
-                {ids => <TextInput ids={ids} mono placeholder="URL репозитория (https://github.com/owner/name)"
+              <Field label="Адрес репозитория" error={probeErr || urlErr} hint={`например, ${URL_EXAMPLE[provider] ?? URL_EXAMPLE.github}`}>
+                {ids => <TextInput ids={ids} mono placeholder={`URL репозитория (${URL_EXAMPLE[provider] ?? URL_EXAMPLE.github})`}
                   value={repoURL} onChange={e => { setRepoURL(e.target.value); setProbe(null); setProbeErr('') }} onBlur={() => touch('url')} />}
               </Field>
             ) : (
               <>
-                <Field label="Инстанс" optional hint="пусто, если облачный хостинг" error={probeErr || undefined}>
-                  {ids => <TextInput ids={ids} mono placeholder="URL инстанса (пусто — облачный)"
+                <Field label="Инстанс" optional={!selfHostedOnly} error={probeErr || undefined}
+                  hint={selfHostedOnly ? 'адрес вашего инстанса Gitea или Forgejo' : 'пусто, если облачный хостинг'}>
+                  {ids => <TextInput ids={ids} mono placeholder={selfHostedOnly ? 'URL инстанса (https://gitea.example.com)' : 'URL инстанса (пусто — облачный)'}
                     value={baseURL} onChange={e => { setBaseURL(e.target.value); setProbeErr('') }} />}
                 </Field>
                 <div className="f-grid">
@@ -144,7 +156,7 @@ export function ProjectWizard({ onClose, onCreated }: {
                 value={token} onChange={e => { setToken(e.target.value); setProbe(null); setProbeErr('') }} />}
             </Field>
             <div className="f-actions" style={{ justifyContent: 'flex-start' }}>
-              <Button size="sm" disabled={!token} busy={busy} busyLabel="проверка…" onClick={runProbe}>Проверить доступ</Button>
+              <Button size="sm" disabled={!token || (mode === 'create' && selfHostedOnly && !baseURL.trim())} busy={busy} busyLabel="проверка…" onClick={runProbe}>Проверить доступ</Button>
               {probe?.ok && (
                 <span className="f-note ok">
                   {probe.token_owner}
@@ -184,7 +196,7 @@ export function ProjectWizard({ onClose, onCreated }: {
         {step === 'confirm' && (
           <div className="meta-grid">
             <div className="kv"><span>проект</span><b>{name}</b></div>
-            <div className="kv"><span>хостинг</span><b>{provider}</b></div>
+            <div className="kv"><span>хостинг</span><b>{providerLabel(provider)}</b></div>
             <div className="kv"><span>репозиторий</span>
               <b>{mode === 'connect' ? (probe?.repo_path || repoURL) : `${owner}/${repoName}`}</b></div>
             <div className="kv"><span>токен</span><b>{probe?.token_owner || '—'}</b></div>

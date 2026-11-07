@@ -61,6 +61,8 @@ export function Tabs<T extends string>({ tabs, active, onChange }: {
   )
 }
 
+export { PROVIDER_LABEL, providerLabel } from './providerLabel'
+
 export function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })

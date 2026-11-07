@@ -3,7 +3,7 @@ import { api, budgetPaused, type Check, type Member, type Project, type Reposito
 import { Environments } from '../components/Environments'
 import { ProjectPolicySection } from '../components/PolicyPanel'
 import { ProjectProcessSection } from '../components/ProcessSection'
-import { Tabs, fmtDate, fmtTokens } from '../components/ui'
+import { Tabs, fmtDate, fmtTokens, providerLabel } from '../components/ui'
 import { Button, Field, FormActions, FormNote, PasswordInput, TextInput, errText, useBusy } from '../components/form'
 import { useStore, type SettingsTab } from '../store'
 
@@ -92,7 +92,7 @@ export function ProjectSettings({ projectId, tab, user }: { projectId: string; t
             {repo ? (
               <>
                 <div className="meta-grid">
-                  <div className="kv"><span>хостинг</span><b>{repo.provider}</b></div>
+                  <div className="kv"><span>хостинг</span><b>{providerLabel(repo.provider)}</b></div>
                   <div className="kv"><span>инстанс</span><b>{repo.base_url}</b></div>
                   <div className="kv"><span>репозиторий</span>
                     <b><a href={repo.web_url} target="_blank" rel="noreferrer">{repo.repo_path}</a></b></div>

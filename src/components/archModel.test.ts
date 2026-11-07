@@ -150,6 +150,11 @@ test('ссылки на хостинг: файл по SHA, относитель�
   const gl = { url: 'https://gl.example/g/r/-/tree/dev/docs/architecture', branch: 'dev', path: 'docs/architecture' }
   assert.equal(hostingFileURL(gl, 'abc', 'x.md'), 'https://gl.example/g/r/-/blob/abc/x.md')
   assert.equal(hostingFileURL({ url: '', branch: 'main' }, 'abc', 'x.md'), '')
+  // Gitea и Forgejo: файл версии по SHA, без SHA — по ветке.
+  const gt = { url: 'https://gitea.example/o/r/src/branch/main/docs/architecture', branch: 'main', path: 'docs/architecture' }
+  assert.equal(hostingFileURL(gt, '0123abcd', 'docs/architecture/views/hld.md'), 'https://gitea.example/o/r/src/commit/0123abcd/docs/architecture/views/hld.md')
+  assert.equal(hostingFileURL(gt, null, '/README.md'), 'https://gitea.example/o/r/src/branch/main/README.md')
+  assert.equal(hldLinkURL(gt, '0123abcd', '../adr/0001-x.md'), 'https://gitea.example/o/r/src/commit/0123abcd/docs/architecture/adr/0001-x.md')
   assert.equal(hldLinkURL(gh, 'abc', 'c4/context.md'), 'https://github.com/o/r/blob/abc/docs/architecture/views/c4/context.md')
   assert.equal(hldLinkURL(gh, 'abc', '../adr/0001-x.md#top'), 'https://github.com/o/r/blob/abc/docs/architecture/adr/0001-x.md')
   // «/tree/» в имени ветки не сбивает префикс репозитория.

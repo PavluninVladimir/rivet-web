@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ProjectWizard } from '../components/ProjectWizard'
 import { routeHash, useStore } from '../store'
 import { projectHome } from '../routes'
+import { providerLabel } from '../components/providerLabel'
 
 // Список проектов — вход в проект (add-project-navigation): клик по строке
 // или имени открывает обзор проекта. Эскалации видны у каждого проекта,
@@ -32,7 +33,7 @@ export function ProjectsView() {
                 {/* Ссылка — вход с клавиатуры; клик по ней строку не дублирует. */}
                 <td><a className="proj-link" href={routeHash(projectHome(p.ID))} onClick={e => e.stopPropagation()}>{p.Name}</a></td>
                 <td className="mono muted">{p.repo_path || p.Repo}</td>
-                <td className="mono muted">{p.provider}</td>
+                <td className="muted">{providerLabel(p.provider)}</td>
                 <td className="num" data-escalations={n}>
                   {n > 0 ? <span className="count warn" title="Эскалации, ждущие решения">{n}</span> : <span className="muted">—</span>}
                 </td>

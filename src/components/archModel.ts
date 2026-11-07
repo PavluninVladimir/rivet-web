@@ -295,11 +295,14 @@ export function joinPath(base: string, rel: string): string {
 }
 
 // Файл на хостинге по пути от корня репозитория. Ссылка source.url ведёт
-// на каталог: …/tree/<ветка>/<каталог> у GitHub, …/-/tree/… у GitLab.
-// Префикс репозитория отрезается по известному хвосту, чтобы «/tree/» в
-// имени ветки не сбивал. Файл берётся из SHA снимка, если он известен.
+// на каталог: …/tree/<ветка>/<каталог> у GitHub, …/-/tree/… у GitLab,
+// …/src/branch/<ветка>/<каталог> у Gitea и Forgejo. Префикс репозитория
+// отрезается по известному хвосту, чтобы «/tree/» в имени ветки не сбивал.
+// Файл берётся из SHA снимка, если он известен.
 export function hostingFileURL(source: { url: string; branch: string; path?: string } | undefined, ref: string | null | undefined, path: string): string {
   if (!source?.url) return ''
+  const gitea = giteaFileURL(source, ref, path)
+  if (gitea !== null) return gitea
   const tails = [`/tree/${source.branch}/${source.path ?? ''}`.replace(/\/+$/, ''), `/tree/${source.branch}`]
   let prefix = ''
   for (const t of tails) {
@@ -311,6 +314,19 @@ export function hostingFileURL(source: { url: string; branch: string; path?: str
     prefix = source.url.slice(0, i)
   }
   return `${prefix}/blob/${ref || source.branch}/${path.replace(/^\/+/, '')}`
+}
+
+// Файл на Gitea: …/src/commit/<sha>/<путь> по SHA снимка, иначе
+// …/src/branch/<ветка>/<путь>. null — ссылка не в форме Gitea.
+function giteaFileURL(source: { url: string; branch: string; path?: string }, ref: string | null | undefined, path: string): string | null {
+  const tail = `/src/branch/${source.branch}`
+  const i = source.branch ? source.url.indexOf(tail + '/') : -1
+  const end = source.branch && source.url.endsWith(tail) ? source.url.length - tail.length : -1
+  const at = i >= 0 ? i : end
+  if (at < 0) return null
+  const file = path.replace(/^\/+/, '')
+  const prefix = source.url.slice(0, at)
+  return ref && /^[0-9a-f]{7,64}$/.test(ref) ? `${prefix}/src/commit/${ref}/${file}` : `${prefix}/src/branch/${ref || source.branch}/${file}`
 }
 
 // Ссылка из документа описания (HLD, тело ADR) на файл: относительная —
