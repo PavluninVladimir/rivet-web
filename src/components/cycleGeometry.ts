@@ -139,6 +139,10 @@ export function eventPhase(type: string, payload: Record<string, unknown> | unde
   if (type.startsWith('incident.') || type.startsWith('monitor.')) return 'operations'
   if (type === 'ops.job') return payload?.kind === 'incident_description' ? 'operations' : 'release'
   if (type.startsWith('epic.')) return 'planning'
+  // Исследование и архитектура (fix-cycle-phase-data): анализ, интервью,
+  // снимок и задача описания архитектуры.
+  if (type.startsWith('discovery.') || type.startsWith('feedback.')) return 'discovery'
+  if (type === 'project.architecture_updated' || type.startsWith('architecture.')) return 'architecture'
   return null
 }
 
@@ -170,9 +174,54 @@ export function safeExternal(url: string | undefined): string | null {
   return url && /^https?:\/\//i.test(url) ? url : null
 }
 
+// Куда ведёт артефакт фазы: внешний URL (PR), сущность консоли,
+// «Исследование» (версия, если указана), «Архитектура» или решение ADR по
+// номеру. null — ссылки нет.
+export type ArtifactTarget =
+  | { kind: 'external'; url: string }
+  | { kind: 'epic' | 'task' | 'release' | 'incident'; id: string }
+  | { kind: 'discovery'; runId?: string }
+  | { kind: 'architecture' }
+  | { kind: 'adr'; number: string }
+
+export function artifactTarget(ref: { view?: string; id?: string; url?: string }): ArtifactTarget | null {
+  const url = safeExternal(ref.url)
+  if (url) return { kind: 'external', url }
+  switch (ref.view) {
+    case 'epic': case 'task': case 'release': case 'incident':
+      return ref.id ? { kind: ref.view, id: ref.id } : null
+    case 'discovery': return ref.id ? { kind: 'discovery', runId: ref.id } : { kind: 'discovery' }
+    case 'architecture': return { kind: 'architecture' }
+    case 'adr': return ref.id && /^\d+$/.test(ref.id) ? { kind: 'adr', number: ref.id } : null
+  }
+  return null
+}
+
+// workTarget — куда ведёт текущая работа агента фазы (спека «Агенты фаз»:
+// ссылка на задачу, Epic, публикацию, инцидент или анализ). Работа в
+// другом проекте (kind other) ссылки не имеет.
+export function workTarget(w: { kind: string; id: string } | null | undefined): ArtifactTarget | null {
+  if (!w || !w.id) return null
+  switch (w.kind) {
+    case 'task': case 'epic': case 'release': case 'incident': return { kind: w.kind, id: w.id }
+    case 'analysis': return { kind: 'discovery', runId: w.id }
+  }
+  return null
+}
+
+// Подписи видов артефактов фаз.
+export const ARTIFACT_KIND: Record<string, string> = {
+  interview: 'интервью', feedback: 'отзыв', need: 'потребность', architecture: 'снимок', adr: 'ADR',
+  plan: 'план', pr: 'PR', check: 'проверка', review: 'ревью', release: 'релиз', incident: 'инцидент',
+}
+
 // Событие цикла: меняет фазу задачи или относится к релизам и сопровождению.
 export function isCycleEvent(type: string, payload: Record<string, unknown> | undefined): boolean {
   if (payload && ('phase_to' in payload || 'phase_from' in payload)) return true
-  return /^(release|incident|monitor|ops)\./.test(type) || type === 'deploy.status'
+  return /^(release|incident|monitor|ops|architecture|feedback)\./.test(type) || type === 'deploy.status'
     || type === 'epic.decomposed' || type === 'epic.decomposing' || type === 'epic.progress'
+    || type === 'project.architecture_updated'
+    // Ход анализа («конспекты 3 из 5») ленту не забивает: видны старт,
+    // готовность, сбой, утверждение и материалы.
+    || (type.startsWith('discovery.') && type !== 'discovery.analysis_progress')
 }

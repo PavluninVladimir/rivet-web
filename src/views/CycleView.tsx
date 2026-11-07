@@ -3,7 +3,7 @@ import { ApiError, api, type CycleAgent, type CycleArtifact, type CycleItem, typ
 import { BugRef } from '../components/BugRef'
 import { useStore, type NavTarget, type Route } from '../store'
 import { useMedia } from '../components/useMedia'
-import { BACK_ARCS, CENTER, PHASES, PHASE_COLOR, PHASE_TITLE, RADIUS, VIEW, backLabelPoint, backPath, eventPhase, forwardArc, isCycleEvent, liveTransitions, nodePercent, safeExternal, travelPath } from '../components/cycleGeometry'
+import { ARTIFACT_KIND, BACK_ARCS, CENTER, PHASES, PHASE_COLOR, PHASE_TITLE, RADIUS, VIEW, artifactTarget, workTarget, type ArtifactTarget, backLabelPoint, backPath, eventPhase, forwardArc, isCycleEvent, liveTransitions, nodePercent, travelPath } from '../components/cycleGeometry'
 import { modelOptions, saveAgentModel } from '../components/TeamPanel'
 import { roleColorVar, tripleKey } from '../components/roleLabels'
 import { Button, Select, errText } from '../components/form'
@@ -356,6 +356,25 @@ function CycleFeed({ events }: { events: Event[] }) {
 
 // ─── панель фазы ─────────────────────────────────────────────────────────
 
+// useOpenTarget — переход по ссылке артефакта или текущей работы агента.
+// Решение ADR открывается в реестре со всеми статусами: заменённое или
+// отклонённое решение иначе было бы скрыто фильтром по умолчанию.
+function useOpenTarget(): (t: ArtifactTarget | null) => void {
+  const { nav } = useStore()
+  return (t) => {
+    switch (t?.kind) {
+      case 'external': window.open(t.url, '_blank', 'noopener,noreferrer'); break
+      case 'epic': nav({ view: 'epic', id: t.id }); break
+      case 'task': api.task(t.id).then(r => nav({ view: 'epic', id: r.task.EpicID, taskId: t.id })).catch(() => nav({ view: 'tasks' })); break
+      case 'release': nav({ view: 'releases', id: t.id }); break
+      case 'incident': nav({ view: 'incidents', id: t.id }); break
+      case 'discovery': nav(t.runId ? { view: 'discovery', runId: t.runId } : { view: 'discovery' }); break
+      case 'architecture': nav({ view: 'architecture', tab: 'hld' }); break
+      case 'adr': nav({ view: 'architecture', tab: 'decisions', sub: t.number, status: 'all' }); break
+    }
+  }
+}
+
 function PhasePanel({ p, projectId, admin, extra, onClose }: {
   p: CyclePhase; projectId: string; admin: boolean; extra: PhaseExtra; onClose: () => void
 }) {
@@ -373,16 +392,11 @@ function PhasePanel({ p, projectId, admin, extra, onClose }: {
     else if (it.kind === 'material') nav({ view: 'discovery' })
     else if (it.kind === 'deployment' || it.kind === 'environment') nav({ view: 'project-settings', pid: projectId, tab: 'environments' })
   }
-  const openArt = (a: CycleArtifact) => {
-    const ext = safeExternal(a.ref.url)
-    if (ext) { window.open(ext, '_blank', 'noopener,noreferrer'); return }
-    if (a.ref.view === 'epic' && a.ref.id) nav({ view: 'epic', id: a.ref.id })
-    else if (a.ref.view === 'task' && a.ref.id) openTask(a.ref.id)
-    else if (a.ref.view === 'release') nav({ view: 'releases', id: a.ref.id })
-    else if (a.ref.view === 'incident') nav({ view: 'incidents', id: a.ref.id })
-  }
+  const openTarget = useOpenTarget()
+  const openArt = (a: CycleArtifact) => openTarget(artifactTarget(a.ref))
   const links: { label: string; to: NavTarget }[] = []
   if (p.id === 'discovery') links.push({ label: 'Исследование', to: { view: 'discovery' } })
+  if (p.id === 'architecture') links.push({ label: 'Архитектура', to: { view: 'architecture', tab: 'hld' } })
   if (p.id === 'planning' || p.id === 'development' || p.id === 'testing' || p.id === 'review') {
     links.push({ label: 'Epic’и проекта', to: { view: 'epics' } })
     if (overviewAvailable) links.push({ label: 'Обзор', to: { view: 'overview', period: '7d' } })
@@ -443,11 +457,11 @@ function PhasePanel({ p, projectId, admin, extra, onClose }: {
         <ul className="cp-items">
           {p.artifacts.map(a => {
             const body = <>
-              <span className="chip sm">{a.kind}</span>
+              <span className="chip sm">{ARTIFACT_KIND[a.kind] ?? a.kind}</span>
               <span className="cp-title">{a.title}</span>
               <span className="muted mono">{fmtAgo(a.at)}</span>
             </>
-            const can = !!safeExternal(a.ref.url) || (!!a.ref.id && ['epic', 'task', 'release', 'incident'].includes(a.ref.view ?? ''))
+            const can = artifactTarget(a.ref) !== null
             return (
               <li key={a.kind + a.id}>
                 {can ? <button className="cp-item" onClick={() => openArt(a)}>{body}</button> : <div className="cp-item">{body}</div>}
@@ -493,6 +507,8 @@ function CycleAgentCard({ a, admin }: { a: CycleAgent; admin: boolean }) {
     finally { setBusy(false) }
   }
   const w = a.current
+  const wt = workTarget(w)
+  const openTarget = useOpenTarget()
   return (
     <div className={'cyc-card s-' + a.state} style={{ ['--rc' as string]: roleColorVar(role?.color) }} data-agent={a.agent_id}>
       <div className="cc-top">
@@ -502,7 +518,9 @@ function CycleAgentCard({ a, admin }: { a: CycleAgent; admin: boolean }) {
         <span className={'cc-state s-' + a.state}>{STATE_LABEL[a.state]}</span>
       </div>
       <div className="cc-work">
-        {w ? <>{w.action}{w.num ? <span className="mono"> task-{w.num}</span> : null} · {w.title}</> : <span className="muted">задачи нет</span>}
+        {w ? <>{w.action}{w.num ? <span className="mono"> task-{w.num}</span> : null} · {wt
+          ? <button type="button" className="cc-link" onClick={() => openTarget(wt)}>{w.title}</button>
+          : w.title}</> : <span className="muted">задачи нет</span>}
       </div>
       <div className="cc-model">
         {editing && admin && member ? (
