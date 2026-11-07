@@ -337,7 +337,8 @@ function RunnerTokensTab() {
 const AUDIT_TYPES = ['', 'user.bootstrap', 'user.created', 'user.admin_changed', 'user.state_changed', 'user.password_reset',
   'runner.registered', 'runner.rejected', 'runner_token.created', 'runner_token.bound', 'runner_token.revoked',
   'connection.created', 'connection.updated', 'connection.deleted', 'connection.key_replaced', 'connection.checked', 'connection.discovered', 'planner.model_changed',
-  'agent.created', 'agent.updated', 'agent.deleted', 'runner.secrets_delivered']
+  'agent.created', 'agent.updated', 'agent.deleted', 'runner.secrets_delivered',
+  'user.password_published', 'secret_key.rotated']
 
 function AuditTab() {
   const [events, setEvents] = useState<Event[]>([])

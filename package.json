@@ -12,7 +12,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "node --test \"src/**/*.test.ts\""
+    "test": "node --test \"src/**/*.test.ts\"",
+    "third-party": "node scripts/third-party.mjs"
   },
   "dependencies": {
     "mermaid": "^11.16.0",

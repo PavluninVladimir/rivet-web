@@ -1,0 +1,52 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Ручной перезапуск: прогон после сбоя GitHub Actions иначе не повторить.
+  workflow_dispatch:
+
+# Токену workflow хватает чтения: прогон ничего не публикует.
+permissions:
+  contents: read
+
+jobs:
+  # Типы, юнит-тесты и прод-сборка. Следом проверка лицензий пакетов,
+  # попавших в бандл: копилефт и пакет без лицензии роняют прогон, а
+  # NOTICE и THIRD_PARTY должны совпадать со сборкой (npm run third-party).
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npx tsc -b
+      - run: npm test
+      - run: npm run build
+      - run: npm run third-party -- --check
+      # Известные уязвимости production-зависимостей высокого уровня.
+      - run: npm audit --omit=dev --audit-level=high
+
+  # Сканер секретов по всей истории.
+  secrets:
+    runs-on: ubuntu-latest
+    # gitleaks-action на pull_request читает список коммитов PR через API:
+    # в приватном репозитории без pull-requests: read запрос получит 403.
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Версия, на которой проверены исключения .gitleaks.toml.
+          GITLEAKS_VERSION: 8.30.1

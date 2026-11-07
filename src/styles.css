@@ -271,9 +271,13 @@ h1,h2,h3,h4 { margin: 0; }
 .rc-action { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* экран входа */
-.login-wrap { display: flex; align-items: center; justify-content: center; height: 100vh; background: var(--bg); }
+.login-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; height: 100vh; background: var(--bg); }
 .login-card { display: flex; flex-direction: column; gap: 10px; width: 300px; padding: 22px;
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow); }
+
+/* ссылка «Исходный код · версия»: вторичный текст под формой входа и в профиле */
+.source-link { font-size: 11.5px; color: var(--muted); text-decoration: none; }
+.source-link:hover, .source-link:focus-visible { color: var(--fg); text-decoration: underline; }
 
 /* заполненность контекста runner'а (ctx-бар из прототипа) */
 .ctx-cell { display: inline-flex; align-items: center; gap: 7px; min-width: 90px; font-size: 10.5px; color: var(--muted); }

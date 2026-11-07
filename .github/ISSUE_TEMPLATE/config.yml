@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Предложение или вопрос по Rivet в целом
+    url: https://github.com/PavluninVladimir/rivet/issues
+    about: Изменения поведения обсуждаются в основном репозитории.
+  - name: Уязвимость
+    url: https://github.com/PavluninVladimir/rivet-web/security/advisories/new
+    about: Об уязвимостях сообщайте приватно, не в issues (SECURITY.md).

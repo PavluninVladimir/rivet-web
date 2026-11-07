@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -57,9 +59,32 @@ function trimMermaid(): Plugin {
   }
 }
 
+// NOTICE консоли (уведомления пакетов бандла, npm run third-party) едет в
+// dist рядом с third-party-licenses.md: rivetd встраивает dist, и NOTICE и
+// THIRD_PARTY репозитория rivet собираются из встроенной сборки, а не из
+// соседнего клона.
+function emitNotice(): Plugin {
+  return {
+    name: 'rivet-emit-notice',
+    apply: 'build',
+    generateBundle() {
+      const notice = fileURLToPath(new URL('./NOTICE', import.meta.url))
+      if (existsSync(notice)) this.emitFile({ type: 'asset', fileName: 'NOTICE', source: readFileSync(notice, 'utf8') })
+    },
+  }
+}
+
 // Dev-прокси на rivetd: CORS не нужен (design build-web-console).
 export default defineConfig({
-  plugins: [trimMermaid(), react()],
+  plugins: [trimMermaid(), react(), emitNotice()],
+  // Лицензии зависимостей, попавших в бандл (open-source, AGPL и чужие
+  // уведомления): Rollup при сборке выбрасывает лицензионные комментарии
+  // из кода пакетов, поэтому имена, версии и тексты лицензий всех
+  // встроенных пакетов собираются в отдельный файл рядом с index.html. Он
+  // встраивается в rivetd вместе с консолью.
+  build: {
+    license: { fileName: 'third-party-licenses.md' },
+  },
   server: {
     proxy: {
       '/api': { target: 'http://localhost:8181', changeOrigin: false },
