@@ -1,17 +1,18 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError, api,
-  type AgentRole, type BacklogEpic, type BacklogRow, type DiscoveryState, type Epic, type Interview, type Need, type Persona,
+  type AgentRole, type BacklogEpic, type BacklogRow, type DiscoveryState, type Epic, type FeedbackCoverage, type Interview, type Need, type Persona,
   type Quote, type Run, type RunSummary, type User,
 } from '../api/client'
 import { Button, Checkbox, Field, FormActions, FormNote, Select, TextArea, TextInput, errText, useBusy } from '../components/form'
 import { RoleChip } from '../components/RoleChip'
 import { fmtDate, Tabs } from '../components/ui'
+import { FeedbackForm } from '../components/FeedbackForm'
 import {
   DROPPED_KIND_LABEL, IMPORTANCE_LABEL, KIND_LABEL, PRIORITIES, RUN_STATUS_LABEL, SIZES,
-  analystName, backlogField, decomposeText, depOptions, droppedSummary, emptyEpic, highlightRange, linkLabel,
+  analystName, backlogField, decomposeText, depOptions, droppedSummary, emptyEpic, feedbackExcerpt, highlightRange, linkLabel,
   needsByPersona, nextHumanKey, personaColor, progressPct, progressText, quoteLines, removeEpic, sizeText, usageText, validateRow,
-  runIsOlder, withMissing,
+  feedbackNote, quoteSource, runIsOlder, withMissing,
 } from '../components/discovery'
 import { useStore } from '../store'
 
@@ -139,6 +140,8 @@ export function DiscoveryView({ user, runId }: { user: User; runId?: string }) {
   runIdRef.current = runId
   const current = runId ? selected : state?.current ?? null
   const interviews = state?.interviews ?? []
+  // Отзывы пользователей (add-user-feedback): нет у старого rivetd.
+  const feedback = state?.feedback ?? []
   // Правки черновика исчезают вместе с версией: при смене текущей версии
   // с несохранёнными правками показывается заметка. Признак правок хранится
   // по id версии: эффект нового черновика (он срабатывает раньше эффекта
@@ -183,7 +186,7 @@ export function DiscoveryView({ user, runId }: { user: User; runId?: string }) {
           {isOwner && <Button onClick={() => setAdding(true)}>Добавить интервью</Button>}
           {isOwner && (
             <Button variant="primary" busy={busy || running} busyLabel="анализ идёт…"
-              disabled={interviews.length === 0} onClick={start}>Запустить анализ</Button>
+              disabled={interviews.length === 0 && feedback.length === 0} onClick={start}>Запустить анализ</Button>
           )}
         </div>
       </div>
@@ -208,6 +211,11 @@ export function DiscoveryView({ user, runId }: { user: User; runId?: string }) {
 
       <InterviewsSection interviews={interviews} isOwner={isOwner} projectId={projectId}
         onOpen={id => setViewer({ id })} onChanged={refresh} />
+
+      {state.feedback !== undefined && (
+        <FeedbackSection feedback={feedback} unaccounted={state.feedback_unaccounted ?? 0} coverage={state.feedback_coverage} isOwner={isOwner}
+          projectId={projectId} onOpen={id => setViewer({ id })} onChanged={refresh} />
+      )}
 
       {current && (current.status === 'failed') && <FailedSection run={current} />}
       {current && (current.personas?.length ?? 0) > 0 && <ResultsSection run={current} onQuote={openQuote} />}
@@ -240,7 +248,7 @@ function RunStatusBar({ run, role, isHistory, onBack }: {
         <RoleChip role={role} roleId="analyst" title={run.role?.title} name={run.agent?.name} small />
         {run.model && <span className="chip"><span className="n">{run.model}</span></span>}
         <span className="sub mono">{usageText(run.usage)}</span>
-        {run.outdated && <span className="chip" title="интервью версии удалено"><span className="n">устарела</span></span>}
+        {run.outdated && <span className="chip" title="интервью или отзыв версии удалены"><span className="n">устарела</span></span>}
         {isHistory && <Button size="sm" variant="quiet" onClick={onBack}>к текущей версии</Button>}
       </div>
       {run.status === 'running' && (
@@ -319,6 +327,60 @@ function InterviewsSection({ interviews, isOwner, projectId, onOpen, onChanged }
             </tbody>
           </table>
         )}
+      {err && <FormNote err={err} />}
+    </div>
+  )
+}
+
+// ─── отзывы пользователей (add-user-feedback) ────────────────────────────
+
+// Отзывы проекта: число неучтённых, форма для любого участника, список с
+// источником, датой и началом текста, удаление владельцем.
+function FeedbackSection({ feedback, unaccounted, coverage, isOwner, projectId, onOpen, onChanged }: {
+  feedback: Interview[]; unaccounted: number; coverage: FeedbackCoverage | null | undefined; isOwner: boolean; projectId: string
+  onOpen: (id: string) => void; onChanged: () => void
+}) {
+  const [err, setErr] = useState('')
+  const [confirm, setConfirm] = useState<string | null>(null)
+  const [busy, run] = useBusy()
+  const del = (fb: Interview) => run(async () => {
+    setErr('')
+    try { await api.deleteInterview(projectId, fb.id); setConfirm(null); onChanged() } catch (e) { setErr(errText(e)) }
+  })
+  return (
+    <div className="dw-sec disc-feedback">
+      <h3>Отзывы пользователей · {feedback.length}</h3>
+      <div className="muted" style={{ fontSize: 12.5 }}>
+        {feedbackNote(unaccounted, feedback.length, coverage)}
+      </div>
+      <FeedbackForm projectId={projectId} onAdded={onChanged} />
+      {feedback.length > 0 && (
+        <table className="tbl">
+          <thead><tr><th>Источник</th><th>Отзыв</th><th>Дата</th><th>Добавил</th><th /></tr></thead>
+          <tbody>
+            {feedback.map(fb => (
+              <tr key={fb.id} className="rowlink" onClick={() => onOpen(fb.id)}>
+                <td>{fb.source || fb.respondent_role}</td>
+                <td className="muted">{feedbackExcerpt(fb.excerpt ?? fb.text)}</td>
+                <td className="mono muted">{fmtDate(fb.created_at)}</td>
+                <td className="mono muted">{fb.created_by || '—'}</td>
+                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={e => e.stopPropagation()}>
+                  {isOwner && confirm !== fb.id && (
+                    <Button size="sm" variant="quiet" aria-label={`удалить отзыв ${fb.source ?? ''}`} onClick={() => { setErr(''); setConfirm(fb.id) }}>Удалить</Button>
+                  )}
+                  {isOwner && confirm === fb.id && (
+                    <span className="iv-confirm">
+                      <span className="muted">Удалить? Версии с ним станут устаревшими.</span>{' '}
+                      <Button size="sm" variant="danger" busy={busy} onClick={() => del(fb)}>Удалить</Button>
+                      <Button size="sm" variant="quiet" onClick={() => setConfirm(null)}>Отмена</Button>
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
       {err && <FormNote err={err} />}
     </div>
   )
@@ -447,7 +509,7 @@ function ResultsSection({ run, onQuote }: { run: Run; onQuote: (q: Quote) => voi
               <div className="rc-top"><span className="role-swatch" style={{ ['--rc' as string]: 'var(--pc)' }} /><span className="name">{p.name}</span>
                 <span className="chip" style={{ marginLeft: 'auto' }}><span className="n">{(run.needs ?? []).filter(n => n.persona === p.id).length}</span> потребн.</span></div>
               <div className="rc-action" style={{ whiteSpace: 'normal' }}>{p.description}</div>
-              <div className="muted" style={{ fontSize: 11 }}>интервью: {(p.interviews ?? []).length}</div>
+              <div className="muted" style={{ fontSize: 11 }}>материалы: {(p.interviews ?? []).length}</div>
             </div>
           ))}
         </div>
@@ -479,9 +541,9 @@ export function NeedCard({ need, personas, onQuote }: { need: Need; personas: Pe
           <div className="quote-text">«{q.text}»</div>
           <div className="quote-src">
             {onQuote
-              ? <a onClick={() => onQuote(q)}>интервью «{q.interview_title}», строка {q.line}</a>
-              : <>интервью «{q.interview_title}», строка {q.line}</>}
-            {q.respondent_role && <span className="muted"> · {q.respondent_role}</span>}
+              ? <a onClick={() => onQuote(q)}>{quoteSource(q)}</a>
+              : <>{quoteSource(q)}</>}
+            {q.respondent_role && q.kind !== 'feedback' && <span className="muted"> · {q.respondent_role}</span>}
           </div>
         </blockquote>
       ))}
@@ -629,7 +691,7 @@ function BacklogSection({ run, projectId, epics, isOwner, onChanged, onRun, onDi
       {!editable && dirty && (
         <div className="budget-pause" role="status">
           {run.outdated
-            ? 'Версия устарела после удаления интервью: несохранённые правки бэклога не сохранены. Запустите анализ заново.'
+            ? 'Версия устарела после удаления интервью или отзыва: несохранённые правки бэклога не сохранены. Запустите анализ заново.'
             : run.status === 'approved'
               ? 'Версия утверждена: ваши несохранённые правки не вошли в бэклог.'
               : 'Версия заменена новым анализом: ваши несохранённые правки не сохранены.'}
@@ -735,7 +797,7 @@ function BacklogSection({ run, projectId, epics, isOwner, onChanged, onRun, onDi
       )}
       {!editable && err && <FormNote err={err.msg} />}
       {!editable && isOwner && run.status === 'ready' && run.outdated && (
-        <div className="muted" style={{ fontSize: 12 }}>Версия устарела: интервью удалено. Запустите анализ заново.</div>
+        <div className="muted" style={{ fontSize: 12 }}>Версия устарела: интервью или отзыв удалены. Запустите анализ заново.</div>
       )}
     </div>
   )

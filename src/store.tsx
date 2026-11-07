@@ -98,7 +98,8 @@ interface Store {
 }
 
 // События, после которых экран исследования перечитывает состояние.
-const DISCOVERY_RELOAD = /^(discovery\.|epic\.(decomposing|decomposed|plan_failed|deps_changed))/
+const PROGRESS_RELOAD_MS = 2000
+const DISCOVERY_RELOAD = /^(discovery\.|feedback\.|epic\.(decomposing|decomposed|plan_failed|deps_changed))/
 
 const Ctx = createContext<Store | null>(null)
 export const useStore = () => useContext(Ctx)!
@@ -142,6 +143,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const opened = useRef(false)
   const [lastEvent, setLastEvent] = useState<Event | null>(null)
   const [discoveryTick, setDiscoveryTick] = useState(0)
+  // Ход анализа приходит событием на каждый конспект, а их сотни при
+  // большом числе отзывов: «Исследование» перечитывается по нему не чаще
+  // раза в PROGRESS_RELOAD_MS (последнее событие пачки не теряется).
+  const progressReload = useRef<{ last: number; timer: ReturnType<typeof setTimeout> | null }>({ last: 0, timer: null })
   const [recent, setRecent] = useState<Event[]>([])
   const [reconnects, setReconnects] = useState(0)
   const logsRef = useRef(new Map<string, string>())
@@ -388,7 +393,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         for (const fn of listenersRef.current) {
           try { fn(e) } catch { /* слушатель экрана не ломает поток */ }
         }
-        if (DISCOVERY_RELOAD.test(e.Type)) setDiscoveryTick(t => t + 1)
+        if (e.Type === 'discovery.analysis_progress') {
+          const pr = progressReload.current
+          const wait = PROGRESS_RELOAD_MS - (Date.now() - pr.last)
+          if (wait <= 0) {
+            pr.last = Date.now()
+            setDiscoveryTick(t => t + 1)
+          } else if (!pr.timer) {
+            pr.timer = setTimeout(() => {
+              pr.timer = null
+              pr.last = Date.now()
+              setDiscoveryTick(t => t + 1)
+            }, wait)
+          }
+        } else if (DISCOVERY_RELOAD.test(e.Type)) setDiscoveryTick(t => t + 1)
         // policy.decision пишется, когда движок не дал решения: вместе с
         // ним появляется эскалация уровня проекта, своего события у неё нет.
         // Лимит сопровождения создаёт эскалацию OPS_LIMIT вместе с инцидентом.

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, isSystemEpic, type Epic, type EpicView, type Need } from '../api/client'
 import { Button, Field, FormActions, FormNote, Select, errText, useBusy } from './form'
-import { IMPORTANCE_LABEL, KIND_LABEL, waitingText } from './discovery'
+import { IMPORTANCE_LABEL, KIND_LABEL, quoteSource, waitingText } from './discovery'
 import { useStore } from '../store'
 
 // Дашборд Epic'а (add-product-discovery, спека web «Обоснование и
@@ -90,7 +90,7 @@ export function EpicWhy({ epic, login, onChanged }: { epic: EpicView; login?: st
                 <blockquote key={i} className="quote">
                   <div className="quote-text">«{q.text}»</div>
                   <div className="quote-src">
-                    {q.respondent_role || 'респондент'} · интервью «{q.interview_title}», строка {q.line}
+                    {q.kind === 'feedback' ? quoteSource(q) : `${q.respondent_role || 'респондент'} · ${quoteSource(q)}`}
                   </div>
                 </blockquote>
               ))}

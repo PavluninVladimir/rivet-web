@@ -8,6 +8,8 @@ import { modelOptions, saveAgentModel } from '../components/TeamPanel'
 import { roleColorVar, tripleKey } from '../components/roleLabels'
 import { Button, Select, errText } from '../components/form'
 import { fmtAgo, fmtCost, fmtTokens, timeShort } from '../components/ui'
+import { FeedbackForm } from '../components/FeedbackForm'
+import { unaccountedText } from '../components/discovery'
 
 // Экран «Цикл разработки» (add-sdlc-cycle, спека web «Представление «Цикл
 // разработки»»): кольцо восьми фаз с агентами и счётчиками, движение
@@ -243,7 +245,7 @@ export function CycleView({ projectId, phase, period = '7d', admin }: {
             {narrow && <CycleCenter view={view} flat />}
             <CycleFeed events={feed} />
           </div>
-          {sel && <PhasePanel p={sel} projectId={projectId} admin={admin} extra={extra} onClose={close} />}
+          {sel && <PhasePanel p={sel} projectId={projectId} admin={admin} extra={extra} onClose={close} onChanged={load} />}
         </div>
       )}
     </div>
@@ -278,12 +280,13 @@ function PhaseNode({ p, selected, pos, incident, onClick, onKey }: {
       data-phase-node={p.id} style={{ ...pos, ['--ph' as string]: incident ? 'var(--c-fail)' : PHASE_COLOR[p.id] }}
       aria-pressed={selected}
       aria-label={p.no_data ? `${p.title}: нет данных, ${p.hint ?? ''}`
-        : `${p.title}: в работе ${c.active}, ждут ${c.waiting}, нужен человек ${c.needs_human}${incident ? ', есть открытые инциденты' : ''}`}
+        : `${p.title}: в работе ${c.active}, ждут ${c.waiting}, нужен человек ${c.needs_human}${incident ? ', есть открытые инциденты' : ''}${(p.feedback_unaccounted ?? 0) > 0 ? ', ' + unaccountedText(p.feedback_unaccounted!) : ''}`}
       onClick={onClick} onKeyDown={onKey}>
       <span className="cn-title">{p.title}{incident && <span className="cn-alert" aria-hidden="true"> ⚠</span>}</span>
       {p.no_data
         ? <><span className="cn-nodata">нет данных</span>{p.hint && <span className="cn-hint">{p.hint}</span>}</>
         : <span className="cn-count mono">{total}<small> · {c.done_period} за период</small></span>}
+      {(p.feedback_unaccounted ?? 0) > 0 && <span className="cn-feedback">{unaccountedText(p.feedback_unaccounted!)}</span>}
       {c.needs_human > 0 && <span className="cn-human" title="нужен человек">{c.needs_human}</span>}
       <AgentDots agents={p.agents} />
       {p.template_only && p.agents.length === 0 && <span className="cn-template">по шаблону</span>}
@@ -321,6 +324,7 @@ function CycleList({ phases, selected, onSelect }: { phases: CyclePhase[]; selec
               <span className="cl-title">{p.title}</span>
               {p.no_data ? <span className="muted">нет данных</span>
                 : <span className="mono">{c.active + c.waiting + c.needs_human}</span>}
+              {(p.feedback_unaccounted ?? 0) > 0 && <span className="cn-feedback">{unaccountedText(p.feedback_unaccounted!)}</span>}
               {c.needs_human > 0 && <span className="cn-human">{c.needs_human}</span>}
               <AgentDots agents={p.agents} />
             </button>
@@ -375,8 +379,8 @@ function useOpenTarget(): (t: ArtifactTarget | null) => void {
   }
 }
 
-function PhasePanel({ p, projectId, admin, extra, onClose }: {
-  p: CyclePhase; projectId: string; admin: boolean; extra: PhaseExtra; onClose: () => void
+function PhasePanel({ p, projectId, admin, extra, onClose, onChanged }: {
+  p: CyclePhase; projectId: string; admin: boolean; extra: PhaseExtra; onClose: () => void; onChanged: () => void
 }) {
   const { nav, overviewAvailable } = useStore()
   const openTask = (taskId: string) => {
@@ -419,6 +423,7 @@ function PhasePanel({ p, projectId, admin, extra, onClose }: {
             <span><b className="mono">{c.waiting}</b> ждут</span>
             <span className={c.needs_human ? 'bad' : ''}><b className="mono">{c.needs_human}</b> нужен человек</span>
             <span><b className="mono">{c.done_period}</b> за период</span>
+            {(p.feedback_unaccounted ?? 0) > 0 && <span className="cp-feedback">{unaccountedText(p.feedback_unaccounted!)}</span>}
           </div>}
 
       <section className="dw-sec">
@@ -447,6 +452,15 @@ function PhasePanel({ p, projectId, admin, extra, onClose }: {
           })}
         </ul>
       </section>
+
+      {/* Отзыв пользователя (add-user-feedback): возвращается в бэклог
+          исследования, счётчик неучтённых растёт сразу после сохранения. */}
+      {p.id === 'discovery' && (
+        <section className="dw-sec">
+          <h3>Отзыв пользователя</h3>
+          <FeedbackForm projectId={projectId} compact onAdded={onChanged} />
+        </section>
+      )}
 
       {p.id === 'release' && <ReleasesBlock releases={extra.releases} err={extra.errors.releases} />}
       {p.id === 'operations' && <OperationsBlock extra={extra} />}
