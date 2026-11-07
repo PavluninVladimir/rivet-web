@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { BACK_ARCS, CENTER, PHASES, RADIUS, backLabelPoint, eventPhase, forwardArc, isCycleEvent, liveTransitions, nodePercent, nodePoint, safeExternal, travelPath } from './cycleGeometry.ts'
+import { BACK_ARCS, CENTER, PHASES, RADIUS, artifactTarget, workTarget, backLabelPoint, eventPhase, forwardArc, isCycleEvent, liveTransitions, nodePercent, nodePoint, safeExternal, travelPath } from './cycleGeometry.ts'
 
 // Кольцо: первая фаза сверху, по часовой стрелке, узлы на окружности.
 
@@ -49,6 +49,16 @@ test('фаза и отбор событий ленты', () => {
   assert.ok(isCycleEvent('task.status', { phase_to: 'review' }))
   assert.ok(isCycleEvent('monitor.state', {}))
   assert.ok(!isCycleEvent('task.status', { status: 'running' }))
+  // Исследование и архитектура (fix-cycle-phase-data).
+  assert.equal(eventPhase('discovery.analysis_ready', {}), 'discovery')
+  assert.equal(eventPhase('discovery.interview_added', {}), 'discovery')
+  assert.equal(eventPhase('project.architecture_updated', {}), 'architecture')
+  assert.equal(eventPhase('architecture.describe_started', {}), 'architecture')
+  assert.ok(isCycleEvent('discovery.analysis_started', {}))
+  assert.ok(isCycleEvent('discovery.approved', {}))
+  assert.ok(!isCycleEvent('discovery.analysis_progress', {}))
+  assert.ok(isCycleEvent('project.architecture_updated', {}))
+  assert.ok(isCycleEvent('architecture.describe_started', {}))
 })
 
 test('анимируются только живые события после последнего виденного', () => {
@@ -77,4 +87,27 @@ test('часы клиента спешат: поправка по generated_at �
   const ev = { ID: 101, TS: new Date(serverNow - 800).toISOString(), Payload: { phase_from: 'testing', phase_to: 'review' } }
   assert.equal(liveTransitions([ev], 100, clientNow).length, 0, 'без поправки метка пропала бы')
   assert.equal(liveTransitions([ev], 100, clientNow + skew).length, 1, 'с поправкой анимируется')
+})
+
+test('ссылки артефактов фаз', () => {
+  assert.deepEqual(artifactTarget({ url: 'https://example.test/pr/1' }), { kind: 'external', url: 'https://example.test/pr/1' })
+  assert.equal(artifactTarget({ url: 'javascript:alert(1)' }), null)
+  assert.deepEqual(artifactTarget({ view: 'task', id: 't1' }), { kind: 'task', id: 't1' })
+  assert.equal(artifactTarget({ view: 'epic' }), null)
+  assert.deepEqual(artifactTarget({ view: 'discovery' }), { kind: 'discovery' })
+  assert.deepEqual(artifactTarget({ view: 'discovery', id: 'run1' }), { kind: 'discovery', runId: 'run1' })
+  assert.deepEqual(artifactTarget({ view: 'architecture' }), { kind: 'architecture' })
+  assert.deepEqual(artifactTarget({ view: 'adr', id: '7' }), { kind: 'adr', number: '7' })
+  assert.equal(artifactTarget({ view: 'adr', id: '../x' }), null)
+  assert.equal(artifactTarget({ view: 'unknown', id: 'x' }), null)
+})
+
+test('ссылка текущей работы агента', () => {
+  assert.deepEqual(workTarget({ kind: 'task', id: 't1' }), { kind: 'task', id: 't1' })
+  assert.deepEqual(workTarget({ kind: 'analysis', id: 'run1' }), { kind: 'discovery', runId: 'run1' })
+  assert.deepEqual(workTarget({ kind: 'incident', id: 'i1' }), { kind: 'incident', id: 'i1' })
+  assert.deepEqual(workTarget({ kind: 'release', id: 'r1' }), { kind: 'release', id: 'r1' })
+  assert.equal(workTarget({ kind: 'other', id: '' }), null)
+  assert.equal(workTarget({ kind: 'task', id: '' }), null)
+  assert.equal(workTarget(null), null)
 })
