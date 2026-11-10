@@ -4,7 +4,7 @@ export type TaskStatus =
   | 'queued' | 'ready' | 'running' | 'testing' | 'review'
   | 'fixing' | 'blocked' | 'failed' | 'done' | 'cancelled'
 
-export interface Criterion { text: string; ok: boolean }
+export interface Criterion { text: string; ok: boolean; status?: 'ok' | 'fail'; note?: string; by?: string; pass?: number }
 
 export interface Task {
   ID: string; EpicID: string; Num: number

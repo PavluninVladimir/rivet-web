@@ -727,3 +727,9 @@ textarea.answer { width: 100%; min-height: 64px; }
 .tok-bind > div { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 11.5px; }
 /* Отказ регистрации: идентификатор runner'а цветом блокировки. */
 .rej-row .who { color: var(--c-block); }
+
+.crit.fail .m { color: var(--c-fail); }
+.crit-note { display: block; color: var(--muted); margin-top: 3px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tl-detail { margin-top: 5px; }
+.tl-detail summary { cursor: pointer; color: var(--muted); }
+.tl-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; font: 12px/1.5 var(--font-mono); background: var(--term-bg); padding: 10px; border: 1px solid var(--border); border-radius: var(--r); }
