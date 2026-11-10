@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, stLabel, type Deployment, type EnvConfig, type Environment, type MonitorConfig, type MonitorState } from '../api/client'
+import { api, apiField, stLabel, type Deployment, type EnvConfig, type Environment, type InfraConnection, type MonitorConfig, type MonitorState } from '../api/client'
 import { useStore } from '../store'
 import { fmtAgo, fmtDuration, timeShort } from './ui'
-import { Button, Field, FormActions, FormNote, NumberInput, Select, Switch, TagsInput, TextInput, errText, fieldError, useBusy } from './form'
+import { Button, Field, FormActions, FormNote, NumberInput, Select, Switch, TagsInput, TextInput, errText, useBusy } from './form'
+import { HostBlock, ProvisionFields } from './EnvHost'
+import { cleanProvision, hostSource } from './hostLogic'
 
 // Блок «Окружения» проекта (спека web «Окружения проекта»):
 // статус последней публикации, запуск, история с логом, resume после
 // провала. Настройка — только администратор (форма скрыта остальным).
+// Хост от провайдера и решения о нём (add-environment-provisioning):
+// владельцу проекта, остальные участники видят те же данные.
 
 function depColor(status: string): string {
   const map: Record<string, string> = {
@@ -24,7 +28,7 @@ function depDuration(d: Deployment): string {
 
 const active = (s: string) => s === 'queued' || s === 'deploying' || s === 'verifying'
 
-export function Environments({ projectId, isAdmin }: { projectId: string; isAdmin: boolean }) {
+export function Environments({ projectId, isAdmin, isOwner }: { projectId: string; isAdmin: boolean; isOwner: boolean }) {
   const { tick, deployLogs } = useStore()
   const [envs, setEnvs] = useState<Environment[]>([])
   const [err, setErr] = useState('')
@@ -38,7 +42,7 @@ export function Environments({ projectId, isAdmin }: { projectId: string; isAdmi
   const refresh = useCallback(() => {
     api.environments(projectId).then(setEnvs).catch(() => setEnvs([]))
   }, [projectId])
-  useEffect(refresh, [refresh, tick]) // tick растёт и на deploy.status
+  useEffect(refresh, [refresh, tick]) // tick растёт и на deploy.status, environment.host
 
   useEffect(() => {
     if (!historyEnv) return
@@ -112,6 +116,7 @@ export function Environments({ projectId, isAdmin }: { projectId: string; isAdmi
               {last && active(last.status) && (
                 <div className="term sess-term">{deployLogs.get(last.id) || 'ожидание вывода…'}</div>
               )}
+              <HostBlock env={env} isOwner={isOwner} isAdmin={isAdmin} onChanged={refresh} />
               {env.config.monitor?.enabled && <MonitorLine env={env} />}
               {last?.status === 'failed' || last?.status === 'rolled_back' ? (
                 <div className="env-detail">{last.detail}</div>
@@ -189,13 +194,33 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
   const [err, setErr] = useState('')
   const [lastErr, setLastErr] = useState<unknown>(null)
   const [busy, run] = useBusy()
+  // Подключения провайдеров инфраструктуры для выбора хоста; старый
+  // бэкенд их не отдаёт: остаются свой адрес и локальный хост.
+  const [conns, setConns] = useState<InfraConnection[]>([])
+  useEffect(() => {
+    let live = true
+    api.infraConnections().then(l => { if (live) setConns(l ?? []) }).catch(() => { if (live) setConns([]) })
+    return () => { live = false }
+  }, [])
   // Внешний пайплайн исполняет хостинг: команд и хоста у него нет,
   // Verify — проверка URL со стороны Rivet. У Kubernetes команды собирает
   // сам Rivet из параметров кластера.
   const external = execType === 'pipeline'
   const k8s = execType === 'k8s'
   const gitops = execType === 'gitops'
+  const ssh = !external && !k8s && !gitops
   const nameErr = !name.trim() && err ? 'Укажите имя окружения' : undefined
+  // Ошибка API у поля: сервер называет поле в конверте ошибки или рядом.
+  const fe = (field: string) => apiField(lastErr) === field ? errText(lastErr) : undefined
+  // После отказа с полем фокус переходит к этому полю.
+  const box = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (lastErr && apiField(lastErr)) box.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
+  }, [lastErr])
+  // Пока у окружения живой хост, привязка уходит на сервер как была:
+  // сервер сравнивает её с сохранённой и не видит изменения.
+  const locked = !!env?.host?.live
+  const local = ssh && cfg.provision?.provider === 'local'
 
   const save = () => run(async () => {
     setErr('')
@@ -207,6 +232,11 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
     if ((external || gitops) && cfg.monitor) {
       config = { ...cfg, monitor: { ...cfg.monitor, check_cmd: undefined, logs_cmd: undefined } }
     }
+    // Привязка к провайдеру бывает только у Linux-хоста и уходит без полей
+    // чужого провайдера.
+    const provision = ssh ? (locked ? env?.config.provision : cleanProvision(cfg.provision)) : undefined
+    config = { ...config, provision }
+    if (!provision) delete config.provision
     try {
       if (env) await api.patchEnvironment(env.id, { name, trigger, config, runner_caps: caps })
       else await api.createEnvironment(projectId, { name, trigger, exec_type: execType, config, runner_caps: caps })
@@ -218,15 +248,15 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
     try { await api.deleteEnvironment(env!.id); onSaved() } catch (e) { setErr(errText(e)) }
   })
   const text = (label: string, key: keyof EnvConfig, placeholder: string, hint?: string, mono = true) => (
-    <Field label={label} hint={hint}>
+    <Field label={label} hint={hint} error={fe(`config.${key}`)}>
       {ids => <TextInput ids={ids} mono={mono} placeholder={placeholder} value={(cfg[key] as string | undefined) ?? ''}
-        onChange={e => setCfg({ ...cfg, [key]: e.target.value })} />}
+        onChange={e => setCfg(c => ({ ...c, [key]: e.target.value }))} />}
     </Field>
   )
 
   return (
     <div className="modal-wrap" onClick={onClose}>
-      <div className="modal f-form" onClick={e => e.stopPropagation()}>
+      <div className="modal f-form" ref={box} onClick={e => e.stopPropagation()}>
         <h2>{env ? 'Окружение: ' + env.name : 'Новое окружение'}</h2>
         <Field label="Имя" error={nameErr}>
           {ids => <TextInput ids={ids} placeholder="Имя (staging, prod…)" autoFocus value={name} onChange={e => setName(e.target.value)} />}
@@ -271,15 +301,18 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
           </>
         ) : (
           <>
-            {text('Хост', 'host', "Хост ([user@]host[:port], пусто — локально на runner'е)", "пусто, если команды выполняются на runner'е")}
+            <ProvisionFields env={env} cfg={cfg} setCfg={setCfg} connections={conns} error={fe} />
+            {/* Адрес привязанного хоста пишет Rivet: поля нет. */}
+            {hostSource(cfg.provision) === 'address' && text('Адрес хоста', 'host', "Хост ([user@]host[:port], пусто: локально на runner'е)", "пусто, если команды выполняются на runner'е")}
             {text('Команда доставки', 'deploy_cmd', 'Команда доставки (deploy_cmd)')}
             {text('Команда проверки', 'verify_cmd', 'Команда проверки (verify_cmd)')}
           </>
         )}
-        {text('URL health-check', 'verify_url', 'URL health-check (verify_url)')}
+        {text('URL health-check', 'verify_url', local ? 'URL health-check (http://127.0.0.1:<порт>/)' : 'URL health-check (verify_url)',
+          local ? "для локального хоста проверку выполняет runner на той же машине" : undefined)}
         <MonitorFields external={external || gitops} value={cfg.monitor}
-          error={(f: string) => fieldError(lastErr, f)}
-          onChange={monitor => setCfg({ ...cfg, monitor })} />
+          error={fe}
+          onChange={monitor => setCfg(c => ({ ...c, monitor }))} />
         {!external && !gitops && (
           <Field label="Capabilities runner'а публикации" optional hint="пусто, если подходит любой deploy-runner">
             {ids => <TagsInput ids={ids} value={caps} onChange={setCaps} placeholder="Capability runner'а публикации через запятую (пусто — любой deploy-runner)" />}

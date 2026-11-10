@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, type Epic, type Task } from '../api/client'
 import { ClaimControl, StBadge } from '../components/ui'
 import { Performer } from '../components/RoleChip'
+import { attentionTarget } from '../components/overviewLogic'
 import { useStore } from '../store'
 
 // Сквозной список задач проекта + очередь needs attention. Эскалации —
@@ -43,15 +44,17 @@ export function TasksView() {
           <div className="attention-head"><h2>Требует внимания</h2><span className="n">{attention.length}</span></div>
           <div className="attention-row">
             {attention.map(a => {
-              // Эскалация публикации (DEPLOY_FAILED) не привязана к задаче:
-              // карточка ведёт к блоку окружений проекта.
-              if (a.DeploymentID) {
+              const target = attentionTarget(a)
+              // Эскалация публикации (DEPLOY_FAILED) и хоста окружения
+              // (HOST_CREATE, HOST_DELETE, HOST_FAILED) не привязана к
+              // задаче: карточка ведёт к блоку окружений проекта.
+              if (target === 'environments') {
                 // Окружения живут на странице настроек проекта, туда и ведём.
                 return (
-                  <button key={a.ID} className="att-card"
+                  <button key={a.ID} className="att-card" data-attention-target="environments"
                     onClick={() => nav({ view: 'project-settings', pid: a.ProjectID, tab: 'environments' })}>
                     <div className="att-top">
-                      <span className="tid mono">deploy</span>
+                      <span className="tid mono">{a.DeploymentID ? 'deploy' : 'хост'}</span>
                       <span className="att-reason">{a.Reason}</span>
                     </div>
                     <div className="att-msg">{a.Message}</div>
@@ -64,7 +67,7 @@ export function TasksView() {
               }
               // Эскалация уровня проекта (движок политик недоступен): ни
               // задачи, ни публикации — карточка ведёт в настройки проекта.
-              if (!a.TaskID) {
+              if (target === 'policies') {
                 return (
                   <button key={a.ID} className="att-card"
                     onClick={() => nav({ view: 'project-settings', pid: a.ProjectID, tab: 'policies' })}>

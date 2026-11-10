@@ -410,8 +410,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // policy.decision пишется, когда движок не дал решения: вместе с
         // ним появляется эскалация уровня проекта, своего события у неё нет.
         // Лимит сопровождения создаёт эскалацию OPS_LIMIT вместе с инцидентом.
+        // Переход хоста окружения открывает и закрывает решения HOST_*.
         if (e.Type.startsWith('attention') || e.Type === 'task.status'
-          || e.Type === 'deploy.status' || e.Type === 'policy.decision' || e.Type.startsWith('incident.')) refreshAttention()
+          || e.Type === 'deploy.status' || e.Type === 'environment.host'
+          || e.Type === 'policy.decision' || e.Type.startsWith('incident.')) refreshAttention()
         if (e.Type === 'task.status' || e.Type === 'task.step' || e.Type === 'task.verdict'
           || e.Type === 'task.assign') refreshMySteps()
         // Бюджет и политика живут в DTO проекта: пауза по бюджету и новая

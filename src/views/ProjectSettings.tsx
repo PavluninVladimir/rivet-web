@@ -230,7 +230,7 @@ export function ProjectSettings({ projectId, tab, user }: { projectId: string; t
         </>
       ))}
 
-      {panel('environments', () => <Environments projectId={projectId} isAdmin={user.admin} />)}
+      {panel('environments', () => <Environments projectId={projectId} isAdmin={user.admin} isOwner={isOwner} />)}
     </div>
   )
 }
