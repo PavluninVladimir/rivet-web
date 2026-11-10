@@ -621,6 +621,18 @@ export interface StepRun {
   model?: string
 }
 
+// Процесс задачи в деталке (api-contract fix-web-console-tails): снимок
+// разрешённого процесса, по которому идёт задача (только включённые шаги,
+// переходы заполнены), и её переходы по шагам из событий task.step.
+export interface ResolvedStep {
+  id: string
+  kind: ProcessStep['kind']
+  title: string
+  on: { ok?: string; changes?: string; fail?: string }
+}
+export interface ResolvedProcess { steps: ResolvedStep[]; skipped?: string[] }
+export interface StepTransition { step: string; outcome: string; next: string; ts: string }
+
 // Элемент очереди «мои шаги».
 export interface StepItem {
   run_id: number
@@ -1076,6 +1088,12 @@ export const api = {
   addTask: (epicId: string, t: { title: string; description: string; criteria: string[]; deps: string[] }) =>
     req<Task>('POST', `/epics/${epicId}/tasks`, t),
   task: (id: string) => req<{ task: Task; timeline: Event[] | null; step_runs: StepRun[] | null }>('GET', `/tasks/${id}`),
+  // Процесс задачи для графа в деталке (fix-web-console-tails); старый
+  // бэкенд отвечает 404.
+  // Шаг и статус задачи идут в том же ответе, что и переходы, и читаются
+  // после них: позиция задачи может оказаться впереди истории, но не позади.
+  taskProcess: (id: string) => req<{ process: ResolvedProcess | null; step_history: StepTransition[] | null
+    step: string; status: string }>('GET', `/tasks/${id}/process`),
   // Очередь «мои шаги» и вердикт человека (add-process-humans).
   mySteps: () => req<StepItem[] | null>('GET', '/me/steps'),
   verdict: (taskId: string, runId: number, verdict: 'ok' | 'changes' | 'fail', detail: string) =>

@@ -354,6 +354,11 @@ textarea.answer { width: 100%; min-height: 64px; }
 .pal-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 7px 10px; border-radius: var(--r); font-size: 13px; }
 .pal-item .hint { margin-left: auto; font: 400 10.5px var(--font-mono); color: var(--muted); }
 .pal-item.sel, .pal-item:hover { background: var(--fg-soft); }
+.pal-item:disabled { opacity: .5; cursor: default; }
+.pal-item.armed { box-shadow: inset 2px 0 0 var(--c-review); }
+.pal-item.armed .hint { color: var(--c-review); }
+.pal-group { font: 600 9.5px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 8px 10px 4px; }
+.pal-err { padding: 8px 16px 0; }
 
 /* forms */
 .modal-wrap { position: fixed; inset: 0; z-index: 50; background: oklch(0% 0 0 / .45); display: grid; place-items: center; padding: 16px; }
@@ -493,6 +498,36 @@ textarea.answer { width: 100%; min-height: 64px; }
 .pg-gap:focus-visible circle, .pg-gap.target circle { stroke: var(--accent); fill: var(--accent-soft); }
 .pg-gap text { fill: var(--fg); font: 600 13px var(--font-ui); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
 .outcome-ok { color: var(--c-done); } .outcome-changes { color: var(--c-review); } .outcome-fail { color: var(--c-block); }
+
+/* Граф процесса задачи в деталке (fix-web-console-tails): те же токены,
+   что у редактора, без интерактива. Текущий шаг цветом статуса (--st). */
+.tpg-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--r); background: var(--bg); padding: 2px; }
+.tpg { display: block; font-family: var(--font-ui); }
+.tpg-node .box { fill: var(--surface); stroke: var(--border); stroke-width: 1; }
+.tpg-node .k { font: 600 8.5px var(--font-mono); fill: var(--muted); }
+.tpg-node .t { font: 500 10.5px var(--font-ui); fill: var(--fg); }
+.tpg-node .mark { font: 700 10px var(--font-ui); fill: var(--c-done); }
+.tpg-node.ahead .t { fill: var(--muted); }
+.tpg-node.ahead .bar { opacity: .45; }
+.tpg-node.passed .box { stroke: color-mix(in oklch, var(--c-done) 45%, var(--border)); }
+.tpg-node.current .box { fill: color-mix(in oklch, var(--st) 14%, var(--surface)); stroke: var(--st); stroke-width: 1.6; }
+.tpg-node.current .k { fill: var(--st); }
+.tpg-edge path { fill: none; stroke-width: 1.3; }
+.tpg-edge.ok path { stroke: var(--c-done); } .tpg-arrow.ok { fill: var(--c-done); }
+.tpg-edge.changes path { stroke: var(--c-review); } .tpg-arrow.changes { fill: var(--c-review); }
+.tpg-edge.fail path { stroke: var(--c-block); } .tpg-arrow.fail { fill: var(--c-block); }
+.tpg-edge.idle path { stroke: var(--border); stroke-dasharray: 3 3; } .tpg-arrow.idle { fill: var(--border); }
+.tpg-arrow { stroke: none; }
+.tpg-edge text { font: 600 8.5px var(--font-mono); fill: var(--muted); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; }
+.tpg-edge.changes text { fill: var(--c-review); } .tpg-edge.fail text { fill: var(--c-block); }
+.tpg-cap rect { fill: var(--raised); stroke: var(--border); }
+.tpg-cap text { font: 600 8.5px var(--font-mono); fill: var(--muted); text-anchor: middle; dominant-baseline: central; }
+.tpg-cap.escalate rect { stroke: color-mix(in oklch, var(--c-block) 60%, transparent); }
+.tpg-cap.escalate text { fill: var(--c-block); }
+.tpg-cap.done.reached rect { fill: color-mix(in oklch, var(--c-done) 18%, var(--surface)); stroke: var(--c-done); }
+.tpg-cap.done.reached text { fill: var(--c-done); }
+.tpg-cap.escalate.reached rect { fill: color-mix(in oklch, var(--c-block) 18%, var(--surface)); stroke: var(--c-block); }
+.tpg-sum { font-size: 11.5px; margin-top: 6px; }
 
 /* Окно у правого края: граф слева остаётся виден. */
 .modal-wrap.side { place-items: center end; padding-right: 24px; }

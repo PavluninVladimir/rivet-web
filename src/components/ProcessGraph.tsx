@@ -12,7 +12,8 @@ import { CAP_H, CAP_W, DEFAULT_TITLE, GX, HAS_PARTICIPANTS, NW, PAD, layoutProce
 
 type Modal = { kind: 'step'; index: number } | { kind: 'new'; at: number } | { kind: 'edge'; stepId: string; outcome: Outcome } | null
 
-const KIND_COLOR: Record<string, string> = {
+// Цвет полосы типа шага; его же берёт граф процесса задачи в деталке.
+export const KIND_COLOR: Record<string, string> = {
   code: 'var(--c-run)', test: 'var(--c-test)', review: 'var(--c-review)', prompt: 'var(--accent)', merge: 'var(--c-done)', deploy: 'var(--c-queue)',
 }
 

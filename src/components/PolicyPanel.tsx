@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { InstallationProcessSection } from './ProcessSection'
 import { processHandlers } from './installationProcess'
 import { api, apiField, defaultProcess, RIVET_AGENT, type ModelChoice, type Overrides, type PolicyEngine, type PolicyVersion, type Presets, type ProjectPolicy, type RoleModelRef } from '../api/client'
@@ -138,13 +138,52 @@ export function InstallationPolicyPanel({ onSaved }: { onSaved?: () => void } = 
   const [dirty, setDirty] = useState(false)
   const { banner, setErr, setNote, fail, clear, fieldErr } = useBanner()
 
-  const refresh = useCallback(() => {
+  // dirty в ref: фоновое перечитывание проверяет его и при ответе, а не
+  // только до запроса, иначе правка, начатая пока запрос в полёте, пропала бы.
+  const dirtyRef = useRef(dirty)
+  dirtyRef.current = dirty
+  // Новая версия, вышедшая во время несохранённой правки: значения вкладки
+  // она не заменяет, но администратор видит, на какой версии основана правка.
+  const [newer, setNewer] = useState<PolicyVersion | null>(null)
+  const baseRef = useRef<PolicyVersion | null>(null)
+  baseRef.current = version
+  const load = useCallback((background: boolean) => {
     api.systemPolicy()
-      .then(p => { setPresets(p.presets); setVersion(p.version); setEngine(p.engine ?? null); setDirty(false) })
-      .catch(e => setErr(errText(e)))
+      .then(p => {
+        if (background && dirtyRef.current) {
+          setNewer(p.version && p.version.id !== baseRef.current?.id ? p.version : null)
+          return
+        }
+        setPresets(p.presets); setVersion(p.version); setEngine(p.engine ?? null); setDirty(false); setNewer(null)
+      })
+      .catch(e => { if (!background) setErr(errText(e)) })
     api.systemPolicyVersions().then(v => setVersions(v ?? [])).catch(() => {})
   }, [setErr])
-  useEffect(refresh, [refresh])
+  useEffect(() => load(false), [load])
+  // Живая политика (спека web «Живое обновление политик»): активация версии
+  // установки приходит в поток проекта и перечитывает вкладку, как и
+  // переподключение потока, после которого пропущенное не проигрывается.
+  // Без потока (у пользователя нет доступных проектов) вкладка
+  // перечитывается при возвращении на неё. Несохранённые правки фоновое
+  // перечитывание не затирает.
+  const { listen, reconnects, streamProjectId } = useStore()
+  const background = useCallback(() => load(true), [load])
+  useEffect(() => listen(e => {
+    if (e.Type === 'policy.activated' && !e.ProjectID) background()
+  }), [listen, background])
+  const seenReconnects = useRef(reconnects)
+  useEffect(() => {
+    if (reconnects === seenReconnects.current) return
+    seenReconnects.current = reconnects
+    background()
+  }, [reconnects, background])
+  useEffect(() => {
+    if (streamProjectId) return
+    const onVisible = () => { if (document.visibilityState === 'visible') background() }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', background)
+    return () => { document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('focus', background) }
+  }, [streamProjectId, background])
 
   if (!presets) return <>{banner}</>
   // В external-режиме пресеты живут вне Rivet: показываем значения, но не
@@ -155,7 +194,7 @@ export function InstallationPolicyPanel({ onSaved }: { onSaved?: () => void } = 
     clear()
     try {
       const r = await api.putSystemPolicy(presets)
-      setPresets(r.presets); setVersion(r.version); setDirty(false)
+      setPresets(r.presets); setVersion(r.version); setDirty(false); setNewer(null)
       const saved = `сохранена версия ${r.version?.version} (${shortHash(r.version?.hash)})`
       setNote(r.violations?.length
         ? `${saved}; процессы не соответствуют ограничениям: ${r.violations.map(v => `${v.project} (${v.reason})`).join('; ')}`
@@ -212,6 +251,12 @@ export function InstallationPolicyPanel({ onSaved }: { onSaved?: () => void } = 
                 title={external ? 'политики управляются вне Rivet' : ''} onClick={save}>Сохранить версию</Button>
             </div>
           </div>
+          {newer && (
+            <div className="budget-pause" role="status" data-policy-newer>
+              Вышла версия v{newer.version} · <span className="mono">{shortHash(newer.hash)}</span> · {newer.created_by}.
+              {' '}Ваши правки основаны на {version ? `v${version.version}` : 'значениях по умолчанию'}: сохранение запишет ваши значения поверх новой версии.
+            </div>
+          )}
         </div>
         <VersionHistory versions={versions} />
       </div>
