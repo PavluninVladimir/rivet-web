@@ -439,6 +439,10 @@ export interface RepositoryStatus {
   web_url: string
   credential: { owner: string; token_prefix: string; added_at: string } | null
   state: 'ok' | 'invalid' | 'unchecked' | string
+  // Причина нерабочего подключения: код (bad_token, no_access,
+  // insufficient_scope, not_found) и текст; у рабочего пустые.
+  state_reason?: string
+  state_message?: string
   checked_at: string | null
   webhook: { registered: boolean; url: string; secret_hint: string }
 }
@@ -1540,6 +1544,9 @@ export function subscribe(projectId: string, handlers: {
   const es = new EventSource(`/api/v1/stream?project=${projectId}`)
   const evTypes = ['task.status', 'task.step', 'task.verdict', 'task.wait', 'epic.progress', 'session.step', 'task.assign', 'task.review_passed', 'epic.decomposed', 'attention.new', 'attention.claimed', 'deploy.status', 'environment.config',
     'project.repository', 'project.settings',
+    // Учётные данные хостинга перестали действовать или снова работают:
+    // настройки и очередь эскалаций перечитываются (fix-credential-state).
+    'project.credentials',
     // Состав и роли участников: страница настроек должна показывать
     // актуальные права, а не ждать перезагрузки.
     'project.member_added', 'project.member_removed', 'project.member_role_changed',

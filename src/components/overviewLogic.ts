@@ -21,10 +21,13 @@ export function browserTZ(): string {
 // События проекта, после которых обзор перечитывается (api-contract,
 // «Реальное время»). Публикации приходят как deploy.*. Эскалация уровня
 // проекта своего события не имеет и приходит вместе с policy.decision,
-// плановый бюджет месяца меняет policy.activated.
+// плановый бюджет месяца меняет policy.activated. Эскалация о нерабочих
+// учётных данных хостинга приходит с project.credentials, снимается и
+// заменой токена (project.repository).
 const RELEVANT = ['task.', 'epic.', 'attention.', 'deploy.', 'deployment.', 'role.', 'policy.']
+const RELEVANT_EXACT = ['project.credentials', 'project.repository']
 export function overviewEventRelevant(type: string): boolean {
-  return RELEVANT.some(p => type.startsWith(p))
+  return RELEVANT.some(p => type.startsWith(p)) || RELEVANT_EXACT.includes(type)
 }
 
 // Склейка перечитываний: не чаще раза в ms, первый вызов сразу, вызовы
@@ -98,21 +101,28 @@ export const DECISION_LABELS: Record<string, string> = {
 
 // Куда ведёт решение одним кликом: план — дашборд Epic'а с кнопкой
 // запуска, задача — её деталка, свой шаг — очередь «Мои шаги». Эскалация
-// без задачи: публикации (DEPLOY_FAILED) — окружения проекта, остальные
-// уровня проекта (движок или источник политик) — политики проекта, как в
-// списке задач.
+// без задачи: публикации (DEPLOY_FAILED) — окружения проекта, нерабочие
+// учётные данные хостинга (SCM_CREDENTIALS) — вкладка «Общее» настроек,
+// где заменяется токен, остальные уровня проекта (движок или источник
+// политик) — политики проекта, как в списке задач.
 export const DEPLOY_FAILED = 'DEPLOY_FAILED'
+export const SCM_CREDENTIALS = 'SCM_CREDENTIALS'
 export type DecisionTarget =
   | { view: 'epic'; id: string; taskId?: string }
   | { view: 'mysteps' }
   | { view: 'environments' }
   | { view: 'policies' }
+  | { view: 'general' }
   | null
 export function decisionTarget(d: Decision): DecisionTarget {
   if (d.kind === 'my_step') return { view: 'mysteps' }
   if (d.kind === 'plan_approval') return d.epic_id ? { view: 'epic', id: d.epic_id } : null
   if (d.epic_id && d.task_id) return { view: 'epic', id: d.epic_id, taskId: d.task_id }
-  if (d.kind === 'escalation' && !d.task_id) return d.reason === DEPLOY_FAILED ? { view: 'environments' } : { view: 'policies' }
+  if (d.kind === 'escalation' && !d.task_id) {
+    if (d.reason === DEPLOY_FAILED) return { view: 'environments' }
+    if (d.reason === SCM_CREDENTIALS) return { view: 'general' }
+    return { view: 'policies' }
+  }
   return d.epic_id ? { view: 'epic', id: d.epic_id } : null
 }
 
@@ -124,6 +134,7 @@ export function decisionAction(d: Decision): string {
     case 'mysteps': return 'К моим шагам →'
     case 'environments': return 'К окружениям →'
     case 'policies': return 'К политикам →'
+    case 'general': return 'К подключению →'
     default: return d.kind === 'plan_approval' ? 'К плану →' : 'Открыть →'
   }
 }

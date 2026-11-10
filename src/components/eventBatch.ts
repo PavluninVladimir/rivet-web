@@ -118,7 +118,7 @@ export function planRefresh(events: Event[], isAgentWork: (type: string) => bool
     // появляется эскалация уровня проекта, своего события у неё нет. Лимит
     // сопровождения создаёт эскалацию OPS_LIMIT вместе с инцидентом.
     if (t.startsWith('attention') || t === 'task.status' || t === 'deploy.status'
-      || t === 'policy.decision' || t.startsWith('incident.')) p.attention = true
+      || t === 'policy.decision' || t.startsWith('incident.') || t === 'project.credentials' || t === 'project.repository') p.attention = true
     if (t === 'task.status' || t === 'task.step' || t === 'task.verdict' || t === 'task.assign') p.mySteps = true
     // Бюджет и политика живут в DTO проекта.
     if (t === 'policy.budget_exceeded' || t === 'policy.activated') p.projects = true

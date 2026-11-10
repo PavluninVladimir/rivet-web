@@ -122,7 +122,7 @@ export function OverviewView({ period, user }: { period: OverviewPeriod; user: U
   const decisionHref = (d: Decision): string | undefined => {
     const t = decisionTarget(d)
     if (!t) return undefined
-    if (t.view === 'environments' || t.view === 'policies') {
+    if (t.view === 'environments' || t.view === 'policies' || t.view === 'general') {
       return projectId ? href({ view: 'project-settings', pid: projectId, tab: t.view }) : undefined
     }
     return href(t)
