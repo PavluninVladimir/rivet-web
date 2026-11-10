@@ -447,7 +447,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // каталог перечитывается целиком, а tick заставляет экраны
         // перечитать runner'ов и задачи.
         if (on) {
-          if (opened.current) setReconnects(n => n + 1)
+          // События установки (политика, роли) за разрыв не проигрываются:
+          // проекты с бюджетом и политикой перечитываются заново.
+          if (opened.current) { setReconnects(n => n + 1); refreshProjects() }
           opened.current = true
           refreshRoles(); refreshTeam(); refreshRunners(); refreshAttention(); refreshMySteps()
           setTick(t => t + 1)

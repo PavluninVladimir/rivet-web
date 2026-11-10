@@ -87,11 +87,37 @@ export function defaultTarget(doc: ProcessDoc, stepId: string, outcome: Outcome)
   return 'escalate'
 }
 
-export function layoutProcess(doc: ProcessDoc): GLayout {
+// Размеры раскладки: редактор рисует крупные узлы с участниками, деталка
+// задачи рисует компактный граф (fix-web-console-tails). Дуги и отступы рёбер
+// масштабируются вместе с узлом.
+export interface LayoutSize {
+  nw: number; nh: number; gx: number; pad: number; capW: number; capH: number
+  arcBase: number; arcStep: number   // высота дуги: arcBase + прыжок · arcStep
+  escGap: number                     // минимальный отступ узла «эскалация» под хребтом
+}
+export const FULL_SIZE: LayoutSize = { nw: NW, nh: NH, gx: GX, pad: PAD, capW: CAP_W, capH: CAP_H, arcBase: 22, arcStep: 22, escGap: 56 }
+export const COMPACT_SIZE: LayoutSize = { nw: 72, nh: 36, gx: 14, pad: 6, capW: 46, capH: 20, arcBase: 8, arcStep: 9, escGap: 22 }
+
+// keep решает, какие рёбра рисовать: запас под дуги и узел «эскалация» считаются
+// только по оставленным. Без него рисуются все переходы.
+export type EdgeFilter = (from: string, outcome: Outcome, to: string) => boolean
+
+export function layoutProcess(doc: ProcessDoc, opts: { size?: LayoutSize; keep?: EdgeFilter } = {}): GLayout {
+  const S = opts.size ?? FULL_SIZE
+  // Имена констант модуля перекрываются размерами выбранной раскладки.
+  const { nw: NW, nh: NH, gx: GX, pad: PAD, capW: CAP_W, capH: CAP_H } = S
+  // Отступ концов дуг от центра узла и размеры петли считаются долями узла.
+  const off = NW * 0.12
   const steps = doc.steps
   const n = steps.length
   const idx = new Map(steps.map((s, i) => [s.id, i]))
-  const trans = resolveTransitions(doc)
+  const all = resolveTransitions(doc)
+  const keep = opts.keep
+  const trans = new Map<string, Transitions>()
+  for (const [from, t] of all) {
+    const k = (o: Outcome) => (t[o] && (!keep || keep(from, o, t[o]!.to)) ? t[o] : null)
+    trans.set(from, { ok: k('ok'), changes: k('changes'), fail: k('fail') })
+  }
 
   // Запас над и под хребтом под дуги: чем длиннее прыжок, тем выше дуга.
   let topJump = 0, bottomJump = 0, anyEscalate = false
@@ -112,9 +138,9 @@ export function layoutProcess(doc: ProcessDoc): GLayout {
       else topJump = Math.max(topJump, jump)
     }
   }
-  const arcH = (jump: number) => 22 + jump * 22
-  const topRoom = topJump ? arcH(topJump) + 16 : 12
-  const bottomRoom = bottomJump ? arcH(bottomJump) + 16 : 0
+  const arcH = (jump: number) => S.arcBase + jump * S.arcStep
+  const topRoom = topJump ? arcH(topJump) + PAD * 2 / 3 : PAD / 2
+  const bottomRoom = bottomJump ? arcH(bottomJump) + PAD * 2 / 3 : 0
   const spineY = PAD + topRoom
   const cy = spineY + NH / 2
 
@@ -130,7 +156,7 @@ export function layoutProcess(doc: ProcessDoc): GLayout {
     const spineW = Math.max(NW, n * (NW + GX) - GX)
     escalate = {
       id: 'escalate', kind: 'escalate', index: -1, enabled: true,
-      x: PAD + spineW / 2 - CAP_W / 2, y: spineY + NH + Math.max(56, bottomRoom + 24), w: CAP_W, h: CAP_H,
+      x: PAD + spineW / 2 - CAP_W / 2, y: spineY + NH + Math.max(S.escGap, bottomRoom + PAD), w: CAP_W, h: CAP_H,
     }
     nodes.push(escalate)
   }
@@ -156,16 +182,17 @@ export function layoutProcess(doc: ProcessDoc): GLayout {
         } else {
           const jump = Math.max(1, Math.abs(b.index - a.index))
           const h = arcH(jump)
-          const x1 = acx + (b.index > a.index ? 24 : -24), y1 = a.y + a.h
-          const x2 = b.x + b.w / 2 + (b.index > a.index ? -24 : 24), y2 = b.y + b.h
+          const x1 = acx + (b.index > a.index ? off : -off), y1 = a.y + a.h
+          const x2 = b.x + b.w / 2 + (b.index > a.index ? -off : off), y2 = b.y + b.h
           e.d = `M${x1} ${y1} C ${x1} ${y1 + h}, ${x2} ${y2 + h}, ${x2} ${y2}`
           e.lx = (x1 + x2) / 2; e.ly = y1 + h * 0.75 + 4
         }
       } else if (b.kind === 'step' && b.index === a.index) {
         // Петля на себя (code: changes → code).
         const y = a.y
-        e.d = `M${acx + 18} ${y} C ${acx + 52} ${y - 54}, ${acx - 52} ${y - 54}, ${acx - 18} ${y}`
-        e.lx = acx; e.ly = y - 44
+        const lw = NW * 0.09, lc = NW * 0.26, lh = NH * 0.675
+        e.d = `M${acx + lw} ${y} C ${acx + lc} ${y - lh}, ${acx - lc} ${y - lh}, ${acx - lw} ${y}`
+        e.lx = acx; e.ly = y - lh * 0.81
       } else if (o === 'ok' && b.kind === 'step' && b.index === a.index + 1) {
         // Соседний шаг: прямая по хребту.
         const x1 = a.x + a.w, x2 = b.x
@@ -181,9 +208,9 @@ export function layoutProcess(doc: ProcessDoc): GLayout {
         const jump = Math.max(1, Math.abs(bi - a.index))
         const h = arcH(jump)
         const forward = bi > a.index
-        const x1 = acx + (forward ? 24 : -24), y1 = a.y
+        const x1 = acx + (forward ? off : -off), y1 = a.y
         const bcx = b.x + b.w / 2
-        const x2 = bcx + (forward ? -24 : 24), y2 = b.y
+        const x2 = bcx + (forward ? -off : off), y2 = b.y
         e.d = `M${x1} ${y1} C ${x1} ${y1 - h}, ${x2} ${y2 - h}, ${x2} ${y2}`
         e.lx = (x1 + x2) / 2; e.ly = Math.min(y1, y2) - h * 0.75 - 4
       }
@@ -195,7 +222,7 @@ export function layoutProcess(doc: ProcessDoc): GLayout {
 
   const gaps: Gap[] = []
   // «+» стоит под линией хребта, чтобы не перекрывать подпись ok над ней.
-  for (let i = 1; i <= n; i++) gaps.push({ at: i, x: PAD + i * (NW + GX) - GX / 2, y: cy + 22 })
+  for (let i = 1; i <= n; i++) gaps.push({ at: i, x: PAD + i * (NW + GX) - GX / 2, y: cy + NH * 0.275 })
 
   const w = doneX + CAP_W + PAD
   const h = (escalate ? escalate.y + escalate.h : spineY + NH) + PAD

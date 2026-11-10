@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, errCode, stColor, type Event, type OverlapPayload, type Session, type StepPayload, type Task, type StepRun } from '../api/client'
+import { api, errCode, stColor, type Event, type OverlapPayload, type ResolvedProcess, type Session, type StepPayload, type StepTransition, type Task, type StepRun } from '../api/client'
 import { MERGE_ERROR_TEXT, outsideDocsEvent, outsideDocsFailure, outsideDocsOf } from './archModel'
 import { OutsideDocsNote, rejectTitle } from './ArchitectureParts'
 
@@ -85,6 +85,7 @@ import { Button, Checkbox, Field, FormNote, NumberInput, TextArea, TextInput } f
 import { StBadge, attemptStr, fmtDuration, fmtTokens, timeShort } from './ui'
 import { Performer, RoleChip } from './RoleChip'
 import { agentVerdictNote, runnerName, verdictLabel } from './roleLabels'
+import { TaskProcessGraph } from './TaskProcessGraph'
 
 // Merge отложен политикой: последнее task.merge_deferred после последнего
 // task.review_passed (подсказка и кнопка подтверждения в деталке).
@@ -127,10 +128,15 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
   epicTasks?: Task[]
 }) {
   // Runner'ы — из стора: деталке нужны только их имена для участников шага.
-  const { tick, logs, roleOf, runners } = useStore()
+  const { tick, logs, roleOf, runners, listen, reconnects } = useStore()
   const [task, setTask] = useState<Task | null>(null)
   const [timeline, setTimeline] = useState<Event[]>([])
   const [stepRuns, setStepRuns] = useState<StepRun[]>([])
+  // Снимок процесса задачи и её переходы по шагам: граф «Процесс»
+  // (спека web «Процесс задачи в деталке»).
+  // Шаг и статус берутся из того же ответа, что и переходы, а не из задачи:
+  // два ответа разного времени дали бы на графе ложную эскалацию.
+  const [proc, setProc] = useState<{ process: ResolvedProcess | null; history: StepTransition[]; step: string; status: string } | null>(null)
   const [sessions, setSessions] = useState<Session[]>([])
   const [openSess, setOpenSess] = useState<string | null>(null)
   // null = загрузка; '' = транскрипт недоступен (нет сохранённого или 404)
@@ -155,19 +161,42 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
   const [sessBusy, setSessBusy] = useState(false)
   const termRef = useRef<HTMLDivElement>(null)
 
+  // Процесс задачи читается отдельно и не на каждый tick (чанки лога):
+  // при открытии, на переходах и смене статуса этой задачи и после
+  // переподключения потока. Применяется ответ последнего запроса.
+  const procSeq = useRef(0)
+  const refreshProcess = useCallback(() => {
+    const seq = ++procSeq.current
+    api.taskProcess(taskId).then(r => {
+      if (seq !== procSeq.current) return
+      setProc({ process: r.process ?? null, history: r.step_history ?? [], step: r.step, status: r.status })
+    }).catch(() => { if (seq === procSeq.current) setProc(null) })
+  }, [taskId])
+  const procRef = useRef(proc)
+  procRef.current = proc
+
   // История сессий перезапрашивается вместе с задачей на каждом SSE-событии
   // (tick растёт в т.ч. на task.status — конец стадии обновляет список).
+  // Если шаг или статус задачи разошлись с графом (событие задачи пропущено
+  // курсором потока или пришло между запросами), процесс перечитывается.
   const refresh = useCallback(() => {
     api.task(taskId).then(({ task, timeline, step_runs }) => {
       setTask(task)
       setTimeline(timeline ?? [])
       setStepRuns(step_runs ?? [])
+      const p = procRef.current
+      if (p && (p.step !== task.Step || p.status !== task.Status)) refreshProcess()
     }).catch(e => setErr(String(e)))
     api.taskSessions(taskId).then(s => setSessions(s ?? [])).catch(() => {})
-  }, [taskId])
+  }, [taskId, refreshProcess])
   useEffect(refresh, [refresh, tick])
+  useEffect(refreshProcess, [refreshProcess, reconnects])
+  useEffect(() => listen(e => {
+    if (e.TaskID === taskId && (e.Type === 'task.step' || e.Type === 'task.status' || e.Type === 'task.assign')) refreshProcess()
+  }), [listen, taskId, refreshProcess])
   useEffect(() => {
     setOpenSess(null); openSessRef.current = null; setTranscript(null)
+    setProc(null)
     setLimitEdit(null); setSessPrompt(''); setSessPrivate(false)
     setEditing(false); setConfirmDelete(false)
   }, [taskId])
@@ -399,6 +428,8 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
             <div className="kv"><span>оценка</span><b>{task.Estimate}</b></div>
           </div>
         </div>
+
+        {proc && <TaskProcessGraph process={proc.process} history={proc.history} step={proc.step} status={proc.status} />}
 
         {task.Description && (
           <div className="dw-sec">

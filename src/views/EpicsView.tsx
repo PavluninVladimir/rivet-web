@@ -4,6 +4,7 @@ import { StBadge } from '../components/ui'
 import { waitingText } from '../components/discovery'
 import { Button, Field, FormActions, FormNote, TextArea, TextInput, errText, useBusy } from '../components/form'
 import { useStore } from '../store'
+import { useNewEpicRequest } from '../components/intents'
 
 export function EpicsView() {
   const { projectId, nav, tick } = useStore()
@@ -13,6 +14,8 @@ export function EpicsView() {
   const [goal, setGoal] = useState('')
   const [err, setErr] = useState('')
   const [busy, run] = useBusy()
+  // «Новый Epic» из командной палитры открывает эту же форму.
+  useNewEpicRequest(useCallback(() => setCreating(true), []))
 
   const refresh = useCallback(() => {
     if (projectId) api.epics(projectId).then(e => setEpics(e ?? [])).catch(() => {})
