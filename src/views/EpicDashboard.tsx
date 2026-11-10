@@ -3,6 +3,7 @@ import { api, budgetPaused, errCode, stColor, type EpicView, type Task, type Usa
 import { Dag, type DagFilter } from '../components/Dag'
 import { TaskDrawer } from '../components/TaskDrawer'
 import { ClaimControl, fmtCost, fmtDate, fmtDuration, fmtTokens, StBadge } from '../components/ui'
+import { AttCard } from '../components/AttCard'
 import { Performer } from '../components/RoleChip'
 import { TeamPanel } from '../components/TeamPanel'
 import { EpicWaiting, EpicWhy } from '../components/EpicWhy'
@@ -13,7 +14,7 @@ import { useStore } from '../store'
 const SEG_ORDER = ['done', 'running', 'testing', 'fixing', 'review', 'ready', 'queued', 'blocked', 'failed', 'cancelled']
 
 export function EpicDashboard({ projectId, epicId, taskId, admin = false, login }: { projectId: string; epicId: string; taskId?: string; admin?: boolean; login?: string }) {
-  const { nav, tick, attention, projects, refreshAttention } = useStore()
+  const { nav, href, tick, attention, projects, refreshAttention } = useStore()
   const [epic, setEpic] = useState<EpicView | null>(null)
   const [mode, setMode] = useState<'graph' | 'list'>('graph')
   const [filter, setFilter] = useState<DagFilter>('all')
@@ -188,16 +189,10 @@ export function EpicDashboard({ projectId, epicId, taskId, admin = false, login 
           <div className="attention-row">
             {epicAtt.slice(0, 3).map(a => {
               const t = tasks.find(x => x.ID === a.TaskID)
-              return (
-                <button key={a.ID} className="att-card" onClick={() => openTask(a.TaskID)}>
-                  <div className="att-top"><span className="tid mono">task-{t?.Num ?? '?'}</span><span className="att-reason">{a.Reason}</span></div>
-                  <div className="att-msg">{a.Message}</div>
-                  <div className="att-act">
-                    <ClaimControl id={a.ID} claimedBy={a.ClaimedBy} onClaimed={refreshAttention} />
-                    {' '}Открыть →
-                  </div>
-                </button>
-              )
+              // Та же карточка, что в «Задачах»: ссылка на деталку задачи.
+              return <AttCard key={a.ID} href={href({ view: 'epic', id: epicId, taskId: a.TaskID })}
+                tid={`task-${t?.Num ?? '?'}`} reason={a.Reason} msg={a.Message}
+                act={<><ClaimControl id={a.ID} claimedBy={a.ClaimedBy} onClaimed={refreshAttention} />{' '}Открыть →</>} />
             })}
           </div>
         </div>
@@ -232,7 +227,8 @@ export function EpicDashboard({ projectId, epicId, taskId, admin = false, login 
                       return (
                         <tr key={t.ID} className="rowlink" onClick={() => openTask(t.ID)}>
                           <td className="id">task-{t.Num}</td>
-                          <td>{t.Title}</td>
+                          {/* Ссылка — вход с клавиатуры; клик по ней строку не дублирует. */}
+                          <td><a className="row-link" href={href({ view: 'epic', id: epicId, taskId: t.ID })} onClick={ev => ev.stopPropagation()}>{t.Title}</a></td>
                           <td><StBadge s={t.Status} /></td>
                           <td className="mono muted"><Performer roleId={t.RoleID} agentName={t.AgentName} runnerName={t.RunnerName} runnerId={t.RunnerID} /></td>
                           <td className="num">{t.AttemptUsed}/{t.AttemptLimit}</td>

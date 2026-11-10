@@ -181,7 +181,11 @@ export function Dag({ tasks, filter, hideDone, showCP, selected, onSelect }: {
                   + (selected === t.ID ? ' sel' : '')
                   + (showCP && cp.has(t.ID) ? ' cp' : '')}
                 data-status={t.Status} data-task={t.ID} data-kind={t.Kind || undefined}
-                style={{ left: p.x, top: p.y }}>
+                style={{ left: p.x, top: p.y }}
+                // Мышь выбирает узел в onPointerUp холста (там же отличается
+                // перетаскивание). Enter и пробел дают click без указателя
+                // (detail 0): задача открывается и с клавиатуры.
+                onClick={e => { if (e.detail === 0) onSelect(t.ID) }}>
                 <span className="n-top"><span className="n-id">task-{t.Num}{t.Kind === 'architecture' && <span className="n-kind" title="Задача описания архитектуры">архитектура</span>}</span><StBadge s={t.Status} /></span>
                 <span className="n-title">{t.Title}</span>
                 <span className="n-meta"><Performer roleId={t.RoleID} agentName={t.AgentName} runnerName={t.RunnerName} runnerId={t.RunnerID} fallback={fallback} /><span>{t.AttemptUsed > 0 ? `${t.AttemptUsed}/${t.AttemptLimit}` : ''}</span></span>

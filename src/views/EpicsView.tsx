@@ -7,7 +7,7 @@ import { useStore } from '../store'
 import { useNewEpicRequest } from '../components/intents'
 
 export function EpicsView() {
-  const { projectId, nav, tick } = useStore()
+  const { projectId, nav, href, tick } = useStore()
   const [epics, setEpics] = useState<Epic[]>([])
   const [creating, setCreating] = useState(false)
   const [title, setTitle] = useState('')
@@ -42,8 +42,9 @@ export function EpicsView() {
         <tbody>
           {epics.map(e => (
             <tr key={e.ID} className="rowlink" onClick={() => nav({ view: 'epic', id: e.ID })}>
+              {/* Ссылка — вход с клавиатуры; клик по ней строку не дублирует. */}
               <td>
-                {e.Title}
+                <a className="row-link" href={href({ view: 'epic', id: e.ID })} onClick={ev => ev.stopPropagation()}>{e.Title}</a>
                 {e.Kind === 'architecture' && (
                   <span className="chip arch-epic-chip" style={{ marginLeft: 8 }} title="Системный Epic: описание архитектуры проекта">
                     <span className="n">архитектура</span>

@@ -15,7 +15,7 @@ const ASK: Record<string, string> = {
 }
 
 export function MyStepsView() {
-  const { nav, tick, refreshMySteps } = useStore()
+  const { href, tick, refreshMySteps } = useStore()
   const [items, setItems] = useState<StepItem[]>([])
   const [text, setText] = useState<Record<number, string>>({})
   const [err, setErr] = useState<Record<number, string>>({})
@@ -76,7 +76,7 @@ export function MyStepsView() {
               <span className="att-reason">{it.step.kind.toUpperCase()} · {it.step.title}</span>
               <span className="mono muted" title="ждёт с">{timeShort(it.created_at)}</span>
             </div>
-            <a className="att-task" onClick={() => nav({ view: 'epic', pid: it.project.id, id: it.epic.id, taskId: it.task.id })}>
+            <a className="att-task" href={href({ view: 'epic', pid: it.project.id, id: it.epic.id, taskId: it.task.id })}>
               task-{it.task.num}: {it.task.title}
             </a>
             <div className="muted" style={{ fontSize: 12 }}>{it.project.title} · {it.epic.title} · адресовано: {it.addressed}</div>

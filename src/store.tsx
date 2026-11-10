@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ApiError, api, subscribe, type AgentRole, type Attention, type Event, type Project, type Runner, type TeamAgent } from './api/client'
-import { throttleWithRecheck } from './components/overviewLogic'
+import { EVENT_BATCH_MS, EVENT_REFRESH_MS, eventPipeline, mergeRecent, planRefresh } from './components/eventBatch'
+import { throttle, throttleWithRecheck } from './components/overviewLogic'
 import { isAgentWorkEvent } from './components/roleLabels'
 import { parseHash, resolveLegacy, routeHash, routeProject, withProject, type NavTarget, type Parsed, type Route } from './routes'
 
@@ -59,10 +60,16 @@ interface Store {
   // mySteps — сколько запусков ждёт текущего пользователя (add-process-humans).
   mySteps: number
   connected: boolean
-  tick: number            // растёт на каждом SSE-событии — зависимость для рефетчей
-  // eventTick — только события проекта (без чанков логов) и переподключения:
-  // зависимость перечитываний, которым логи не нужны.
+  // tick — зависимость перечитываний экрана: растёт на событиях проекта не
+  // чаще раза в секунду (с завершающим ростом после пачки) и на каждом
+  // подключении потока (fix-console-rivetd-tails).
+  tick: number
+  // eventTick — то же для экранов, которые раньше отделяли события от
+  // чанков логов: растёт вместе с tick.
   eventTick: number
+  // logTick — рост live-лога (чанки session.log и deploy.log): терминалы
+  // перерисовываются по нему, запросов к API он не вызывает.
+  logTick: number
   lastEvent: Event | null
   // discoveryTick растёт на каждом событии исследования и декомпозиции и
   // при переподключении (add-product-discovery). В отличие от lastEvent
@@ -71,8 +78,12 @@ interface Store {
   // recent — последние события проекта из потока, новые первыми (лента цикла).
   recent: Event[]
   // reconnects — число переподключений потока (первое подключение не
-  // считается): экран цикла перечитывает агрегат и историю.
+  // считается).
   reconnects: number
+  // connects — число подключений потока, включая первое и подключение к
+  // другому проекту: по нему экраны перечитывают состояние целиком (спека
+  // web «Перечитывания по потоку событий»), реплея истории больше нет.
+  connects: number
   logs: Map<string, string> // live-лог по задачам (только текущее подключение)
   deployLogs: Map<string, string> // live-лог публикаций по deployment_id
   refreshProjects: () => void
@@ -89,6 +100,9 @@ interface Store {
   refreshTeam: () => void
   runners: Runner[]
   refreshRunners: () => void
+  // scheduleRunners — перечитывание runner'ов через ту же склейку, что по
+  // событиям потока: не чаще раза в секунду (панель команды по tick).
+  scheduleRunners: () => void
   // Есть ли у бэкенда обзор проекта: старый отвечает 404, пункт
   // навигации тогда скрывается (add-project-lead-view).
   overviewAvailable: boolean
@@ -97,9 +111,9 @@ interface Store {
   listen: (fn: (e: Event) => void) => () => void
 }
 
-// События, после которых экран исследования перечитывает состояние.
+// Ход анализа исследования перечитывается не чаще раза в столько
+// миллисекунд.
 const PROGRESS_RELOAD_MS = 2000
-const DISCOVERY_RELOAD = /^(discovery\.|feedback\.|epic\.(decomposing|decomposed|plan_failed|deps_changed))/
 
 const Ctx = createContext<Store | null>(null)
 export const useStore = () => useContext(Ctx)!
@@ -140,6 +154,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [connected, setConnected] = useState(false)
   const [tick, setTick] = useState(0)
   const [eventTick, setEventTick] = useState(0)
+  const [logTick, setLogTick] = useState(0)
   const opened = useRef(false)
   const [lastEvent, setLastEvent] = useState<Event | null>(null)
   const [discoveryTick, setDiscoveryTick] = useState(0)
@@ -149,6 +164,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const progressReload = useRef<{ last: number; timer: ReturnType<typeof setTimeout> | null }>({ last: 0, timer: null })
   const [recent, setRecent] = useState<Event[]>([])
   const [reconnects, setReconnects] = useState(0)
+  const [connects, setConnects] = useState(0)
   const logsRef = useRef(new Map<string, string>())
   const listenersRef = useRef(new Set<(e: Event) => void>())
   const listen = useCallback((fn: (e: Event) => void) => {
@@ -378,89 +394,100 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const agentWork = useMemo(() => throttleWithRecheck(() => { refreshTeam(); refreshRunners() }, AGENT_WORK_MS), [refreshTeam, refreshRunners])
   useEffect(() => () => agentWork.cancel(), [agentWork])
 
+  // Перечитывания по событиям потока склеиваются (fix-console-rivetd-tails,
+  // спека web «Перечитывания по потоку событий»): источник перечитывается не
+  // чаще раза в EVENT_REFRESH_MS, первый вызов сразу, вызовы внутри окна
+  // сводятся к одному завершающему. Явные перечитывания (claim эскалации,
+  // подключение потока, опрос счётчиков) идут мимо склейки.
+  const onEvents = useMemo(() => ({
+    attention: throttle(refreshAttention, EVENT_REFRESH_MS),
+    mySteps: throttle(refreshMySteps, EVENT_REFRESH_MS),
+    projects: throttle(refreshProjects, EVENT_REFRESH_MS),
+    roles: throttle(refreshRoles, EVENT_REFRESH_MS),
+    team: throttle(refreshTeam, EVENT_REFRESH_MS),
+    runners: throttle(refreshRunners, EVENT_REFRESH_MS),
+  }), [refreshAttention, refreshMySteps, refreshProjects, refreshRoles, refreshTeam, refreshRunners])
+  useEffect(() => () => { for (const th of Object.values(onEvents)) th.cancel() }, [onEvents])
+
   useEffect(() => {
     if (!streamProjectId) return
-    return subscribe(streamProjectId, {
-      onEvent: (e) => {
-        if (isAgentWorkEvent(e.Type)) {
-          agentWork.call()
-          return
-        }
-        setLastEvent(e)
-        setRecent(r => (r.some(x => x.ID === e.ID) ? r : [e, ...r].slice(0, 60)))
-        setTick(t => t + 1)
-        setEventTick(t => t + 1)
+    // Пачка событий потока применяется разом: каждый источник
+    // перечитывается один раз, экраны со своей подпиской получают события
+    // пачки по порядку. Первое событие после затишья применяется сразу,
+    // следующие в окне EVENT_BATCH_MS — пачкой в его конце. tick (экран)
+    // растёт не чаще раза в EVENT_REFRESH_MS, как и остальные источники.
+    const apply = (evs: Event[]) => {
+      const plan = planRefresh(evs, isAgentWorkEvent)
+      if (plan.agentWork) agentWork.call()
+      const proj = plan.project
+      if (!proj.length) return false
+      setLastEvent(proj[proj.length - 1])
+      setRecent(r => mergeRecent(r, proj, 60))
+      for (const e of proj) {
         for (const fn of listenersRef.current) {
           try { fn(e) } catch { /* слушатель экрана не ломает поток */ }
         }
-        if (e.Type === 'discovery.analysis_progress') {
-          const pr = progressReload.current
-          const wait = PROGRESS_RELOAD_MS - (Date.now() - pr.last)
-          if (wait <= 0) {
+      }
+      if (plan.discovery) setDiscoveryTick(t => t + 1)
+      else if (plan.progress) {
+        const pr = progressReload.current
+        const wait = PROGRESS_RELOAD_MS - (Date.now() - pr.last)
+        if (wait <= 0) {
+          pr.last = Date.now()
+          setDiscoveryTick(t => t + 1)
+        } else if (!pr.timer) {
+          pr.timer = setTimeout(() => {
+            pr.timer = null
             pr.last = Date.now()
             setDiscoveryTick(t => t + 1)
-          } else if (!pr.timer) {
-            pr.timer = setTimeout(() => {
-              pr.timer = null
-              pr.last = Date.now()
-              setDiscoveryTick(t => t + 1)
-            }, wait)
-          }
-        } else if (DISCOVERY_RELOAD.test(e.Type)) setDiscoveryTick(t => t + 1)
-        // policy.decision пишется, когда движок не дал решения: вместе с
-        // ним появляется эскалация уровня проекта, своего события у неё нет.
-        // Лимит сопровождения создаёт эскалацию OPS_LIMIT вместе с инцидентом.
-        // Переход хоста окружения открывает и закрывает решения HOST_*.
-        if (e.Type.startsWith('attention') || e.Type === 'task.status'
-          || e.Type === 'deploy.status' || e.Type === 'environment.host'
-          || e.Type === 'policy.decision' || e.Type.startsWith('incident.')) refreshAttention()
-        if (e.Type === 'task.status' || e.Type === 'task.step' || e.Type === 'task.verdict'
-          || e.Type === 'task.assign') refreshMySteps()
-        // Бюджет и политика живут в DTO проекта: пауза по бюджету и новая
-        // версия политики должны обновить состояние без перезагрузки.
-        if (e.Type === 'policy.budget_exceeded' || e.Type === 'policy.activated') refreshProjects()
-        // Название и цвет шаблона приходят и в DTO агентов: правка
-        // шаблона перечитывает и команду. Смена модели планировщика меняет
-        // модель агента-тимлида.
-        if (e.Type.startsWith('role.')) { refreshRoles(); refreshTeam() }
-        if (e.Type.startsWith('team.agent_') || e.Type === 'planner.model_changed') refreshTeam()
-        if (e.Type === 'planner.model_changed') refreshRoles()
-        // Текущая работа агентов и runner'ов меняется вместе со статусами задач.
-        if (e.Type === 'task.status' || e.Type === 'task.assign' || e.Type === 'task.step') { refreshTeam(); refreshRunners() }
-        if (e.Type === 'runner.renamed') { refreshRunners(); refreshTeam() }
-        // Декомпозиция: Тимлид занят, пока не придёт итог плана.
-        if (e.Type === 'epic.decomposing' || e.Type === 'epic.decomposed' || e.Type === 'epic.plan_failed') refreshTeam()
-        // Релиз-инженер и Инженер сопровождения заняты заданием control plane.
-        if (e.Type === 'ops.job') refreshTeam()
-      },
+          }, wait)
+        }
+      }
+      if (plan.attention) onEvents.attention.call()
+      if (plan.mySteps) onEvents.mySteps.call()
+      if (plan.projects) onEvents.projects.call()
+      if (plan.roles) onEvents.roles.call()
+      if (plan.team) onEvents.team.call()
+      if (plan.runners) onEvents.runners.call()
+      return true
+    }
+    const events = eventPipeline(apply, () => { setTick(t => t + 1); setEventTick(t => t + 1) })
+    // Чанки live-лога дописываются в буфер сразу, а терминалы
+    // перерисовываются по logTick не чаще окна пачки: вывод команды идёт
+    // десятками чанков в секунду. Запросов к API логи не вызывают.
+    const logTick = throttle(() => setLogTick(t => t + 1), EVENT_BATCH_MS)
+    const unsubscribe = subscribe(streamProjectId, {
+      onEvent: events.push,
       onLog: (c) => {
         const cur = logsRef.current.get(c.task_id) ?? ''
         logsRef.current.set(c.task_id, (cur + c.data).slice(-64000))
-        setTick(t => t + 1)
+        logTick.call()
       },
       onDeployLog: (c) => {
         const cur = deployLogsRef.current.get(c.deploy_id) ?? ''
         deployLogsRef.current.set(c.deploy_id, (cur + c.data).slice(-64000))
-        setTick(t => t + 1)
+        logTick.call()
       },
       onState: (on) => {
         setConnected(on)
-        // После разрыва события ролей и имён runner'ов могли пропасть:
-        // каталог перечитывается целиком, а tick заставляет экраны
-        // перечитать runner'ов и задачи.
+        // Любое подключение, первое или повторное, в том числе к другому
+        // проекту: поток историю не проигрывает, а события между загрузкой
+        // экранов и подключением или за разрыв могли пропасть. Общие
+        // данные перечитываются целиком (проекты — бюджет и политика в
+        // DTO), tick и connects заставляют экраны перечитать своё.
         if (on) {
-          // События установки (политика, роли) за разрыв не проигрываются:
-          // проекты с бюджетом и политикой перечитываются заново.
-          if (opened.current) { setReconnects(n => n + 1); refreshProjects() }
+          if (opened.current) setReconnects(n => n + 1)
           opened.current = true
-          refreshRoles(); refreshTeam(); refreshRunners(); refreshAttention(); refreshMySteps()
+          setConnects(n => n + 1)
+          refreshProjects(); refreshRoles(); refreshTeam(); refreshRunners(); refreshAttention(); refreshMySteps()
           setTick(t => t + 1)
           setEventTick(t => t + 1)
           setDiscoveryTick(t => t + 1)
         }
       },
     })
-  }, [streamProjectId, refreshAttention, refreshProjects, refreshRoles, refreshTeam, refreshRunners, refreshMySteps, agentWork])
+    return () => { unsubscribe(); events.cancel(); logTick.cancel() }
+  }, [streamProjectId, refreshAttention, refreshProjects, refreshRoles, refreshTeam, refreshRunners, refreshMySteps, agentWork, onEvents])
   // Лента событий относится к выбранному проекту; новый поток — первое
   // подключение, а не переподключение.
   useEffect(() => { setRecent([]); opened.current = false }, [streamProjectId])
@@ -468,9 +495,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{
       route, nav, href, projects, projectId, streamProjectId, resolving, notice, dismissNotice,
-      attention, mySteps, connected, tick, eventTick, lastEvent, recent, reconnects, discoveryTick, logs: logsRef.current,
+      attention, mySteps, connected, tick, eventTick, logTick, lastEvent, recent, reconnects, connects, discoveryTick, logs: logsRef.current,
       deployLogs: deployLogsRef.current, refreshProjects, refreshAttention, refreshMySteps,
-      roles, roleOf, refreshRoles, team, refreshTeam, runners, refreshRunners,
+      roles, roleOf, refreshRoles, team, refreshTeam, runners, refreshRunners, scheduleRunners: onEvents.runners.call,
       overviewAvailable, listen,
     }}>
       {children}

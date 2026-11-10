@@ -55,7 +55,7 @@ function MovingDot({ m }: { m: Marker }) {
 export function CycleView({ projectId, phase, period = '7d', admin }: {
   projectId: string; phase?: CyclePhaseId; period?: CyclePeriod; admin: boolean
 }) {
-  const { nav, eventTick, reconnects, recent } = useStore()
+  const { nav, eventTick, connects, recent } = useStore()
   // События этого проекта: после «Назад» поток стора мог остаться на другом.
   const mine = useMemo(() => recent.filter(e => e.ProjectID === projectId), [recent, projectId])
   const [view, setView] = useState<View | null>(null)
@@ -66,7 +66,8 @@ export function CycleView({ projectId, phase, period = '7d', admin }: {
     nav({ view: 'cycle', pid: projectId, phase, period, ...patch }, { replace }), [nav, projectId, phase, period])
 
   // Перечитывание агрегата не чаще раза в 3 секунды после событий проекта
-  // и сразу после переподключения потока. Смена периода снимает
+  // и сразу после любого подключения потока (первого, повторного, к этому
+  // проекту): поток историю не проигрывает. Смена периода снимает
   // отложенное перечитывание прежнего, ответ на другой период отбрасывается.
   const seq = useRef(0)
   const last = useRef(0)
@@ -96,7 +97,7 @@ export function CycleView({ projectId, phase, period = '7d', admin }: {
   useEffect(() => {
     if (timer.current) { clearTimeout(timer.current); timer.current = null }
     load()
-  }, [load, reconnects])
+  }, [load, connects])
   // Перечитывание по событиям проекта (не по чанкам логов); первое
   // срабатывание при монтировании пропускается — агрегат уже грузится.
   const armed = useRef(false)
@@ -122,9 +123,9 @@ export function CycleView({ projectId, phase, period = '7d', admin }: {
         seen.current = Math.max(0, ...list.map(e => e.ID), ...recentRef.current.map(e => e.ID))
       })
       // Без истории граница неизвестна: анимации нет до следующей удачной
-      // загрузки (переподключение).
+      // загрузки (следующее подключение потока).
       .catch(() => setHistory([]))
-  }, [projectId, reconnects])
+  }, [projectId, connects])
   const recentRef = useRef(mine)
   recentRef.current = mine
 
@@ -382,7 +383,7 @@ function useOpenTarget(): (t: ArtifactTarget | null) => void {
 function PhasePanel({ p, projectId, admin, extra, onClose, onChanged }: {
   p: CyclePhase; projectId: string; admin: boolean; extra: PhaseExtra; onClose: () => void; onChanged: () => void
 }) {
-  const { nav, overviewAvailable } = useStore()
+  const { nav, href, overviewAvailable } = useStore()
   const openTask = (taskId: string) => {
     api.task(taskId).then(r => nav({ view: 'epic', id: r.task.EpicID, taskId })).catch(() => nav({ view: 'tasks' }))
   }
@@ -485,8 +486,7 @@ function PhasePanel({ p, projectId, admin, extra, onClose, onChanged }: {
         </ul>
         {links.length > 0 && (
           <div className="cp-links">
-            {links.map(l => <a key={l.label} onClick={() => nav(l.to)} role="link" tabIndex={0}
-              onKeyDown={e => { if (e.key === 'Enter') nav(l.to) }}>{l.label} →</a>)}
+            {links.map(l => <a key={l.label} className="tlink" href={href(l.to)}>{l.label} →</a>)}
           </div>
         )}
       </section>
@@ -605,7 +605,7 @@ const NOTES_STATUS: Record<string, string> = { pending: 'пишутся', ready:
 const MONITOR_STATE: Record<string, string> = { ok: 'проверка проходит', fail: 'проверка падает', unknown: 'неизвестно', disabled: 'выключено' }
 
 function ReleasesBlock({ releases, err }: { releases: Release[]; err?: string }) {
-  const { nav } = useStore()
+  const { href } = useStore()
   return (
     <section className="dw-sec">
       <h3>Релизы</h3>
@@ -614,13 +614,13 @@ function ReleasesBlock({ releases, err }: { releases: Release[]; err?: string })
       <ul className="cp-items">
         {releases.map(r => (
           <li key={r.id}>
-            <button className="cp-item" onClick={() => nav({ view: 'releases', id: r.id })}>
+            <a className="cp-item" href={href({ view: 'releases', id: r.id })}>
               <b>{r.env_name}</b>
               <span className="mono">{r.version.slice(0, 8)}</span>
               <span className="cp-title">{r.composition.length} задач</span>
               <span className={'chip sm notes-' + r.notes_status}>release notes {NOTES_STATUS[r.notes_status] ?? r.notes_status}</span>
               <span className="muted mono">{fmtAgo(r.created_at)}</span>
-            </button>
+            </a>
           </li>
         ))}
       </ul>
@@ -629,7 +629,7 @@ function ReleasesBlock({ releases, err }: { releases: Release[]; err?: string })
 }
 
 function OperationsBlock({ extra }: { extra: PhaseExtra }) {
-  const { nav } = useStore()
+  const { href } = useStore()
   const { incidents, envs, errors } = extra
   return (
     <>
@@ -640,13 +640,13 @@ function OperationsBlock({ extra }: { extra: PhaseExtra }) {
         <ul className="cp-items">
           {incidents.map(i => (
             <li key={i.id}>
-              <button className="cp-item" onClick={() => nav({ view: 'incidents', id: i.id })}>
+              <a className="cp-item" href={href({ view: 'incidents', id: i.id })}>
                 <span className={'inc-sev s-' + i.severity}>{i.severity}</span>
                 <span className="cp-title">{i.title}</span>
                 <span className="mono">×{i.occurrences}</span>
                 <BugRef bug={i.bug_task} />
                 {i.needs_human && <span className="cn-human" title="нужен человек" aria-label="нужен человек">!</span>}
-              </button>
+              </a>
             </li>
           ))}
         </ul>

@@ -22,7 +22,7 @@ const POLL_MS = 8000
 const REFRESH_LIMIT_MS = 120_000
 
 export function useArchitecture(projectId: string | null | undefined) {
-  const { listen, connected, streamProjectId: streamProject } = useStore()
+  const { listen, connects, streamProjectId: streamProject } = useStore()
   const [arch, setArch] = useState<ProjectArchitecture | null>(null)
   const [err, setErr] = useState('')
   const [refreshing, setRefreshing] = useState(false)
@@ -121,14 +121,17 @@ export function useArchitecture(projectId: string | null | undefined) {
     })
   }, [live, listen, projectId, schedule])
 
-  // После разрыва события могли пропасть: снимок перечитывается. Первое
-  // открытие потока разрывом не считается.
-  const prev = useRef<boolean | null>(connected ? true : null)
+  // После любого подключения потока, первого, повторного или к этому
+  // проекту, снимок перечитывается: поток историю не проигрывает, и
+  // событие между загрузкой экрана и подключением или за разрыв могло
+  // пропасть (fix-console-rivetd-tails). Подключение до открытия экрана не
+  // в счёт: экран загрузил снимок после него.
+  const seenConnects = useRef(connects)
   useEffect(() => {
-    if (connected && prev.current === false && live) schedule()
-    if (connected) prev.current = true
-    else if (prev.current === true) prev.current = false
-  }, [connected, live, schedule])
+    if (connects === seenConnects.current) return
+    seenConnects.current = connects
+    if (live) schedule()
+  }, [connects, live, schedule])
 
   return { arch, err, refresh: load, live, refreshing, refreshNote, startRefresh }
 }

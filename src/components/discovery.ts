@@ -177,6 +177,15 @@ export function droppedSummary(dropped: Dropped[] | null | undefined): string {
   return [...counts].map(([k, n]) => `${DROPPED_KIND_LABEL[k] ?? k} ${n}`).join(' · ')
 }
 
+// Строки текста интервью для окна с номерами строк. Правило то же, что у
+// сервера (discovery.Lines): завершающий перевод строки не даёт пустой
+// последней строки, пустой текст строк не даёт. Иначе окно показывало бы
+// лишнюю строку, а размер «N строк» из ответа сервера с ним расходился.
+export function interviewLines(text: string): string[] {
+  if (!text) return []
+  return (text.endsWith('\n') ? text.slice(0, -1) : text).split('\n')
+}
+
 // Строки, которые занимает цитата в тексте интервью: с её строки на
 // столько строк, сколько переводов строк в самом фрагменте.
 export function quoteLines(q: Pick<Quote, 'line' | 'text'>): { from: number; to: number } {

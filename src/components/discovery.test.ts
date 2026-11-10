@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   analystName, backlogField, decomposeText, depOptions, droppedSummary, emptyEpic, highlightRange, linkLabel,
-  needsByPersona, nextHumanKey, progressPct, progressText, quoteLines, removeEpic, usageText, validateRow, waitingText,
+  interviewLines, needsByPersona, nextHumanKey, progressPct, progressText, quoteLines, removeEpic, usageText, validateRow, waitingText,
   runIsOlder, withMissing, unaccountedText, feedbackExcerpt, quoteSource, feedbackFieldErrors, runeCount, feedbackNote,
 } from './discovery.ts'
 
@@ -153,4 +153,14 @@ test('пояснение к отзывам: неучтённые, все в ве
     'Все отзывы в последней версии исследования, в синтез вошли 84 из 500: без находок 16, убрано сокращением 400.')
   assert.equal(feedbackNote(0, 3, { total: 3, synthesized: 2, without_findings: 1, trimmed: 0 }),
     'Все отзывы в последней версии исследования, в синтез вошли 2 из 3: без находок 1.')
+})
+
+test('строки окна интервью нумеруются как на сервере', () => {
+  assert.deepEqual(interviewLines(''), [])
+  assert.deepEqual(interviewLines('одна'), ['одна'])
+  assert.deepEqual(interviewLines('одна\n'), ['одна'], 'завершающий перевод строки не даёт пустой строки')
+  assert.deepEqual(interviewLines('а\nб\n'), ['а', 'б'])
+  assert.deepEqual(interviewLines('а\n\nб'), ['а', '', 'б'], 'пустая строка в середине остаётся')
+  assert.deepEqual(interviewLines('а\n\n'), ['а', ''], 'убирается только один перевод строки')
+  assert.deepEqual(interviewLines('\n'), [''])
 })
