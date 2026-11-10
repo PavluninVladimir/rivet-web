@@ -70,15 +70,17 @@ function ProjectSwitch({ projects, current, onPick }: { projects: Project[]; cur
   )
 }
 
+// Узкий экран: боковая панель выезжает по кнопке «Меню». Граница та же,
+// что в styles.css.
+const NARROW = '(max-width: 720px)'
+
 // Боковая панель (add-project-navigation, спека web «Навигация по
 // проекту»): вне проекта — только пункты установки, в проекте — блок
 // проекта, разделы проекта и ниже компактная группа установки.
 function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
   const { route, nav, attention, mySteps, connected, projects, projectId, overviewAvailable, resolving, notice, dismissNotice } = useStore()
   const [palOpen, setPalOpen] = useState(false)
-  // Узкий экран: панель выезжает по кнопке «Меню». Граница та же, что в
-  // styles.css.
-  const narrow = useMedia('(max-width: 720px)')
+  const narrow = useMedia(NARROW)
   const [menuOpen, setMenuOpen] = useState(false)
   const menuOpenRef = useRef(false)
   menuOpenRef.current = menuOpen
@@ -106,16 +108,50 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
   // Escape и подложка возвращают фокус на «Меню». Фокус переводится после
   // отрисовки: пока панель открыта, экран за подложкой недоступен (inert).
   const here = routeHash(route)
-  const focusAfter = useRef<'menu' | 'viewport' | null>(null)
+  // nav — текущий раздел боковой панели (без текущего первый пункт): туда
+  // уходит фокус с кнопки «Меню», когда окно стало широким и кнопки нет.
+  const focusAfter = useRef<'menu' | 'viewport' | 'nav' | null>(null)
+  const focusTo = (to: 'menu' | 'viewport' | 'nav') => {
+    if (to === 'menu') menuBtn.current?.focus()
+    else if (to === 'viewport') viewport.current?.focus()
+    else (sidebar.current?.querySelector<HTMLElement>('.nav-item[aria-current]') ?? sidebar.current?.querySelector<HTMLElement>('.nav-item'))?.focus()
+  }
   // Смена адреса (в том числе «Назад» браузера) закрывает панель, фокус
   // уходит к экрану, а не остаётся в скрытой панели.
   useEffect(() => {
     if (menuOpenRef.current) focusAfter.current = 'viewport'
     setMenuOpen(false)
   }, [here])
+  // Окно стало широким, пока фокус на «Меню»: на широком экране кнопки нет,
+  // и браузер уводит фокус с неё в body ещё до события change у matchMedia
+  // (fix-console-rivetd-tails). Потеря фокуса «в никуда» у кнопки, которая
+  // перестала отображаться, и есть этот случай: фокус переходит на текущий
+  // раздел боковой панели. Уход фокуса по Tab или щелчком мимо сюда не
+  // попадает: у первого есть получатель, во втором кнопка видна.
+  useEffect(() => {
+    const btn = menuBtn.current
+    if (!btn) return
+    const onBlur = (e: FocusEvent) => {
+      if (e.relatedTarget || btn.getClientRects().length > 0) return
+      setTimeout(() => {
+        const a = document.activeElement
+        if (!a || a === document.body) focusTo('nav')
+      })
+    }
+    btn.addEventListener('blur', onBlur)
+    return () => btn.removeEventListener('blur', onBlur)
+  }, [])
   // Окно стало широким (поворот телефона, ресайз): панель уже на месте,
   // режим выезжающей панели снимается, иначе экран остался бы inert.
-  useEffect(() => { if (!narrow) setMenuOpen(false) }, [narrow])
+  // Браузер, который оставляет фокус на скрытой кнопке «Меню», тоже учтён:
+  // фокус переводит эффект закрытия панели, а при закрытой панели — этот.
+  useEffect(() => {
+    if (narrow) return
+    if (document.activeElement === menuBtn.current) focusAfter.current = 'nav'
+    if (menuOpenRef.current) { setMenuOpen(false); return }
+    if (focusAfter.current === 'nav') focusTo('nav')
+    focusAfter.current = null
+  }, [narrow])
   const closeMenu = (to: 'menu' | 'viewport' = 'viewport') => {
     if (!menuOpenRef.current) return
     focusAfter.current = to
@@ -125,7 +161,7 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
   closeMenuRef.current = closeMenu
   useEffect(() => {
     if (menuOpen || !focusAfter.current) return
-    ;(focusAfter.current === 'menu' ? menuBtn.current : viewport.current)?.focus()
+    focusTo(focusAfter.current)
     focusAfter.current = null
   }, [menuOpen])
   // Открытая панель забирает фокус: первый её элемент.

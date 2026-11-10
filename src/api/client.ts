@@ -1526,8 +1526,11 @@ export const CONNECTION_APIS: { id: ConnectionAPI; label: string; hint: string }
 export interface LogChunk { task_id: string; data: string }
 export interface DeployLogChunk { deploy_id: string; data: string }
 
-// SSE проекта: реплей событий по Last-Event-ID делает сам EventSource,
-// session.log приходит только live (по контракту).
+// SSE проекта. Поток начинается с момента подключения, историю консоль
+// читает запросами. При переподключении EventSource сам присылает
+// Last-Event-ID (последнее событие или курсор первого сообщения потока), и
+// сервер доигрывает пропущенное. session.log приходит только live (по
+// контракту). Склейка перечитываний по событиям — в store.tsx.
 export function subscribe(projectId: string, handlers: {
   onEvent: (e: Event) => void
   onLog?: (c: LogChunk) => void

@@ -8,6 +8,7 @@ import {
   fromLocalInput, overviewEventRelevant, riskInfo, throttle, toLocalInput,
 } from '../components/overviewLogic'
 import { ReportModal } from './ReportModal'
+import { AttCard } from '../components/AttCard'
 import { useStore } from '../store'
 
 // Обзор проекта для руководителя (спека web «Обзор проекта в консоли»,
@@ -24,11 +25,20 @@ function NA({ why }: { why: string }) {
   return <span className="muted" title={why}>—</span>
 }
 
-// Ссылка-действие: кнопка в виде ссылки, доступна с клавиатуры.
+// Ссылка-действие: кнопка в виде ссылки, доступна с клавиатуры. Для
+// перехода, адрес которого известен сразу, — ScreenLink.
 function LinkButton({ onClick, title, className, children }: {
   onClick: () => void; title?: string; className?: string; children: ReactNode
 }) {
   return <button type="button" className={'link' + (className ? ' ' + className : '')} title={title} onClick={onClick}>{children}</button>
+}
+
+// Переход на другой экран консоли: ссылка с адресом, открывается Enter и в
+// новой вкладке (спека web «Ссылки внутри экранов»).
+function ScreenLink({ to, title, className, children }: {
+  to: string; title?: string; className?: string; children: ReactNode
+}) {
+  return <a className={'link' + (className ? ' ' + className : '')} href={to} title={title}>{children}</a>
 }
 
 // Сумма расхода: деньги, если есть стоимость, иначе токены.
@@ -46,7 +56,7 @@ function AmountValue({ a }: { a: Amount }) {
 }
 
 export function OverviewView({ period, user }: { period: OverviewPeriod; user: User }) {
-  const { projectId, projects, nav, listen, connected, refreshAttention } = useStore()
+  const { projectId, projects, nav, href, listen, connects, refreshAttention } = useStore()
   const [data, setData] = useState<Overview | null>(null)
   const [err, setErr] = useState('')
   const [missing, setMissing] = useState(false)
@@ -83,12 +93,16 @@ export function OverviewView({ period, user }: { period: OverviewPeriod; user: U
     const off = listen(e => { if (overviewEventRelevant(e.Type)) th.call() })
     return () => { off(); th.cancel() }
   }, [listen])
-  // После переподключения потока событий обзор перечитывается целиком.
-  const wasConnected = useRef(connected)
+  // После любого подключения потока событий, первого, повторного или к
+  // другому проекту, обзор перечитывается целиком: поток историю не
+  // проигрывает (fix-console-rivetd-tails). Подключение до открытия экрана
+  // не в счёт: обзор загружен после него.
+  const seenConnects = useRef(connects)
   useEffect(() => {
-    if (connected && !wasConnected.current) load()
-    wasConnected.current = connected
-  }, [connected, load])
+    if (connects === seenConnects.current) return
+    seenConnects.current = connects
+    load()
+  }, [connects, load])
 
   useEffect(() => {
     if (!projectId) return
@@ -103,12 +117,15 @@ export function OverviewView({ period, user }: { period: OverviewPeriod; user: U
     if (epicId) { nav({ view: 'epic', id: epicId, taskId }); return }
     api.task(taskId).then(r => nav({ view: 'epic', id: r.task.EpicID, taskId })).catch(e => setErr(errText(e)))
   }, [nav])
-  const openDecision = (d: Decision) => {
+  // Адрес экрана решения: карточка — ссылка на него (спека web «Ссылки
+  // внутри экранов»). Окружения и политики живут в настройках проекта.
+  const decisionHref = (d: Decision): string | undefined => {
     const t = decisionTarget(d)
-    if (!t) return
+    if (!t) return undefined
     if (t.view === 'environments' || t.view === 'policies') {
-      if (projectId) nav({ view: 'project-settings', pid: projectId, tab: t.view })
-    } else nav(t)
+      return projectId ? href({ view: 'project-settings', pid: projectId, tab: t.view }) : undefined
+    }
+    return href(t)
   }
 
   if (!projectId) return <div className="page"><span className="muted">Нет проектов.</span></div>
@@ -152,18 +169,16 @@ export function OverviewView({ period, user }: { period: OverviewPeriod; user: U
           </div>
         </div>
 
-        <EpicCards epics={shown.epics ?? []} isOwner={isOwner} onChanged={reload}
-          openEpic={id => nav({ view: 'epic', id })} openTask={openTask} />
+        <EpicCards epics={shown.epics ?? []} isOwner={isOwner} onChanged={reload} openTask={openTask} />
 
-        <DecisionsPanel data={shown} open={openDecision} onClaimed={() => { refreshAttention(); reload() }} />
+        <DecisionsPanel data={shown} decisionHref={decisionHref} onClaimed={() => { refreshAttention(); reload() }} />
 
         <div className="two-col">
           <TeamLoadPanel data={shown} />
-          <MoneyPanel data={shown} isOwner={isOwner}
-            openPolicy={() => nav({ view: 'project-settings', pid: projectId, tab: 'policies' })} />
+          <MoneyPanel data={shown} isOwner={isOwner} policyHref={href({ view: 'project-settings', pid: projectId, tab: 'policies' })} />
         </div>
 
-        <DeliveryPanel data={shown} openTask={openTask} openEpic={id => nav({ view: 'epic', id })} />
+        <DeliveryPanel data={shown} openTask={openTask} />
         <div className="muted" style={{ fontSize: 11, marginTop: 10 }}>
           Расчёт на {fmtDate(shown.computed_at)} · пояс {shown.period.tz} · период {fmtDate(shown.period.from)} – {fmtDate(shown.period.to)}
         </div>
@@ -175,24 +190,25 @@ export function OverviewView({ period, user }: { period: OverviewPeriod; user: U
 
 // ─── карточки Epic'ов ────────────────────────────────────────────────────
 
-function EpicCards({ epics, isOwner, onChanged, openEpic, openTask }: {
+function EpicCards({ epics, isOwner, onChanged, openTask }: {
   epics: EpicOverview[]; isOwner: boolean; onChanged: () => void
-  openEpic: (id: string) => void; openTask: (taskId: string, epicId?: string | null) => void
+  openTask: (taskId: string, epicId?: string | null) => void
 }) {
   if (!epics.length) {
     return <div className="panel" style={{ marginBottom: 12 }}><h3>Epic’и</h3><span className="muted">Активных Epic’ов и завершённых за период нет.</span></div>
   }
   return (
     <div className="ov-epics">
-      {epics.map(e => <EpicCard key={e.id} e={e} isOwner={isOwner} onChanged={onChanged} openEpic={openEpic} openTask={openTask} />)}
+      {epics.map(e => <EpicCard key={e.id} e={e} isOwner={isOwner} onChanged={onChanged} openTask={openTask} />)}
     </div>
   )
 }
 
-function EpicCard({ e, isOwner, onChanged, openEpic, openTask }: {
+function EpicCard({ e, isOwner, onChanged, openTask }: {
   e: EpicOverview; isOwner: boolean; onChanged: () => void
-  openEpic: (id: string) => void; openTask: (taskId: string, epicId?: string | null) => void
+  openTask: (taskId: string, epicId?: string | null) => void
 }) {
+  const { href } = useStore()
   const [edit, setEdit] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -208,7 +224,7 @@ function EpicCard({ e, isOwner, onChanged, openEpic, openTask }: {
   return (
     <div className="ov-epic" data-epic={e.id} data-risk={e.risk.status} style={{ ['--risk' as string]: risk.color }}>
       <div className="top">
-        <LinkButton className="title" onClick={() => openEpic(e.id)} title="дашборд Epic’а">{e.title}</LinkButton>
+        <ScreenLink className="title" to={href({ view: 'epic', id: e.id })} title="дашборд Epic’а">{e.title}</ScreenLink>
         <StBadge s={e.status} />
         {/* Системный Epic живёт вне плана: в графике он не бывает, риск
             виден, только когда есть причина. */}
@@ -259,7 +275,11 @@ function EpicCard({ e, isOwner, onChanged, openEpic, openTask }: {
         <ul className="ov-reasons">
           {(e.risk.reasons ?? []).map((r, i) => (
             <li key={i} data-reason={r.code}>
-              <LinkButton onClick={() => r.task_id ? openTask(r.task_id, r.epic_id) : openEpic(r.epic_id)}>{r.text}</LinkButton>
+              {/* Адрес известен, если у причины есть Epic; задаче без Epic'а
+                  он берётся из деталки задачи запросом. */}
+              {r.task_id && !r.epic_id
+                ? <LinkButton onClick={() => openTask(r.task_id!)}>{r.text}</LinkButton>
+                : <ScreenLink to={href({ view: 'epic', id: r.epic_id, taskId: r.task_id || undefined })}>{r.text}</ScreenLink>}
             </li>
           ))}
         </ul>
@@ -274,7 +294,7 @@ function EpicCard({ e, isOwner, onChanged, openEpic, openTask }: {
 const DECISION_ORDER = ['plan_approval', 'escalation', 'merge_confirmation', 'my_step'] as const
 const MAX_DECISIONS = 9
 
-function DecisionsPanel({ data, open, onClaimed }: { data: Overview; open: (d: Decision) => void; onClaimed: () => void }) {
+function DecisionsPanel({ data, decisionHref, onClaimed }: { data: Overview; decisionHref: (d: Decision) => string | undefined; onClaimed: () => void }) {
   const items = data.decisions.items ?? []
   const [all, setAll] = useState(false)
   const shown = all ? items : items.slice(0, MAX_DECISIONS)
@@ -289,22 +309,15 @@ function DecisionsPanel({ data, open, onClaimed }: { data: Overview; open: (d: D
       {items.length === 0 ? <span className="muted">Решений не ждёт ничего.</span> : (
         <div className="attention-row">
           {shown.map((d, i) => (
-            <div key={`${d.kind}-${d.attention_id ?? d.run_id ?? d.task_id ?? d.epic_id ?? i}`} className="att-card" role="button" tabIndex={0}
-              data-kind={d.kind} onClick={() => open(d)}
-              onKeyDown={x => { if (x.key === 'Enter' || x.key === ' ') { x.preventDefault(); open(d) } }}>
-              <div className="att-top">
-                {d.task_num != null && <span className="tid mono">task-{d.task_num}</span>}
-                <span className="att-reason">{d.reason ?? DECISION_LABELS[d.kind] ?? d.kind}</span>
-              </div>
-              <div className="att-msg">{d.title}</div>
-              <div className="att-act">
+            <AttCard key={`${d.kind}-${d.attention_id ?? d.run_id ?? d.task_id ?? d.epic_id ?? i}`} kind={d.kind} href={decisionHref(d)}
+              tid={d.task_num != null ? `task-${d.task_num}` : undefined} reason={d.reason ?? DECISION_LABELS[d.kind] ?? d.kind} msg={d.title}
+              act={<>
                 <span className="muted">ждёт {fmtWait(d.waiting_seconds)}</span>{' · '}
                 {d.kind === 'escalation' && d.attention_id
                   ? <ClaimControl id={d.attention_id} claimedBy={d.claimed_by ?? ''} onClaimed={onClaimed} />
                   : null}
                 {' '}{decisionAction(d)}
-              </div>
-            </div>
+              </>} />
           ))}
         </div>
       )}
@@ -404,11 +417,11 @@ function Derived({ v, partial }: { v: number; partial: boolean }) {
   )
 }
 
-function MoneyPanel({ data, isOwner, openPolicy }: { data: Overview; isOwner: boolean; openPolicy: () => void }) {
+function MoneyPanel({ data, isOwner, policyHref }: { data: Overview; isOwner: boolean; policyHref: string }) {
   const m = data.money
   const daily = m.daily_token_budget
   const planLink: ReactNode = isOwner
-    ? <LinkButton className="accent" onClick={openPolicy}>{m.monthly_budget_usd != null ? 'изменить' : 'задать'} в политиках проекта</LinkButton>
+    ? <ScreenLink className="accent" to={policyHref}>{m.monthly_budget_usd != null ? 'изменить' : 'задать'} в политиках проекта</ScreenLink>
     : null
   const partial = [m.today, m.last_7d, m.month_to_date, m.period].some(a => a.partial_cost)
   return (
@@ -453,9 +466,10 @@ function MoneyPanel({ data, isOwner, openPolicy }: { data: Overview; isOwner: bo
 
 // ─── поставки и риски ────────────────────────────────────────────────────
 
-function DeliveryPanel({ data, openTask, openEpic }: {
-  data: Overview; openTask: (taskId: string, epicId?: string | null) => void; openEpic: (id: string) => void
+function DeliveryPanel({ data, openTask }: {
+  data: Overview; openTask: (taskId: string, epicId?: string | null) => void
 }) {
+  const { href } = useStore()
   const d = data.delivery
   const envs = d.environments ?? []
   const envName = (id: string) => envs.find(e => e.id === id)?.name ?? id
@@ -525,7 +539,7 @@ function DeliveryPanel({ data, openTask, openEpic }: {
             {risks.length === 0 && <span className="muted">Нет.</span>}
             {risks.map(r => (
               <div className="it" key={r.epic_id}>
-                <LinkButton className="t" onClick={() => openEpic(r.epic_id)}>{r.title}</LinkButton>
+                <ScreenLink className="t" to={href({ view: 'epic', id: r.epic_id })}>{r.title}</ScreenLink>
                 <span className="mono ov-warn">прогноз {fmtTokens(r.budget_forecast_tokens)} из {fmtTokens(r.token_budget)} tok</span>
               </div>
             ))}

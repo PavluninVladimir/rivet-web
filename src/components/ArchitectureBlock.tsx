@@ -27,7 +27,10 @@ export function ArchitectureBlock({ projectId }: { projectId: string }) {
         {!arch && <div className="muted">{err || 'Загрузка…'}</div>}
         {arch && shown && (
           <>
-            <div className="arch-thumb" title="Открыть схемы C4" onClick={open}>
+            {/* Миниатюра — щелчок мышью вдобавок к ссылке «открыть →» с тем
+                же адресом: с клавиатуры и для скринридера есть ссылка, а
+                миниатюра из дерева доступности убрана. */}
+            <div className="arch-thumb" title="Открыть схемы C4" onClick={open} aria-hidden="true">
               <Mermaid code={shown.data.views.context.mermaid} label={shown.data.views.context.title} zoomable={false} />
             </div>
             <div className="arch-block-note">

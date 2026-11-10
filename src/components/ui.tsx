@@ -118,18 +118,12 @@ export function ClaimControl({ id, claimedBy, onClaimed }: {
     setBusy(true)
     api.claim(id).then(onClaimed).catch(() => setFailed(true)).finally(() => setBusy(false))
   }
+  // Настоящая кнопка поверх ссылки карточки (AttCard): в ссылку она не
+  // вложена, щелчок по ней карточку не открывает.
   return (
-    <span className={'btn sm' + (busy ? ' muted' : '')} role="button" tabIndex={0}
-      aria-disabled={busy}
-      onClick={e => { e.stopPropagation(); claim() }}
-      onKeyDown={e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          e.stopPropagation()
-          claim()
-        }
-      }}>
+    <button type="button" className={'btn sm att-claim' + (busy ? ' muted' : '')} aria-disabled={busy}
+      onClick={e => { e.stopPropagation(); claim() }}>
       Взять в работу
-    </span>
+    </button>
   )
 }

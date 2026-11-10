@@ -9,7 +9,7 @@ import { useStore } from '../store'
 // «Зачем этот Epic» и зависимости с правкой для владельца.
 
 export function EpicWaiting({ epic }: { epic: EpicView }) {
-  const { nav } = useStore()
+  const { href } = useStore()
   const refs = epic.WaitingFor ?? []
   if (epic.Status !== 'running' || refs.length === 0) return null
   return (
@@ -18,7 +18,7 @@ export function EpicWaiting({ epic }: { epic: EpicView }) {
       {refs.map((r, i) => (
         <span key={r.id}>
           {i > 0 && ', '}
-          <a onClick={() => nav({ view: 'epic', pid: epic.ProjectID, id: r.id })}>«{r.title}»</a>
+          <a className="tlink" href={href({ view: 'epic', pid: epic.ProjectID, id: r.id })}>«{r.title}»</a>
           {r.status === 'archived' && ' (в архиве, снимите зависимость)'}
         </span>
       ))}
@@ -28,7 +28,7 @@ export function EpicWaiting({ epic }: { epic: EpicView }) {
 }
 
 export function EpicWhy({ epic, login, onChanged }: { epic: EpicView; login?: string; onChanged: () => void }) {
-  const { nav } = useStore()
+  const { href } = useStore()
   const [isOwner, setIsOwner] = useState(false)
   const [epics, setEpics] = useState<Epic[]>([])
   const [editing, setEditing] = useState<string[] | null>(null)
@@ -55,7 +55,7 @@ export function EpicWhy({ epic, login, onChanged }: { epic: EpicView; login?: st
   if (!supported) return null
   if (!epic.Discovery && !epic.Priority && deps.length === 0 && !editable) return null
   // Версия исследования — в проекте Epic'а: проект — часть адреса.
-  const openRun = (runId: string) => nav({ view: 'discovery', pid: epic.ProjectID, runId })
+  const runHref = (runId: string) => href({ view: 'discovery', pid: epic.ProjectID, runId })
   // Варианты правки: Epic'и проекта без архивных, без самого Epic'а и без
   // системных, плюс уже выбранные архивные — их видно и можно снять.
   const options = epics.filter(e => e.ID !== epic.ID && !isSystemEpic(e)
@@ -76,7 +76,7 @@ export function EpicWhy({ epic, login, onChanged }: { epic: EpicView; login?: st
           <div className="row" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
             {epic.Priority && <span className={'chip prio-' + epic.Priority}>приоритет <span className="n">{epic.Priority}</span></span>}
             {epic.Discovery && (
-              <a onClick={() => openRun(epic.Discovery!.run_id)}>исследование, версия {epic.Discovery.version} →</a>
+              <a className="tlink" href={runHref(epic.Discovery.run_id)}>исследование, версия {epic.Discovery.version} →</a>
             )}
           </div>
           {needs.map(n => (
@@ -106,7 +106,7 @@ export function EpicWhy({ epic, login, onChanged }: { epic: EpicView; login?: st
               {deps.length === 0 && <span className="muted" style={{ fontSize: 12.5 }}>зависимостей нет</span>}
               {deps.map(id => (
                 <span key={id} className="chip">
-                  <a onClick={() => nav({ view: 'epic', pid: epic.ProjectID, id })}>{title(id)}</a>
+                  <a className="tlink" href={href({ view: 'epic', pid: epic.ProjectID, id })}>{title(id)}</a>
                   {status(id) && <span className="n">{status(id)}</span>}
                 </span>
               ))}

@@ -55,7 +55,7 @@ export function ReleasesView({ id, login }: { id?: string; login: string }) {
 }
 
 function ReleaseCard({ id, login, onChanged }: { id: string; login: string; onChanged: () => void }) {
-  const { eventTick, nav, projectId } = useStore()
+  const { eventTick, nav, href, projectId } = useStore()
   const [r, setR] = useState<Release | null>(null)
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -98,13 +98,13 @@ function ReleaseCard({ id, login, onChanged }: { id: string; login: string; onCh
         <ul className="cp-items">
           {r.composition.map(t => (
             <li key={t.task_id}>
-              <button className="cp-item" onClick={() => nav({ view: 'epic', id: t.epic_id, taskId: t.task_id })}>
+              <a className="cp-item" href={href({ view: 'epic', id: t.epic_id, taskId: t.task_id })}>
                 <span className="mono">task-{t.num}</span>
                 <span className="cp-title">{t.title}</span>
                 <span className={'chip sm' + (t.kind === 'bug' ? ' badge-bug' : '')}>{KIND[t.kind] ?? t.kind}</span>
                 <span className="muted">{t.epic_title}</span>
-              </button>
-              {t.incident_id && <a className="cp-sub" onClick={() => nav({ view: 'incidents', id: t.incident_id! })}>закрывает инцидент →</a>}
+              </a>
+              {t.incident_id && <a className="cp-sub tlink" href={href({ view: 'incidents', id: t.incident_id })}>закрывает инцидент →</a>}
             </li>
           ))}
         </ul>
