@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api, type Epic, type Task } from '../api/client'
 import { ClaimControl, StBadge } from '../components/ui'
+import { AttCard } from '../components/AttCard'
 import { Performer } from '../components/RoleChip'
 import { useStore } from '../store'
 
@@ -8,7 +9,7 @@ import { useStore } from '../store'
 // только текущего проекта (add-project-navigation): остальные видны
 // счётчиками в списке проектов.
 export function TasksView() {
-  const { projectId, nav, tick, attention: all, refreshAttention } = useStore()
+  const { projectId, nav, href, tick, attention: all, refreshAttention } = useStore()
   const attention = useMemo(() => all.filter(a => a.ProjectID === projectId), [all, projectId])
   const [rows, setRows] = useState<{ epic: Epic; task: Task }[]>([])
   const [q, setQ] = useState('')
@@ -43,58 +44,24 @@ export function TasksView() {
           <div className="attention-head"><h2>Требует внимания</h2><span className="n">{attention.length}</span></div>
           <div className="attention-row">
             {attention.map(a => {
+              const claim = <ClaimControl id={a.ID} claimedBy={a.ClaimedBy} onClaimed={refreshAttention} />
               // Эскалация публикации (DEPLOY_FAILED) не привязана к задаче:
-              // карточка ведёт к блоку окружений проекта.
+              // карточка ведёт к окружениям на странице настроек проекта.
               if (a.DeploymentID) {
-                // Окружения живут на странице настроек проекта, туда и ведём.
-                return (
-                  <button key={a.ID} className="att-card"
-                    onClick={() => nav({ view: 'project-settings', pid: a.ProjectID, tab: 'environments' })}>
-                    <div className="att-top">
-                      <span className="tid mono">deploy</span>
-                      <span className="att-reason">{a.Reason}</span>
-                    </div>
-                    <div className="att-msg">{a.Message}</div>
-                    <div className="att-act">
-                      <ClaimControl id={a.ID} claimedBy={a.ClaimedBy} onClaimed={refreshAttention} />
-                      {' '}К окружениям →
-                    </div>
-                  </button>
-                )
+                return <AttCard key={a.ID} href={href({ view: 'project-settings', pid: a.ProjectID, tab: 'environments' })}
+                  tid="deploy" reason={a.Reason} msg={a.Message} act={<>{claim}{' '}К окружениям →</>} />
               }
               // Эскалация уровня проекта (движок политик недоступен): ни
               // задачи, ни публикации — карточка ведёт в настройки проекта.
               if (!a.TaskID) {
-                return (
-                  <button key={a.ID} className="att-card"
-                    onClick={() => nav({ view: 'project-settings', pid: a.ProjectID, tab: 'policies' })}>
-                    <div className="att-top">
-                      <span className="tid mono">проект</span>
-                      <span className="att-reason">{a.Reason}</span>
-                    </div>
-                    <div className="att-msg">{a.Message}</div>
-                    <div className="att-act">
-                      <ClaimControl id={a.ID} claimedBy={a.ClaimedBy} onClaimed={refreshAttention} />
-                      {' '}К настройкам →
-                    </div>
-                  </button>
-                )
+                return <AttCard key={a.ID} href={href({ view: 'project-settings', pid: a.ProjectID, tab: 'policies' })}
+                  tid="проект" reason={a.Reason} msg={a.Message} act={<>{claim}{' '}К настройкам →</>} />
               }
+              // Пока задача не нашлась в списке, адреса нет: карточка без
+              // перехода, «Взять в работу» доступна и так.
               const row = rows.find(r => r.task.ID === a.TaskID)
-              return (
-                <button key={a.ID} className="att-card"
-                  onClick={() => row && nav({ view: 'epic', pid: a.ProjectID, id: row.epic.ID, taskId: a.TaskID })}>
-                  <div className="att-top">
-                    <span className="tid mono">task-{row?.task.Num ?? '?'}</span>
-                    <span className="att-reason">{a.Reason}</span>
-                  </div>
-                  <div className="att-msg">{a.Message}</div>
-                  <div className="att-act">
-                    <ClaimControl id={a.ID} claimedBy={a.ClaimedBy} onClaimed={refreshAttention} />
-                    {' '}Открыть →
-                  </div>
-                </button>
-              )
+              return <AttCard key={a.ID} href={row ? href({ view: 'epic', pid: a.ProjectID, id: row.epic.ID, taskId: a.TaskID }) : undefined}
+                tid={`task-${row?.task.Num ?? '?'}`} reason={a.Reason} msg={a.Message} act={<>{claim}{' '}Открыть →</>} />
             })}
           </div>
         </div>
@@ -106,7 +73,8 @@ export function TasksView() {
           {filtered.map(({ epic, task }) => (
             <tr key={task.ID} className="rowlink" onClick={() => nav({ view: 'epic', id: epic.ID, taskId: task.ID })}>
               <td className="id">task-{task.Num}</td>
-              <td>{task.Title}</td>
+              {/* Ссылка — вход с клавиатуры; клик по ней строку не дублирует. */}
+              <td><a className="row-link" href={href({ view: 'epic', id: epic.ID, taskId: task.ID })} onClick={ev => ev.stopPropagation()}>{task.Title}</a></td>
               <td className="muted">{epic.Title}</td>
               <td><StBadge s={task.Status} /></td>
               <td className="mono muted"><Performer roleId={task.RoleID} agentName={task.AgentName} runnerName={task.RunnerName} runnerId={task.RunnerID} /></td>

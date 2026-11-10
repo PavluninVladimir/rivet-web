@@ -84,6 +84,7 @@
 .cp-hint { padding-top: 8px; }
 .cp-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
 .cp-item { display: flex; gap: 8px; align-items: center; width: 100%; padding: 6px 8px; border-radius: var(--r); text-align: left; font-size: 12.5px; }
+a.cp-item { color: inherit; text-decoration: none; }
 .cp-item:hover, .cp-item:focus-visible { background: var(--fg-soft); }
 .cp-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-state { font: 600 10px var(--font-ui); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); flex: none; }
@@ -91,7 +92,6 @@
 .cp-state.s-needs_human { color: var(--c-block); }
 .cp-sub { font-size: 11.5px; padding-left: 8px; cursor: pointer; }
 .cp-links { display: flex; flex-wrap: wrap; gap: 12px; padding-top: 10px; font-size: 12px; }
-.cp-links a { cursor: pointer; color: var(--accent); }
 
 .cyc-card { border: 1px solid var(--border); border-radius: var(--r); padding: 8px 10px; margin-bottom: 6px; display: flex; flex-direction: column; gap: 4px; }
 .cyc-card .cc-top { display: flex; align-items: center; gap: 7px; }

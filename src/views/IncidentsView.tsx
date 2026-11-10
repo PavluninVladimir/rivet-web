@@ -81,7 +81,7 @@ function Evidence({ title, text }: { title: string; text?: string }) {
 }
 
 function IncidentCard({ id, login, onChanged }: { id: string; login: string; onChanged: () => void }) {
-  const { eventTick, nav, projectId } = useStore()
+  const { eventTick, nav, href, projectId } = useStore()
   const [inc, setInc] = useState<Incident | null>(null)
   const owner = useIsOwner(inc?.project_id ?? null, login)
   // Инцидент другого проекта по адресу этого: адрес исправляется на проект
@@ -178,7 +178,7 @@ function IncidentCard({ id, login, onChanged }: { id: string; login: string; onC
               <span className="mono">task-{inc.bug_task.num}</span><StBadge s={inc.bug_task.status} />
             </button>
           : <span className="muted">нет</span>}
-        {inc.mitigated_release_id && <a className="cp-sub" onClick={() => nav({ view: 'releases', id: inc.mitigated_release_id })}>релиз с исправлением →</a>}
+        {inc.mitigated_release_id && <a className="cp-sub tlink" href={href({ view: 'releases', id: inc.mitigated_release_id })}>релиз с исправлением →</a>}
       </div>
 
       <div className="dw-sec">

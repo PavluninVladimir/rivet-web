@@ -10,7 +10,7 @@ import { fmtDate, Tabs } from '../components/ui'
 import { FeedbackForm } from '../components/FeedbackForm'
 import {
   DROPPED_KIND_LABEL, IMPORTANCE_LABEL, KIND_LABEL, PRIORITIES, RUN_STATUS_LABEL, SIZES,
-  analystName, backlogField, decomposeText, depOptions, droppedSummary, emptyEpic, feedbackExcerpt, highlightRange, linkLabel,
+  analystName, backlogField, decomposeText, depOptions, droppedSummary, emptyEpic, feedbackExcerpt, highlightRange, interviewLines, linkLabel,
   needsByPersona, nextHumanKey, personaColor, progressPct, progressText, quoteLines, removeEpic, sizeText, usageText, validateRow,
   feedbackNote, quoteSource, runIsOlder, withMissing,
 } from '../components/discovery'
@@ -40,7 +40,7 @@ function startHint(e: unknown): string {
 }
 
 export function DiscoveryView({ user, runId }: { user: User; runId?: string }) {
-  const { projectId, projects, discoveryTick, nav, roleOf } = useStore()
+  const { projectId, projects, discoveryTick, nav, href, roleOf } = useStore()
   const project = projects.find(p => p.ID === projectId)
   const [state, setState] = useState<DiscoveryState | null>(null)
   const [selected, setSelected] = useState<Run | null>(null)
@@ -222,7 +222,7 @@ export function DiscoveryView({ user, runId }: { user: User; runId?: string }) {
       {current && (current.dropped?.length ?? 0) > 0 && <DroppedSection run={current} />}
       {current && (current.backlog?.length ?? 0) > 0 && (
         <BacklogSection key={current.id} run={current} projectId={projectId} epics={epics}
-          isOwner={isOwner} onChanged={reloadAll} onRun={applyRun} onDirty={onDirty} onOpenEpic={id => nav({ view: 'epic', id })} />
+          isOwner={isOwner} onChanged={reloadAll} onRun={applyRun} onDirty={onDirty} epicHref={id => href({ view: 'epic', id })} />
       )}
 
       <VersionsSection versions={state.versions ?? []} currentId={current?.id}
@@ -305,7 +305,8 @@ function InterviewsSection({ interviews, isOwner, projectId, onOpen, onChanged }
             <tbody>
               {interviews.map(iv => (
                 <tr key={iv.id} className="rowlink" onClick={() => onOpen(iv.id)}>
-                  <td>{iv.title}</td>
+                  {/* Кнопка — открытие с клавиатуры; клик по ней строку не дублирует. */}
+                  <td><button type="button" className="row-link" onClick={e => { e.stopPropagation(); onOpen(iv.id) }}>{iv.title}</button></td>
                   <td className="muted">{iv.respondent_role || '—'}</td>
                   <td className="mono muted">{iv.held_at ?? '—'}</td>
                   <td className="mono muted">{sizeText(iv.chars, iv.lines)}</td>
@@ -360,7 +361,7 @@ function FeedbackSection({ feedback, unaccounted, coverage, isOwner, projectId, 
           <tbody>
             {feedback.map(fb => (
               <tr key={fb.id} className="rowlink" onClick={() => onOpen(fb.id)}>
-                <td>{fb.source || fb.respondent_role}</td>
+                <td><button type="button" className="row-link" onClick={e => { e.stopPropagation(); onOpen(fb.id) }}>{fb.source || fb.respondent_role}</button></td>
                 <td className="muted">{feedbackExcerpt(fb.excerpt ?? fb.text)}</td>
                 <td className="mono muted">{fmtDate(fb.created_at)}</td>
                 <td className="mono muted">{fb.created_by || '—'}</td>
@@ -464,7 +465,7 @@ const InterviewViewer = memo(function InterviewViewer({ projectId, id, quote, on
   }, [projectId, id])
   useEffect(() => { target.current?.scrollIntoView({ block: 'center' }) }, [iv])
   const rows = useMemo(() => {
-    const lines = (iv?.text ?? '').split('\n')
+    const lines = interviewLines(iv?.text ?? '')
     const range = quote ? quoteLines(quote) : null
     return lines.map((text, i) => {
       const n = i + 1
@@ -541,7 +542,7 @@ export function NeedCard({ need, personas, onQuote }: { need: Need; personas: Pe
           <div className="quote-text">«{q.text}»</div>
           <div className="quote-src">
             {onQuote
-              ? <a onClick={() => onQuote(q)}>{quoteSource(q)}</a>
+              ? <button type="button" className="tlink" onClick={() => onQuote(q)}>{quoteSource(q)}</button>
               : <>{quoteSource(q)}</>}
             {q.respondent_role && q.kind !== 'feedback' && <span className="muted"> · {q.respondent_role}</span>}
           </div>
@@ -587,9 +588,9 @@ const ROW_FIELDS = new Set(['title', 'goal', 'depends_on', 'needs'])
 
 type BacklogErr = { msg: string; rowKey?: string; field?: string; conflict?: number }
 
-function BacklogSection({ run, projectId, epics, isOwner, onChanged, onRun, onDirty, onOpenEpic }: {
+function BacklogSection({ run, projectId, epics, isOwner, onChanged, onRun, onDirty, epicHref }: {
   run: Run; projectId: string; epics: Epic[]; isOwner: boolean; onChanged: () => void
-  onRun: (r: Run) => void; onDirty: (runId: string, dirty: boolean) => void; onOpenEpic: (id: string) => void
+  onRun: (r: Run) => void; onDirty: (runId: string, dirty: boolean) => void; epicHref: (id: string) => string
 }) {
   const editable = isOwner && run.status === 'ready' && !run.outdated
   const [draft, setDraft] = useState<BacklogEpic[]>(() => (run.backlog ?? []).map(stripRow))
@@ -726,7 +727,7 @@ function BacklogSection({ run, projectId, epics, isOwner, onChanged, onRun, onDi
                       : <b>{e.title}</b>}
                     {row?.epic_id && (
                       <div style={{ fontSize: 11.5, marginTop: 4 }}>
-                        <a onClick={() => onOpenEpic(row.epic_id!)}>открыть Epic →</a>
+                        <a className="tlink" href={epicHref(row.epic_id!)}>открыть Epic →</a>
                         {row.decompose && <span className={'muted dec-' + row.decompose.status}> · {decomposeText(row.decompose)}</span>}
                       </div>
                     )}
@@ -829,7 +830,7 @@ function VersionsSection({ versions, currentId, onOpen }: {
         <tbody>
           {versions.map(v => (
             <tr key={v.id} className={'rowlink' + (v.id === currentId ? ' sel' : '')} onClick={() => onOpen(v.id)}>
-              <td className="id">v{v.version}{v.outdated ? ' · устарела' : ''}</td>
+              <td className="id"><button type="button" className="row-link" onClick={e => { e.stopPropagation(); onOpen(v.id) }}>v{v.version}{v.outdated ? ' · устарела' : ''}</button></td>
               <td><StBadgeRun s={v.status} /></td>
               <td className="mono muted">{fmtDate(v.created_at)}</td>
               <td className="mono muted">{fmtDate(v.finished_at)}</td>

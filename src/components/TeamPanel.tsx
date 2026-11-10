@@ -99,12 +99,14 @@ export function modelOptions(choices: ModelChoice[], controlPlane: boolean): { k
 }
 
 export function TeamPanel({ epicId, tasks, planning, admin }: { epicId: string; tasks: Task[]; planning: boolean; admin: boolean }) {
-  const { team, roleOf, refreshTeam, runners, refreshRunners, tick } = useStore()
+  const { team, roleOf, refreshTeam, runners, scheduleRunners, tick, logTick } = useStore()
   // Полоса контекста карточки — CtxPct runner'а сессии; он меняется по ходу
-  // сессии без событий статуса, поэтому runner'ы перечитываются по tick,
-  // пока кто-то работает, и всегда в запасном виде без команды.
+  // сессии без событий статуса, поэтому runner'ы перечитываются по tick и по
+  // выводу сессии (logTick: сессия без шагов, приватная сессия), пока кто-то
+  // работает, и всегда в запасном виде без команды. Через ту же склейку,
+  // что по событиям потока: не чаще раза в секунду.
   const anyBusy = team.some(a => a.busy)
-  useEffect(() => { if (anyBusy || team.length === 0) refreshRunners() }, [tick, anyBusy, team.length, refreshRunners])
+  useEffect(() => { if (anyBusy || team.length === 0) scheduleRunners() }, [tick, logTick, anyBusy, team.length, scheduleRunners])
   const [choices, setChoices] = useState<ModelChoice[] | null>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const [saving, setSaving] = useState<string | null>(null)

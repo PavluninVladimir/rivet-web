@@ -128,7 +128,7 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
   epicTasks?: Task[]
 }) {
   // Runner'ы — из стора: деталке нужны только их имена для участников шага.
-  const { tick, logs, roleOf, runners, listen, reconnects } = useStore()
+  const { tick, logs, roleOf, runners, listen, connects } = useStore()
   const [task, setTask] = useState<Task | null>(null)
   const [timeline, setTimeline] = useState<Event[]>([])
   const [stepRuns, setStepRuns] = useState<StepRun[]>([])
@@ -161,9 +161,10 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
   const [sessBusy, setSessBusy] = useState(false)
   const termRef = useRef<HTMLDivElement>(null)
 
-  // Процесс задачи читается отдельно и не на каждый tick (чанки лога):
-  // при открытии, на переходах и смене статуса этой задачи и после
-  // переподключения потока. Применяется ответ последнего запроса.
+  // Процесс задачи читается отдельно, не на каждый tick: при открытии, на
+  // переходах и смене статуса этой задачи и после любого подключения потока
+  // (connects: первого, повторного, к другому проекту — поток историю не
+  // проигрывает). Применяется ответ последнего запроса.
   const procSeq = useRef(0)
   const refreshProcess = useCallback(() => {
     const seq = ++procSeq.current
@@ -175,8 +176,10 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
   const procRef = useRef(proc)
   procRef.current = proc
 
-  // История сессий перезапрашивается вместе с задачей на каждом SSE-событии
-  // (tick растёт в т.ч. на task.status — конец стадии обновляет список).
+  // История сессий перезапрашивается вместе с задачей по tick: события
+  // проекта не чаще раза в секунду и подключения потока (task.status в конце
+  // стадии обновляет список). Вывод сессии в терминале идёт по logTick и
+  // запросов не вызывает.
   // Если шаг или статус задачи разошлись с графом (событие задачи пропущено
   // курсором потока или пришло между запросами), процесс перечитывается.
   const refresh = useCallback(() => {
@@ -190,7 +193,7 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
     api.taskSessions(taskId).then(s => setSessions(s ?? [])).catch(() => {})
   }, [taskId, refreshProcess])
   useEffect(refresh, [refresh, tick])
-  useEffect(refreshProcess, [refreshProcess, reconnects])
+  useEffect(refreshProcess, [refreshProcess, connects])
   useEffect(() => listen(e => {
     if (e.TaskID === taskId && (e.Type === 'task.step' || e.Type === 'task.status' || e.Type === 'task.assign')) refreshProcess()
   }), [listen, taskId, refreshProcess])
