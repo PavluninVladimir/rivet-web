@@ -95,7 +95,7 @@ test('занятость агентов: перечитывание сразу �
 
 test('события, по которым обзор перечитывается', () => {
   for (const t of ['task.status', 'epic.progress', 'epic.due_changed', 'attention.new', 'deploy.status', 'role.updated',
-    'policy.decision', 'policy.activated', 'environment.host']) {
+    'policy.decision', 'policy.activated', 'environment.host', 'project.credentials', 'project.repository']) {
     assert.ok(overviewEventRelevant(t), t)
   }
   for (const t of ['session.overlap', 'project.settings', 'runner.renamed', 'team.agent_updated', 'environment.config']) {
@@ -125,6 +125,9 @@ test('решение одним кликом ведёт к месту дейст
   for (const reason of ['POLICY_ENGINE', 'POLICY_SOURCE', 'POLICY_CHANGE', null]) {
     assert.deepEqual(decisionTarget(dec({ kind: 'escalation', attention_id: 'a1', reason })), { view: 'policies' }, String(reason))
   }
+  // Нерабочие учётные данные хостинга — к замене токена на вкладке «Общее».
+  assert.deepEqual(decisionTarget(dec({ kind: 'escalation', attention_id: 'a1', reason: 'SCM_CREDENTIALS' })), { view: 'general' })
+  assert.equal(decisionAction(dec({ kind: 'escalation', attention_id: 'a1', reason: 'SCM_CREDENTIALS' })), 'К подключению →')
   assert.equal(decisionTarget(dec({ kind: 'plan_approval' })), null)
   assert.equal(decisionAction(dec({ kind: 'escalation', attention_id: 'a1', reason: 'POLICY_ENGINE' })), 'К политикам →')
   assert.equal(decisionAction(dec({ kind: 'escalation', attention_id: 'a1', reason: 'DEPLOY_FAILED' })), 'К окружениям →')

@@ -211,3 +211,12 @@ test('случайные последовательности: задержка 
     for (let i = 1; i < ticks.length; i++) assert.ok(ticks[i] - ticks[i - 1] >= EVENT_REFRESH_MS, `прогон ${run}: интервал ${ticks[i] - ticks[i - 1]}`)
   }
 })
+
+// Смена токена и отзыв закрывают/открывают эскалацию уровня проекта.
+test('состояние учётных данных перечитывает очередь решений', () => {
+  for (const Type of ['project.credentials', 'project.repository']) {
+    const p = planRefresh([{ ID: 1, Type } as Event], () => false)
+    assert.equal(p.attention, true)
+    assert.equal(p.project.length, 1)
+  }
+})

@@ -52,10 +52,12 @@ export function TasksView() {
                 return <AttCard key={a.ID} href={href({ view: 'project-settings', pid: a.ProjectID, tab: 'environments' })}
                   tid={a.DeploymentID ? 'deploy' : 'хост'} reason={a.Reason} msg={a.Message} act={<>{claim}{' '}К окружениям →</>} />
               }
-              // Эскалация уровня проекта (движок политик недоступен): ни
-              // задачи, ни публикации — карточка ведёт в настройки проекта.
+              // Эскалация уровня проекта (движок политик недоступен, учётные
+              // данные хостинга не работают): ни задачи, ни публикации —
+              // карточка ведёт в настройки проекта, к политикам или к
+              // репозиторию, где заменяется токен.
               if (!a.TaskID) {
-                return <AttCard key={a.ID} href={href({ view: 'project-settings', pid: a.ProjectID, tab: 'policies' })}
+                return <AttCard key={a.ID} href={href({ view: 'project-settings', pid: a.ProjectID, tab: a.Reason === 'SCM_CREDENTIALS' ? 'general' : 'policies' })}
                   tid="проект" reason={a.Reason} msg={a.Message} act={<>{claim}{' '}К настройкам →</>} />
               }
               // Пока задача не нашлась в списке, адреса нет: карточка без

@@ -21,11 +21,13 @@ export function browserTZ(): string {
 // События проекта, после которых обзор перечитывается (api-contract,
 // «Реальное время»). Публикации приходят как deploy.*. Эскалация уровня
 // проекта своего события не имеет и приходит вместе с policy.decision,
-// плановый бюджет месяца меняет policy.activated. Решения о хосте
-// окружения открываются и закрываются вместе с environment.host.
+// плановый бюджет месяца меняет policy.activated. Эскалация о нерабочих
+// учётных данных хостинга приходит с project.credentials, снимается и
+// заменой токена (project.repository).
 const RELEVANT = ['task.', 'epic.', 'attention.', 'deploy.', 'deployment.', 'role.', 'policy.']
+const RELEVANT_EXACT = ['project.credentials', 'project.repository']
 export function overviewEventRelevant(type: string): boolean {
-  return type === 'environment.host' || RELEVANT.some(p => type.startsWith(p))
+  return type === 'environment.host' || RELEVANT.some(p => type.startsWith(p)) || RELEVANT_EXACT.includes(type)
 }
 
 // Склейка перечитываний: не чаще раза в ms, первый вызов сразу, вызовы
@@ -109,17 +111,23 @@ export function isHostReason(reason: string | null | undefined): boolean {
   return !!reason && (HOST_REASONS as readonly string[]).includes(reason)
 }
 const toEnvironments = (reason: string | null | undefined) => reason === DEPLOY_FAILED || isHostReason(reason)
+export const SCM_CREDENTIALS = 'SCM_CREDENTIALS'
 export type DecisionTarget =
   | { view: 'epic'; id: string; taskId?: string }
   | { view: 'mysteps' }
   | { view: 'environments' }
   | { view: 'policies' }
+  | { view: 'general' }
   | null
 export function decisionTarget(d: Decision): DecisionTarget {
   if (d.kind === 'my_step') return { view: 'mysteps' }
   if (d.kind === 'plan_approval') return d.epic_id ? { view: 'epic', id: d.epic_id } : null
   if (d.epic_id && d.task_id) return { view: 'epic', id: d.epic_id, taskId: d.task_id }
-  if (d.kind === 'escalation' && !d.task_id) return toEnvironments(d.reason) ? { view: 'environments' } : { view: 'policies' }
+  if (d.kind === 'escalation' && !d.task_id) {
+    if (toEnvironments(d.reason)) return { view: 'environments' }
+    if (d.reason === SCM_CREDENTIALS) return { view: 'general' }
+    return { view: 'policies' }
+  }
   return d.epic_id ? { view: 'epic', id: d.epic_id } : null
 }
 
@@ -141,6 +149,7 @@ export function decisionAction(d: Decision): string {
     case 'mysteps': return 'К моим шагам →'
     case 'environments': return 'К окружениям →'
     case 'policies': return 'К политикам →'
+    case 'general': return 'К подключению →'
     default: return d.kind === 'plan_approval' ? 'К плану →' : 'Открыть →'
   }
 }

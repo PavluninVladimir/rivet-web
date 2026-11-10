@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, errCode, stColor, type Event, type OverlapPayload, type ResolvedProcess, type Session, type StepPayload, type StepTransition, type Task, type StepRun } from '../api/client'
 import { MERGE_ERROR_TEXT, outsideDocsEvent, outsideDocsFailure, outsideDocsOf } from './archModel'
+import { awaitingMerge } from './mergeLogic'
 import { OutsideDocsNote, rejectTitle } from './ArchitectureParts'
 
 // stepOf валидирует payload session.step: он runner-controlled, битые типы
@@ -265,7 +266,7 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
         </div>
         <h2>{task.Title}</h2>
         <div className="dw-actions">
-          {task.Status === 'review' && task.PRURL && !deferred &&
+          {task.Status === 'review' && (task.PRURL || awaitingMerge(timeline)) && !deferred &&
             <Button variant="primary" size="sm" busy={busy} onClick={act(() => api.merge(task.ID))}>Merge</Button>}
           {task.PRURL &&
             <a className="btn sm" href={task.PRURL} target="_blank" rel="noreferrer">Открыть PR</a>}
