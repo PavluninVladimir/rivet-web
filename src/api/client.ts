@@ -950,15 +950,16 @@ export function errCode(e: unknown): string {
   return e instanceof ApiError ? e.code : ''
 }
 
-async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
-  return (await reqResp<T>(method, path, body)).data
+async function req<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  return (await reqResp<T>(method, path, body, signal)).data
 }
 
 // Ответ вместе с HTTP-ответом: нужен, когда важны заголовки (Date).
-async function reqResp<T>(method: string, path: string, body?: unknown): Promise<{ data: T; resp: Response }> {
+async function reqResp<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<{ data: T; resp: Response }> {
   // Аутентификация — httpOnly-cookie сессии, браузер шлёт её сам (same-origin).
   const resp = await fetch(`/api/v1${path}`, {
     method,
+    signal,
     headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
   })
@@ -1029,7 +1030,7 @@ export function dispositionFilename(header: string | null, fallback: string): st
 export const api = {
   login: (login: string, password: string) => req<User>('POST', '/auth/login', { login, password }),
   logout: () => req('POST', '/auth/logout'),
-  me: () => req<User>('GET', '/auth/me'),
+  me: (signal?: AbortSignal) => req<User>('GET', '/auth/me', undefined, signal),
   projects: () => req<Project[] | null>('GET', '/projects'),
   createProject: (input: CreateProjectInput) => req<Project>('POST', '/projects', input),
   patchProject: (id: string, patch: { name?: string; checks?: Check[] }) =>
