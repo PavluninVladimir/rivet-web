@@ -1,3 +1,4 @@
+import { LocalDockerCard, LocalDockerFields } from './LocalDocker'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, stLabel, type Deployment, type EnvConfig, type Environment, type MonitorConfig, type MonitorState } from '../api/client'
 import { useStore } from '../store'
@@ -79,6 +80,7 @@ export function Environments({ projectId, isAdmin }: { projectId: string; isAdmi
 
       <div className="env-grid">
         {envs.map(env => {
+          if(env.exec_type==='local_docker') return <LocalDockerCard key={env.id} env={env} tick={tick} isAdmin={isAdmin} onSettings={()=>setEditing(env)} />
           const last = env.last_deployment
           return (
             <div key={env.id} className="env-card">
@@ -188,6 +190,7 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
   const [caps, setCaps] = useState<string[]>(env?.runner_caps ?? [])
   const [err, setErr] = useState('')
   const [lastErr, setLastErr] = useState<unknown>(null)
+ const [localEnvValid,setLocalEnvValid]=useState(true)
   const [busy, run] = useBusy()
   // Внешний пайплайн исполняет хостинг: команд и хоста у него нет,
   // Verify — проверка URL со стороны Rivet. У Kubernetes команды собирает
@@ -195,6 +198,7 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
   const external = execType === 'pipeline'
   const k8s = execType === 'k8s'
   const gitops = execType === 'gitops'
+  const local = execType === 'local_docker'
   const nameErr = !name.trim() && err ? 'Укажите имя окружения' : undefined
 
   const save = () => run(async () => {
@@ -203,7 +207,7 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
     // типа не уходят на сервер (иначе 422 по невидимому полю). Выключение
     // наблюдения меняет только флаг: команды и URL проверки сохраняются до
     // повторного включения (сервер у выключенного их не проверяет).
-    let config = cfg
+    let config = local ? {local_docker: cfg.local_docker} : cfg
     if ((external || gitops) && cfg.monitor) {
       config = { ...cfg, monitor: { ...cfg.monitor, check_cmd: undefined, logs_cmd: undefined } }
     }
@@ -240,7 +244,8 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
           </Field>
           {!env && (
             <Field label="Доставка">
-              {ids => <Select ids={ids} value={execType} onChange={e => setExecType(e.target.value)}>
+              {ids => <Select ids={ids} value={execType} onChange={e => {setExecType(e.target.value);if(e.target.value==='local_docker')setCfg({local_docker:{container_port:8080,health_path:'/',recipe:'auto',build_context:'.',startup_timeout_s:120,stop_timeout_s:10}})}}>
+                <option value="local_docker">локальный Docker</option>
                 <option value="ssh">своя (Linux-хост по SSH)</option>
                 <option value="k8s">своя (Kubernetes)</option>
                 <option value="pipeline">пайплайн хостинга (CI/CD)</option>
@@ -249,7 +254,7 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
             </Field>
           )}
         </div>
-        {external ? (
+        {local ? <LocalDockerFields value={cfg.local_docker!} onChange={local_docker=>setCfg({local_docker})} onValidityChange={setLocalEnvValid} error={f=>fieldError(lastErr,f)} /> : external ? (
           <>
             {text('Пайплайн хостинга', 'pipeline', 'Пайплайн хостинга (для GitHub Actions — файл workflow)')}
             {text('Ветка запуска', 'ref', 'Ветка запуска (пусто — базовая ветка проекта)', 'пусто, если базовая ветка проекта')}
@@ -276,11 +281,11 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
             {text('Команда проверки', 'verify_cmd', 'Команда проверки (verify_cmd)')}
           </>
         )}
-        {text('URL health-check', 'verify_url', 'URL health-check (verify_url)')}
-        <MonitorFields external={external || gitops} value={cfg.monitor}
+        {!local && text('URL health-check', 'verify_url', 'URL health-check (verify_url)')}
+        {!local && <MonitorFields external={external || gitops} value={cfg.monitor}
           error={(f: string) => fieldError(lastErr, f)}
-          onChange={monitor => setCfg({ ...cfg, monitor })} />
-        {!external && !gitops && (
+          onChange={monitor => setCfg({ ...cfg, monitor })} />}
+        {!local && !external && !gitops && (
           <Field label="Capabilities runner'а публикации" optional hint="пусто, если подходит любой deploy-runner">
             {ids => <TagsInput ids={ids} value={caps} onChange={setCaps} placeholder="Capability runner'а публикации через запятую (пусто — любой deploy-runner)" />}
           </Field>
@@ -288,7 +293,7 @@ function EnvForm({ projectId, env, onClose, onSaved }: {
         <FormActions note={<FormNote err={err || undefined} />}>
           {env && <Button variant="danger" busy={busy} onClick={del}>Удалить</Button>}
           <Button variant="quiet" onClick={onClose}>Отмена</Button>
-          <Button variant="primary" busy={busy} busyLabel="сохраняю…" onClick={save}>Сохранить</Button>
+          <Button variant="primary" busy={busy} busyLabel="сохраняю…" disabled={local&&!localEnvValid} onClick={save}>Сохранить</Button>
         </FormActions>
       </div>
     </div>
