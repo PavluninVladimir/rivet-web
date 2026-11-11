@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { watchServerConnection } from './components/serverConnection'
 import { ApiError, api, subscribe, type AgentRole, type Attention, type Event, type Project, type Runner, type TeamAgent } from './api/client'
 import { EVENT_BATCH_MS, EVENT_REFRESH_MS, eventPipeline, mergeRecent, planRefresh } from './components/eventBatch'
 import { throttle, throttleWithRecheck } from './components/overviewLogic'
@@ -408,6 +409,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     runners: throttle(refreshRunners, EVENT_REFRESH_MS),
   }), [refreshAttention, refreshMySteps, refreshProjects, refreshRoles, refreshTeam, refreshRunners])
   useEffect(() => () => { for (const th of Object.values(onEvents)) th.cancel() }, [onEvents])
+
+  useEffect(() => {
+    if (streamProjectId) return
+    let wasConnected = false
+    const onState = (on: boolean) => {
+      setConnected(on)
+      if (on && !wasConnected) {
+        refreshProjects(); refreshRoles(); refreshTeam(); refreshRunners(); refreshAttention(); refreshMySteps()
+        setConnects(n => n + 1)
+      }
+      wasConnected = on
+    }
+    let stop = watchServerConnection(signal => api.me(signal), onState)
+    const resume = () => {
+      if (document.visibilityState !== 'visible') return
+      stop()
+      stop = watchServerConnection(signal => api.me(signal), onState)
+    }
+    document.addEventListener('visibilitychange', resume)
+    return () => { stop(); document.removeEventListener('visibilitychange', resume) }
+  }, [streamProjectId, refreshProjects, refreshRoles, refreshTeam, refreshRunners, refreshAttention, refreshMySteps])
 
   useEffect(() => {
     if (!streamProjectId) return
