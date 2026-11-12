@@ -3,11 +3,7 @@ import { api, type IssueIntakeConfig, type IssueIntakeView } from '../api/client
 import { useStore } from '../store'
 import { Button, Field, TextInput, errText } from './form'
 import { fmtAgo } from './ui'
-
-const STATUS: Record<string, string> = {
-  running: 'Аналитик исследует', ready: 'Результат ждёт утверждения', approved: 'Исследование утверждено',
-  superseded: 'Версия заменена', failed: 'Анализ завершился ошибкой',
-}
+import { issueSourceProgress } from './issueWatchProgress'
 
 // The primary entry is the Operations phase: sources are handed to Discovery,
 // never turned into tasks by this UI. Polling is read-only and stops on unmount.
@@ -58,11 +54,19 @@ export function GitHubIssueWatch({ projectId }: { projectId: string }) {
     {err && <div className="f-error" role="alert">Не удалось обновить наблюдение: {err}</div>}
     {!view && !err && <p role="status">Загружаем наблюдение Issues…</p>}
     {view && <>
+      {err && <p className="muted">Ниже — последние известные данные; текущее состояние не подтверждено.</p>}
       <p role="status">{view.enabled ? `Наблюдение включено · метка ${view.label}` : 'Наблюдение выключено'}<br />
         {view.last_check_at ? `Последняя проверка ${fmtAgo(view.last_check_at)}` : 'Проверок ещё не было'}<br />
         {view.auto_research ? 'Автоматическое исследование включено' : 'Автоматическое исследование выключено'}
       </p>
       {view.error && <div className="f-error" role="status">{view.error}</div>}
+      {!err && <p className="muted">{!view.enabled
+        ? 'Новые Issues не принимаются. Чтобы возобновить приём, включите наблюдение.'
+        : view.error
+          ? 'Наблюдению мешает указанная выше причина. Состояния уже принятых обращений показаны ниже.'
+          : !view.last_check_at
+            ? `Первая проверка ещё не завершена. Будут проверяться открытые Issues с меткой ${view.label}.`
+            : `Ожидаются новые открытые Issues с меткой ${view.label}. Это обычное наблюдение; следующая проверка пройдёт автоматически.`}</p>}
       {owner && !draft && <Button variant="quiet" onClick={() => { setDraft({ enabled: view.enabled, auto_research: view.auto_research, label: view.label }); setSaveErr('') }}>Настроить приём Issues</Button>}
       {draft && owner && <form onSubmit={save}>
         <p><label><input type="checkbox" checked={draft.enabled} disabled={saving} onChange={e => setDraft({ ...draft, enabled: e.target.checked })} /> Наблюдать GitHub Issues</label></p>
@@ -75,16 +79,16 @@ export function GitHubIssueWatch({ projectId }: { projectId: string }) {
         <Button type="submit" disabled={saving || !draft.label.trim()}>{saving ? 'Сохраняем…' : 'Сохранить наблюдение'}</Button>{' '}
         <Button variant="quiet" type="button" disabled={saving} onClick={() => setDraft(null)}>Отмена</Button>
       </form>}
-      {!view.sources.length && <p className="muted">Обращений пока нет. При включённом наблюдении новые Issues с выбранной меткой будут приняты автоматически.</p>}
+      <h4>Принятые обращения</h4>
+      {!view.sources.length && <p className="muted">В последних полученных данных принятых обращений нет.</p>}
       <ul className="cp-items">
-        {view.sources.map(s => <li key={s.material_id} style={{ overflowWrap: 'anywhere' }}>
+        {view.sources.map(s => { const progress = issueSourceProgress(s, view); return <li key={s.material_id} style={{ overflowWrap: 'anywhere' }}>
           <a className="tlink" href={s.url} target="_blank" rel="noreferrer">#{s.number} {s.title}</a>
           <p className="muted">Сопровождение → <a className="tlink" href={href({ view: 'discovery', pid: projectId, runId: s.research_run_id })}>Исследование</a><br />
-            {s.research_status ? STATUS[s.research_status] ?? s.research_status : view.auto_research ? 'Материал принят · ожидает исследования' : 'Материал принят · автоматический запуск выключен'}
-            {s.research_status === 'failed' && (s.attempts >= 3 ? ' · лимит повторов исчерпан, откройте исследование' : ' · ожидает повторной передачи')}
+            {progress.status}<br />{progress.next}
           </p>
           {s.epics.map(ep => <p key={ep.id}><a className="tlink" href={href({ view: 'epic', pid: projectId, id: ep.id })}>{ep.title}</a> · {ep.status}</p>)}
-        </li>)}
+        </li>})}
       </ul>
     </>}
   </section>

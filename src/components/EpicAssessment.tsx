@@ -30,9 +30,12 @@ export function EpicAssessment({ epicId, projectId, view, onChanged }: { epicId:
     {a?.planning_error && <p role="status">{a.planning_error}</p>}
     {result ? <>
       <p><b>{result.decision === 'no_change' ? 'Архитектурные изменения не нужны' : 'Есть архитектурные требования'}</b></p>
-      <p>{result.summary}</p>
       {a?.existing_plan && <p className="muted">Этот план создан до архитектурной оценки. Перед запуском проверьте его с учётом полученных ограничений. Задачи сохранены; выполнение не запускалось автоматически.</p>}
-      {([['Влияние', result.impact ?? []], ['Ограничения для плана', result.constraints ?? []], ['Документация', result.documentation ?? []], ['Риски', result.risks ?? []]] as const).map(([label, items]) => items.length > 0 && <div key={label}><b>{label}</b><ul>{items.map((item, i) => <li key={i}>{item}</li>)}</ul></div>)}
+      <details key={`${epicId}:${a?.revision ?? view.revision}`} open={a?.status !== 'passed'}>
+        <summary style={{ cursor: 'pointer' }}>Подробности оценки</summary>
+        <p>{result.summary}</p>
+        {([['Влияние', result.impact ?? []], ['Ограничения для плана', result.constraints ?? []], ['Документация', result.documentation ?? []], ['Риски', result.risks ?? []]] as const).map(([label, items]) => items.length > 0 && <div key={label}><b>{label}</b><ul>{items.map((item, i) => <li key={i}>{item}</li>)}</ul></div>)}
+      </details>
       {a?.decompose_requested && <p className="muted">Запрошенный план составляется автоматически. Запуск выполнения остаётся отдельным действием.</p>}
     </> : <p className="muted">До успешной оценки планирование и первый запуск закрыты.{a?.decompose_requested ? ' Запрос на план сохранён: после оценки Тимлид продолжит автоматически.' : ''}</p>}
     {a?.status === 'failed' && <Button busy={busy} onClick={retry}>Повторить архитектурную оценку</Button>}
