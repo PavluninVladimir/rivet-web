@@ -46,7 +46,7 @@ test('отчёт цикла today и 30d использует существую
   const today = reportRange('today', now, { from: '', to: '' })
   const month = reportRange('30d', now, { from: '', to: '' })
   assert.deepEqual(today, { from: new Date(2026, 10, 12).toISOString(), to: now.toISOString() })
-  assert.deepEqual(month, { from: new Date(2026, 9, 13, 15, 30).toISOString(), to: now.toISOString() })
+  assert.deepEqual(month, { from: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString(), to: now.toISOString() })
   assert.deepEqual(reportRange('7d', now, { from: '', to: '' }), {}, 'прежний серверный период по умолчанию сохраняется')
   assert.equal(now.getHours(), 15, 'входная дата не мутирует')
 })
