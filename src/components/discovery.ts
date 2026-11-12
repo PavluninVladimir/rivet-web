@@ -156,6 +156,7 @@ export function runIsOlder(next: Pick<Run, 'id' | 'backlog_rev' | 'status'>, pre
 // Ход декомпозиции строки бэклога после утверждения.
 export function decomposeText(d: DecomposeState | null | undefined): string {
   switch (d?.status) {
+    case 'architecture': return 'Архитектор оценивает Epic до планирования'
     case 'pending': return 'ждёт декомпозиции'
     case 'running': return 'декомпозиция…'
     case 'done': return 'план готов'

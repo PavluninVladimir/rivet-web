@@ -8,6 +8,7 @@ import { Performer } from '../components/RoleChip'
 import { TeamPanel } from '../components/TeamPanel'
 import { EpicWaiting, EpicWhy } from '../components/EpicWhy'
 import { ArchitectureBlock } from '../components/ArchitectureBlock'
+import { EpicAssessment } from '../components/EpicAssessment'
 import { Button, Field, FormActions, FormNote, NumberInput, Select, TextArea, TextInput, errText, useBusy } from '../components/form'
 import { useStore } from '../store'
 
@@ -40,6 +41,13 @@ export function EpicDashboard({ projectId, epicId, taskId, admin = false, login 
   }, [epic, epicId, projectId, taskId, nav])
 
   const tasks: Task[] = useMemo(() => epic?.tasks ?? [], [epic])
+  const assessment = epic?.architecture_assessment
+  const architectureBlocked = !!assessment?.required && (!assessment.assessment || assessment.assessment.status !== 'passed' || assessment.assessment.revision !== assessment.revision)
+  useEffect(() => {
+    if (!assessment?.required || assessment.assessment?.status === 'failed' || (!architectureBlocked && (tasks.length > 0 || !assessment.assessment?.decompose_requested))) return
+    const timer = window.setInterval(refresh, 3000)
+    return () => window.clearInterval(timer)
+  }, [assessment?.required, assessment?.assessment?.status, assessment?.assessment?.decompose_requested, architectureBlocked, tasks.length, refresh])
   const counts = useMemo(() => {
     const c: Record<string, number> = {}
     for (const t of tasks) c[t.Status] = (c[t.Status] ?? 0) + 1
@@ -106,17 +114,17 @@ export function EpicDashboard({ projectId, epicId, taskId, admin = false, login 
           {isArch && <span className="chip arch-epic-chip" title="Системный Epic: задача описания архитектуры проекта, без плана и декомпозиции"><span className="n">архитектура</span></span>}
           <div className="epic-actions">
             {epic.Status === 'planned' && tasks.length === 0 && !isArch &&
-              <Button busy={busy} busyLabel="декомпозиция…" onClick={act(async () => {
+              <Button busy={busy} disabled={architectureBlocked && !!assessment?.assessment?.decompose_requested} busyLabel="декомпозиция…" onClick={act(async () => {
                 setPlanning(true)
                 try { await api.decompose(epic.ID) } finally { setPlanning(false) }
-              })}>Декомпозировать</Button>}
-            {epic.Status === 'planned' && <Button variant="primary" busy={busy} onClick={act(() => api.epicAction(epic.ID, 'start'))}>Запустить</Button>}
+              })}>{architectureBlocked ? 'План после оценки' : 'Декомпозировать'}</Button>}
+            {epic.Status === 'planned' && <Button variant="primary" busy={busy} disabled={architectureBlocked} title={architectureBlocked ? 'Сначала требуется архитектурная оценка' : undefined} onClick={act(() => api.epicAction(epic.ID, 'start'))}>Запустить</Button>}
             {epic.Status === 'running' && <Button busy={busy} onClick={act(() => api.epicAction(epic.ID, 'pause'))}>Пауза</Button>}
             {epic.Status === 'paused' && <Button variant="primary" busy={busy} onClick={act(() => api.epicAction(epic.ID, 'resume'))}>Возобновить</Button>}
             {['planned', 'paused', 'done'].includes(epic.Status) &&
               <Button busy={busy} onClick={act(() => api.epicAction(epic.ID, 'archive'))}>Архивировать</Button>}
             {!['done', 'archived'].includes(epic.Status) && !isArch &&
-              <Button onClick={() => setAdding(true)}>Добавить задачу</Button>}
+              <Button disabled={architectureBlocked} onClick={() => setAdding(true)}>Добавить задачу</Button>}
           </div>
         </div>
         <div className="epic-meta-row">
@@ -181,6 +189,7 @@ export function EpicDashboard({ projectId, epicId, taskId, admin = false, login 
         <EpicWaiting epic={epic} />
         {err && <div style={{ color: 'var(--c-block)', fontSize: 12, marginTop: 6 }}>{err}</div>}
         <EpicWhy epic={epic} login={login} onChanged={refresh} />
+        <EpicAssessment epicId={epic.ID} projectId={epic.ProjectID} view={assessment} onChanged={refresh} />
       </div>
 
       {epicAtt.length > 0 && (

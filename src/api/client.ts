@@ -122,7 +122,7 @@ export interface BacklogEpic {
   needs: string[] | null; priority: Priority; size: 'S' | 'M' | 'L'
   depends_on: string[] | null; existing_epic: string | null
 }
-export interface DecomposeState { status: 'pending' | 'running' | 'done' | 'failed'; detail?: string }
+export interface DecomposeState { status: 'pending' | 'architecture' | 'running' | 'done' | 'failed'; detail?: string }
 export interface BacklogRow extends BacklogEpic {
   epic_id?: string | null
   decompose?: DecomposeState | null
@@ -194,12 +194,28 @@ export interface UsageRow {
 }
 
 export interface EpicView extends Epic {
+  architecture_assessment?: ArchitectureAssessmentView
   tasks: Task[] | null
   progress: { pct: number; weighted: boolean }
   usage?: UsageRow[] | null      // вклад задач (key = id задачи)
   usage_total?: UsageRow | null  // итог по Epic
   estimate: CostEstimate
   budget: EpicBudget
+}
+
+export interface ArchitectureDecision {
+  decision: 'no_change' | 'changes_required'; summary: string
+  impact: string[]; constraints: string[]; documentation: string[]; risks: string[]
+}
+export interface ArchitectureAssessmentView {
+  required: boolean; revision: number
+  assessment: {
+    epic_id: string; project_id: string; discovery_run_id?: string | null; revision: number
+    status: 'pending' | 'running' | 'waiting' | 'passed' | 'failed'; attempts: number
+    agent_id: string; agent_name: string; model: string; connection_id: string
+    error: string; decompose_requested: boolean; planning_error?: string; existing_plan?: boolean
+    result?: ArchitectureDecision; updated_at: string; finished_at?: string
+  } | null
 }
 
 export interface Project {
@@ -1210,7 +1226,9 @@ export const api = {
   epics: (projectId: string) => req<Epic[] | null>('GET', `/projects/${projectId}/epics`),
   createEpic: (projectId: string, title: string, goal: string) =>
     req<Epic>('POST', `/projects/${projectId}/epics`, { title, goal }),
-  decompose: (epicId: string) => req<{ tasks: Task[] }>('POST', `/epics/${epicId}/decompose`),
+  decompose: (epicId: string) => req<{ tasks: Task[]; architecture_pending?: boolean }>('POST', `/epics/${epicId}/decompose`),
+  epicAssessment: (epicId: string) => req<ArchitectureAssessmentView>('GET', `/epics/${epicId}/architecture-assessment`),
+  retryEpicAssessment: (epicId: string) => req<ArchitectureAssessmentView>('POST', `/epics/${epicId}/architecture-assessment/retry`, {}),
   epic: (id: string) => req<EpicView>('GET', `/epics/${id}`),
   // Бюджет и целевая дата (due_at — RFC 3339 или null, только владелец).
   patchEpic: (id: string, patch: { token_budget?: number | null; due_at?: string | null }) =>
@@ -1752,7 +1770,9 @@ export function subscribe(projectId: string, handlers: {
     // Архитектура проекта (add-architecture-c4): новый снимок и постановка
     // задачи описания. Событие несёт только SHA и статус, снимок
     // перечитывается запросом.
-    'project.architecture_updated', 'architecture.describe_started']
+    'project.architecture_updated', 'architecture.describe_started',
+    'architecture.assessment_pending', 'architecture.assessment_started', 'architecture.assessment_waiting',
+    'architecture.assessment_passed', 'architecture.assessment_failed']
   for (const t of evTypes) {
     es.addEventListener(t, (m) => handlers.onEvent(JSON.parse((m as MessageEvent).data)))
   }
