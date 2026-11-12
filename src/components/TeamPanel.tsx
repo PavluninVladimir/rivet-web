@@ -184,6 +184,8 @@ export function TeamPanel({ epicId, tasks, planning, admin }: { epicId: string; 
                   : lead ? (planningHere ? 'составляет план…'
                     : a.busy && a.step === 'decompose' ? 'составляет план другого Epic'
                     : tasks.length > 0 ? 'план составлен' : 'план не составлен')
+                  : a.busy && a.step === 'architecture_assessment'
+                    ? a.epic_id === epicId ? 'оценивает архитектурное влияние' : 'оценивает архитектуру другого Epic'
                   : a.busy
                     ? <>
                         {task ? <span className="mono">task-{task.Num}</span>

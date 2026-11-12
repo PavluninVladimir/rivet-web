@@ -213,6 +213,7 @@ export function workTarget(w: { kind: string; id: string } | null | undefined): 
 
 // Подписи видов артефактов фаз.
 export const ARTIFACT_KIND: Record<string, string> = {
+  assessment: 'оценка архитектуры',
   interview: 'интервью', feedback: 'отзыв', need: 'потребность', architecture: 'снимок', adr: 'ADR',
   plan: 'план', pr: 'PR', check: 'проверка', review: 'ревью', release: 'релиз', incident: 'инцидент',
 }
