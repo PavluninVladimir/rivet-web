@@ -55,7 +55,7 @@ function AmountValue({ a }: { a: Amount }) {
   return <span className="mono" title="стоимость недоступна: у моделей нет цены">{fmtTokens(tok)} tok</span>
 }
 
-export function OverviewView({ period, user }: { period: OverviewPeriod; user: User }) {
+export function OverviewView({ period, focus, user }: { period: OverviewPeriod; focus?: 'money'; user: User }) {
   const { projectId, projects, nav, href, listen, connects, refreshAttention } = useStore()
   const [data, setData] = useState<Overview | null>(null)
   const [err, setErr] = useState('')
@@ -128,12 +128,19 @@ export function OverviewView({ period, user }: { period: OverviewPeriod; user: U
     return href(t)
   }
 
-  if (!projectId) return <div className="page"><span className="muted">Нет проектов.</span></div>
-  if (missing) return <div className="page"><span className="muted">Обзор проекта недоступен: {err}</span></div>
-
   // Ответ за прежний период под новым не показывается: до ответа за
   // выбранный период — загрузка (или ошибка).
   const shown = data && data.period.name === period ? data : null
+  const moneyReady=!!shown
+  useEffect(()=>{
+    if(focus!=='money'||!moneyReady)return
+    const el=document.querySelector<HTMLElement>('[data-overview-money]')
+    el?.focus({preventScroll:true});el?.scrollIntoView({block:'center'})
+  },[focus,projectId,moneyReady])
+
+  if (!projectId) return <div className="page"><span className="muted">Нет проектов.</span></div>
+  if (missing) return <div className="page"><span className="muted">Обзор проекта недоступен: {err}</span></div>
+
   const s = shown?.summary
   // Колбэки берут актуальную загрузку: после смены периода они не
   // перечитывают прежний.
@@ -425,7 +432,7 @@ function MoneyPanel({ data, isOwner, policyHref }: { data: Overview; isOwner: bo
     : null
   const partial = [m.today, m.last_7d, m.month_to_date, m.period].some(a => a.partial_cost)
   return (
-    <div className="panel">
+    <div className="panel" data-overview-money tabIndex={-1} aria-label="Финансы проекта">
       <h3>Деньги</h3>
       <div className="ov-kv">
         <span className="k">сегодня</span><span><AmountValue a={m.today} /></span>

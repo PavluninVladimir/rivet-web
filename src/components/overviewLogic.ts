@@ -217,7 +217,7 @@ export function fromLocalInput(v: string): string | null {
 
 // Период отчёта: последние 7 суток (по умолчанию сервера), прошлая
 // календарная неделя с понедельника в поясе браузера или свои даты.
-export type ReportPreset = '7d' | 'last_week' | 'custom'
+export type ReportPreset = 'today' | '7d' | '30d' | 'last_week' | 'custom'
 export function startOfWeek(d: Date): Date {
   const s = new Date(d.getFullYear(), d.getMonth(), d.getDate())
   s.setDate(s.getDate() - ((s.getDay() + 6) % 7))
@@ -225,6 +225,12 @@ export function startOfWeek(d: Date): Date {
 }
 export function reportRange(p: ReportPreset, now: Date, custom: { from: string; to: string }): { from?: string; to?: string } | { error: string } {
   if (p === '7d') return {}
+  if(p==='today'||p==='30d'){
+    const from=new Date(now)
+    if(p==='today')from.setHours(0,0,0,0)
+    else from.setTime(now.getTime()-30*24*60*60*1000)
+    return {from:from.toISOString(),to:now.toISOString()}
+  }
   if (p === 'last_week') {
     const to = startOfWeek(now)
     const from = new Date(to)

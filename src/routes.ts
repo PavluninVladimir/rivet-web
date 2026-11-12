@@ -24,7 +24,7 @@ const CYCLE_PERIODS: readonly CyclePeriod[] = ['today', '7d', '30d']
 // Экран проекта всегда знает свой проект: pid — часть адреса.
 export type ProjectRoute =
   // Обзор проекта, период в адресе (add-project-lead-view).
-  | { view: 'overview'; pid: string; period: OverviewPeriod }
+  | { view: 'overview'; pid: string; period: OverviewPeriod; focus?: 'money' }
   // Исследование (add-product-discovery): runId — версия из истории.
   | { view: 'discovery'; pid: string; runId?: string }
   // Архитектура (add-architecture-c4): вкладка, уровень или выбор, элемент, фильтр.
@@ -33,7 +33,7 @@ export type ProjectRoute =
   | { view: 'epic'; pid: string; id: string; taskId?: string }
   | { view: 'tasks'; pid: string }
   // Цикл разработки (add-sdlc-cycle): фаза и период в query.
-  | { view: 'cycle'; pid: string; phase?: CyclePhaseId; period?: CyclePeriod }
+  | { view: 'cycle'; pid: string; phase?: CyclePhaseId; period?: CyclePeriod; agentId?: string; focus?: 'agents' | 'items' | 'artifacts'; state?: 'active' | 'waiting' | 'needs_human' }
   | { view: 'releases'; pid: string; id?: string }
   | { view: 'incidents'; pid: string; id?: string }
   | { view: 'team'; pid: string }
@@ -82,7 +82,13 @@ function cycleTarget(query: string): ProjectTarget {
   const q = new URLSearchParams(query)
   const phase = q.get('phase'), period = q.get('period')
   const t: Extract<ProjectTarget, { view: 'cycle' }> = { view: 'cycle' }
-  if (isPhase(phase)) t.phase = phase
+  if (isPhase(phase)) {
+    t.phase = phase
+    const agent=q.get('agent'),focus=q.get('focus'),state=q.get('state')
+    if(agent && /^[a-z0-9][a-z0-9-]{0,62}$/.test(agent))t.agentId=agent
+    if(focus==='agents'||focus==='items'||focus==='artifacts')t.focus=focus
+    if(t.focus==='items'&&(state==='active'||state==='waiting'||state==='needs_human'))t.state=state
+  }
   if (period && (CYCLE_PERIODS as readonly string[]).includes(period)) t.period = period as CyclePeriod
   return t
 }
@@ -91,7 +97,7 @@ function cycleTarget(query: string): ProjectTarget {
 function parseSection(section: string, rest: string[], query: string): ProjectTarget | null {
   const [b, c, d] = rest
   switch (section) {
-    case 'overview': return { view: 'overview', period: parsePeriod(b) }
+    case 'overview': return { view: 'overview', period: parsePeriod(b), ...(new URLSearchParams(query).get('focus')==='money'?{focus:'money' as const}:{}) }
     case 'discovery': return b ? { view: 'discovery', runId: b } : { view: 'discovery' }
     case 'architecture': return { view: 'architecture', ...parseArchRoute([b, c, d], query) }
     case 'epics': return { view: 'epics' }
@@ -152,7 +158,7 @@ export function routeHash(r: Route): string {
   if (!isProjectRoute(r)) return r.view === 'app-management' ? `#/app-management/${r.tab}` : `#/${r.view}`
   const base = `#/p/${encodeURIComponent(r.pid)}`
   switch (r.view) {
-    case 'overview': return r.period === '7d' ? `${base}/overview` : `${base}/overview/${r.period}`
+    case 'overview': return (r.period === '7d' ? `${base}/overview` : `${base}/overview/${r.period}`)+(r.focus==='money'?'?focus=money':'')
     case 'discovery': return r.runId ? `${base}/discovery/${r.runId}` : `${base}/discovery`
     // archRouteHash отдаёт #/architecture/…: проект встаёт перед разделом.
     case 'architecture': return base + archRouteHash(r).slice(1)
@@ -161,6 +167,11 @@ export function routeHash(r: Route): string {
       const q = new URLSearchParams()
       if (r.phase) q.set('phase', r.phase)
       if (r.period) q.set('period', r.period)
+      if(r.phase){
+        if(r.agentId)q.set('agent',r.agentId)
+        if(r.focus)q.set('focus',r.focus)
+        if(r.focus==='items'&&r.state)q.set('state',r.state)
+      }
       const qs = q.toString()
       return `${base}/cycle${qs ? '?' + qs : ''}`
     }
@@ -194,11 +205,13 @@ export function resolveLegacy(p: Exclude<Parsed, { kind: 'route' }>, lastPid: st
 export function switchProject(r: Route, pid: string): Route {
   if (!isProjectRoute(r)) return projectHome(pid)
   switch (r.view) {
-    case 'overview': return { view: 'overview', pid, period: r.period }
+    case 'overview': return { ...r, pid }
     case 'cycle': {
       const n: Extract<Route, { view: 'cycle' }> = { view: 'cycle', pid }
       if (r.phase) n.phase = r.phase
       if (r.period) n.period = r.period
+      if(r.focus)n.focus=r.focus
+      if(r.state)n.state=r.state
       return n
     }
     case 'architecture': return { view: 'architecture', pid, tab: r.tab }
