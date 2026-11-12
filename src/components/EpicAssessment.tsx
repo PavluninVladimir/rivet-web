@@ -17,6 +17,11 @@ export function EpicAssessment({ epicId, projectId, view, onChanged }: { epicId:
     try { await api.retryEpicAssessment(epicId); onChanged() } catch (e) { setErr(errText(e)) }
     finally { setBusy(false) }
   }
+  const reevaluate = async () => {
+    setBusy(true); setErr('')
+    try { await api.reevaluateEpicAssessment(epicId, view.revision); onChanged() } catch (e) { setErr(errText(e)) }
+    finally { setBusy(false) }
+  }
   return <section className="dw-sec" aria-label="Архитектурная оценка Epic" style={{ overflowWrap: 'anywhere' }}>
     <h3>Архитектура → Планирование</h3>
     <p role="status">{a ? STATUS[a.status] : STATUS.pending}{a?.agent_name ? ` · ${a.agent_name}` : ''}</p>
@@ -31,6 +36,10 @@ export function EpicAssessment({ epicId, projectId, view, onChanged }: { epicId:
       {a?.decompose_requested && <p className="muted">Запрошенный план составляется автоматически. Запуск выполнения остаётся отдельным действием.</p>}
     </> : <p className="muted">До успешной оценки планирование и первый запуск закрыты.{a?.decompose_requested ? ' Запрос на план сохранён: после оценки Тимлид продолжит автоматически.' : ''}</p>}
     {a?.status === 'failed' && <Button busy={busy} onClick={retry}>Повторить архитектурную оценку</Button>}
+    {a?.status === 'passed' && view.can_reevaluate && <>
+      <p className="muted">Повторная оценка временно закроет планирование и первый запуск. Существующие задачи сохранятся.</p>
+      <Button busy={busy} onClick={reevaluate}>Запросить новую архитектурную оценку</Button>
+    </>}
     {err && <div className="f-error" role="alert">{err}</div>}
   </section>
 }

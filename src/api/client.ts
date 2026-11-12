@@ -208,7 +208,7 @@ export interface ArchitectureDecision {
   impact: string[]; constraints: string[]; documentation: string[]; risks: string[]
 }
 export interface ArchitectureAssessmentView {
-  required: boolean; revision: number
+  required: boolean; revision: number; can_reevaluate?: boolean
   assessment: {
     epic_id: string; project_id: string; discovery_run_id?: string | null; revision: number
     status: 'pending' | 'running' | 'waiting' | 'passed' | 'failed'; attempts: number
@@ -1229,6 +1229,7 @@ export const api = {
   decompose: (epicId: string) => req<{ tasks: Task[]; architecture_pending?: boolean }>('POST', `/epics/${epicId}/decompose`),
   epicAssessment: (epicId: string) => req<ArchitectureAssessmentView>('GET', `/epics/${epicId}/architecture-assessment`),
   retryEpicAssessment: (epicId: string) => req<ArchitectureAssessmentView>('POST', `/epics/${epicId}/architecture-assessment/retry`, {}),
+  reevaluateEpicAssessment: (epicId: string, revision: number) => req<ArchitectureAssessmentView>('POST', `/epics/${epicId}/architecture-assessment/reevaluate`, { revision }),
   epic: (id: string) => req<EpicView>('GET', `/epics/${id}`),
   // Бюджет и целевая дата (due_at — RFC 3339 или null, только владелец).
   patchEpic: (id: string, patch: { token_budget?: number | null; due_at?: string | null }) =>
