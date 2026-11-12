@@ -695,6 +695,7 @@ export interface AccessToken {
 // Окружение публикации (api-contract implement-deployment): config без
 // секретов, настройка — только администратор, запуск — участники.
 export interface EnvConfig {
+ local_docker?: LocalDockerConfig
   host?: string
   deploy_cmd?: string
   verify_cmd?: string
@@ -821,6 +822,24 @@ export interface InfraCatalog {
   payment_periods: InfraPeriod[]
 }
 
+export interface LocalDockerConfig {
+ container_port: number
+ health_path?: string
+ recipe?: 'auto' | 'go' | 'node' | 'static'
+ build_context?: string
+ startup_timeout_s?: number
+ stop_timeout_s?: number
+ env?: Record<string,string>
+}
+export interface LocalPublication {
+ id: string; environment_id: string; version: string; generation: number
+ status: 'queued'|'building'|'starting'|'verifying'|'running'|'unhealthy'|'stopping'|'stopped'|'failed'|'unknown'
+ desired_state: 'running'|'stopped'; attempt: number
+ image: string|null; container_id: string|null; listen: string|null; health_url: string|null
+ reason: {code:string;message:string}|null; log_ref: string|null
+ created_at: string; started_at: string|null; finished_at: string|null
+}
+
 export interface Environment {
   id: string
   project_id: string
@@ -832,6 +851,7 @@ export interface Environment {
   // Требуемые capability runner'а публикации помимо deploy.
   runner_caps: string[]
   last_deployment: Deployment | null
+ preparation?: 'queued'|'preparing'|'waiting_artifact'|'failed'
   // Состояние наблюдения (add-sdlc-cycle); старый бэкенд поле не отдаёт.
   monitor_state?: MonitorStateName
   // monitor_reason и monitor_last_at — причина состояния и время последней
@@ -1061,15 +1081,16 @@ export function errCode(e: unknown): string {
   return e instanceof ApiError ? e.code : ''
 }
 
-async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
-  return (await reqResp<T>(method, path, body)).data
+async function req<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  return (await reqResp<T>(method, path, body, signal)).data
 }
 
 // Ответ вместе с HTTP-ответом: нужен, когда важны заголовки (Date).
-async function reqResp<T>(method: string, path: string, body?: unknown): Promise<{ data: T; resp: Response }> {
+async function reqResp<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<{ data: T; resp: Response }> {
   // Аутентификация — httpOnly-cookie сессии, браузер шлёт её сам (same-origin).
   const resp = await fetch(`/api/v1${path}`, {
     method,
+    signal,
     headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
   })
@@ -1140,7 +1161,7 @@ export function dispositionFilename(header: string | null, fallback: string): st
 export const api = {
   login: (login: string, password: string) => req<User>('POST', '/auth/login', { login, password }),
   logout: () => req('POST', '/auth/logout'),
-  me: () => req<User>('GET', '/auth/me'),
+  me: (signal?: AbortSignal) => req<User>('GET', '/auth/me', undefined, signal),
   projects: () => req<Project[] | null>('GET', '/projects'),
   createProject: (input: CreateProjectInput) => req<Project>('POST', '/projects', input),
   patchProject: (id: string, patch: { name?: string; checks?: Check[] }) =>
@@ -1230,6 +1251,12 @@ export const api = {
     req<Environment>('PATCH', `/environments/${id}`, e),
   deleteEnvironment: (id: string) => req('DELETE', `/environments/${id}`),
   deploy: (envId: string) => req<Deployment>('POST', `/environments/${envId}/deploy`),
+  localPublication: (id: string) => req<LocalPublication>('GET', `/environments/${id}/publication`),
+  publishLocal: (id: string) => req<LocalPublication>('POST', `/environments/${id}/publish`),
+  redeployLocal: (id: string, version?: string) => req<LocalPublication>('POST', `/environments/${id}/redeploy`, version ? {version} : {}),
+  restartLocal: (id: string) => req<LocalPublication>('POST', `/environments/${id}/restart`),
+  stopLocal: (id: string) => req<LocalPublication>('POST', `/environments/${id}/stop`),
+  localLogs: (id: string, stream: 'builder'|'container', tail=200) => reqText(`/environments/${id}/publication/logs?stream=${stream}&tail=${tail}`),
   resumeEnv: (envId: string) => req<Environment>('POST', `/environments/${envId}/resume`),
   deployments: (envId: string) => req<Deployment[]>('GET', `/environments/${envId}/deployments`),
   // Действия с хостом окружения (api-contract add-environment-provisioning):
