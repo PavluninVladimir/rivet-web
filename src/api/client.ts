@@ -672,6 +672,16 @@ export interface Member {
   added_at: string
 }
 
+export interface IssueIntakeConfig { enabled: boolean; auto_research: boolean; label: string }
+export interface IssueSource {
+  number: number; url: string; title: string; material_id: string
+  research_run_id?: string; research_status?: string; attempts: number; created_at: string
+  epics: { id: string; title: string; status: string }[]
+}
+export interface IssueIntakeView extends IssueIntakeConfig {
+  last_check_at?: string; error: string; sources: IssueSource[]
+}
+
 export interface User {
   id: string
   login: string
@@ -1174,6 +1184,8 @@ export const api = {
   replaceCredentials: (projectId: string, token: string) =>
     req<RepositoryStatus>('PUT', `/projects/${projectId}/credentials`, { token }),
   members: (projectId: string) => req<Member[] | null>('GET', `/projects/${projectId}/members`),
+  issueIntake: (projectId: string, signal?: AbortSignal) => req<IssueIntakeView>('GET', `/projects/${projectId}/operations/github-issues`, undefined, signal),
+  saveIssueIntake: (projectId: string, config: IssueIntakeConfig) => req<IssueIntakeView>('PATCH', `/projects/${projectId}/operations/github-issues`, config),
   addMember: (projectId: string, login: string, role: Role = 'member') =>
     req('POST', `/projects/${projectId}/members`, { login, role }),
   setMemberRole: (projectId: string, login: string, role: Role) =>
@@ -1731,6 +1743,7 @@ export function subscribe(projectId: string, handlers: {
     // Отзыв пользователя (add-user-feedback): счётчик неучтённых в
     // «Исследовании» и на экране цикла.
     'feedback.created',
+    'operations.issue_received', 'operations.issue_watch_changed',
     'epic.deps_changed', 'epic.waiting_deps', 'epic.deps_ready',
     // Цикл разработки (add-sdlc-cycle): релизы, инциденты, наблюдение и
     // задания Релиз-инженера и Инженера сопровождения.

@@ -9,6 +9,7 @@ import { roleColorVar, tripleKey } from '../components/roleLabels'
 import { Button, Select, errText } from '../components/form'
 import { fmtAgo, fmtCost, fmtTokens, timeShort } from '../components/ui'
 import { FeedbackForm } from '../components/FeedbackForm'
+import { GitHubIssueWatch } from '../components/GitHubIssueWatch'
 import { unaccountedText } from '../components/discovery'
 import { agentDestination, phaseDestination, summaryDestinations, type CycleRoute } from '../components/cycleNavigation'
 import { ReportModal } from './ReportModal'
@@ -368,7 +369,7 @@ function CycleFeed({ events, projectId, period }: { events: Event[]; projectId: 
 // Решение ADR открывается в реестре со всеми статусами: заменённое или
 // отклонённое решение иначе было бы скрыто фильтром по умолчанию.
 function useOpenTarget(projectId: string): (t: ArtifactTarget | null) => void {
-  const { nav } = useStore()
+  const { nav, route } = useStore()
   return (t) => {
     switch (t?.kind) {
       case 'external': window.open(t.url, '_blank', 'noopener,noreferrer'); break
@@ -378,6 +379,7 @@ function useOpenTarget(projectId: string): (t: ArtifactTarget | null) => void {
       case 'incident': nav({ pid:projectId, view: 'incidents', id: t.id }); break
       case 'discovery': nav(t.runId ? { pid:projectId, view: 'discovery', runId: t.runId } : { pid:projectId, view: 'discovery' }); break
       case 'architecture': nav({ pid:projectId, view: 'architecture', tab: 'hld' }); break
+      case 'operations': nav({ pid:projectId, view: 'cycle', phase: 'operations', period: route.view === 'cycle' ? route.period : undefined, focus: 'items' }); break
       case 'adr': nav({ pid:projectId, view: 'architecture', tab: 'decisions', sub: t.number, status: 'all' }); break
     }
   }
@@ -407,6 +409,10 @@ function PhasePanel({ p, projectId, period, agentId, focus, state, admin, extra,
     // (add-product-discovery).
     else if (it.kind === 'analysis') nav({ pid:projectId, view: 'discovery', runId: it.id })
     else if (it.kind === 'material') nav({ pid:projectId, view: 'discovery' })
+    else if (it.kind === 'issue_watch') {
+      const watch = panel.current?.querySelector<HTMLElement>('[data-issue-watch]')
+      watch?.focus({ preventScroll: true }); watch?.scrollIntoView({ block: 'nearest' })
+    }
     else if (it.kind === 'deployment' || it.kind === 'environment') nav({ pid:projectId, view: 'project-settings', tab: 'environments' })
   }
   const openTarget = useOpenTarget(projectId)
@@ -479,6 +485,7 @@ function PhasePanel({ p, projectId, period, agentId, focus, state, admin, extra,
 
       {p.id === 'release' && <ReleasesBlock releases={extra.releases} err={extra.errors.releases} />}
       {p.id === 'operations' && <OperationsBlock extra={extra} />}
+      {p.id === 'operations' && <GitHubIssueWatch projectId={projectId} />}
 
       <section className="dw-sec" data-cycle-section="artifacts" tabIndex={-1} aria-label="Материалы фазы">
         <h3>Материалы</h3>
