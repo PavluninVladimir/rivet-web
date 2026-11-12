@@ -1,3 +1,4 @@
+import { ApplicationSecrets } from './ApplicationSecrets'
 import { useEffect, useState } from 'react'
 import { api, ApiError, type Environment, type LocalDockerConfig, type LocalPublication } from '../api/client'
 import { Button, Field, NumberInput, Select, TextInput, TextArea, FormNote, errText } from './form'
@@ -5,7 +6,7 @@ import { localListenURL, parseLocalEnv, publicationActions } from './localDocker
 const labels:Record<string,string>={queued:'в очереди',building:'сборка',starting:'запуск',verifying:'проверка',running:'работает',unhealthy:'не отвечает',stopping:'останавливается',stopped:'остановлено',failed:'ошибка',unknown:'состояние неизвестно'}
 export function LocalDockerCard({env,tick,isAdmin,onSettings}:{env:Environment;tick:number;isAdmin:boolean;onSettings:()=>void}){
  const [pub,setPub]=useState<LocalPublication|null>(null),[err,setErr]=useState(''),[busy,setBusy]=useState(false),[refresh,setRefresh]=useState(0)
- const [log,setLog]=useState<string|null>(null),[stream,setStream]=useState<'builder'|'container'>('builder')
+ const [log,setLog]=useState<string|null>(null),[stream,setStream]=useState<'builder'|'container'>('builder'),[secretsOpen,setSecretsOpen]=useState(false)
  useEffect(()=>{let live=true;let timer:ReturnType<typeof setTimeout>;const load=async()=>{try{const p=await api.localPublication(env.id);if(live)setPub(p)}catch(e){if(live&&!(e instanceof ApiError&&e.status===404))setErr(errText(e))}finally{if(live)timer=setTimeout(load,3000)}};void load();return()=>{live=false;clearTimeout(timer)}},[env.id,tick,refresh])
  const a=publicationActions(pub,env.paused),url=pub?.status==='stopped'?null:localListenURL(pub?.listen??null)
  const act=async(fn:()=>Promise<unknown>)=>{if(busy)return;setBusy(true);setErr('');try{const p=await fn();if(p&&typeof p==='object'&&'generation' in p)setPub(p as LocalPublication);setRefresh(n=>n+1)}catch(e){setErr(errText(e))}finally{setBusy(false)}}
@@ -21,8 +22,9 @@ export function LocalDockerCard({env,tick,isAdmin,onSettings}:{env:Environment;t
    {pub?.status!=='stopped'&&<Button size="sm" disabled={busy||!a.redeploy} onClick={()=>void act(()=>api.redeployLocal(env.id))}>Пересобрать</Button>}
    {pub?.status!=='stopped'&&<><Button size="sm" disabled={busy||!a.restart} onClick={()=>void act(()=>api.restartLocal(env.id))}>Перезапустить</Button><Button size="sm" disabled={busy||!a.stop} onClick={()=>void act(()=>api.stopLocal(env.id))}>Остановить</Button></>}
    <Button size="sm" disabled={!pub} onClick={()=>log===null?void logs(stream):setLog(null)}>Логи</Button>
-   {isAdmin&&<Button size="sm" onClick={onSettings}>Настроить</Button>}
+   {isAdmin&&<><Button size="sm" onClick={onSettings}>Настроить</Button><Button size="sm" aria-expanded={secretsOpen} onClick={()=>setSecretsOpen(v=>!v)}>Секреты приложения</Button></>}
   </div>
+  {secretsOpen&&isAdmin&&<ApplicationSecrets env={env} />}
   {log!==null&&<><div className="dw-actions"><Button size="sm" onClick={()=>void logs('builder')}>Сборка</Button><Button size="sm" disabled={!pub?.container_id||pub.status==='stopped'} onClick={()=>void logs('container')}>Приложение</Button></div><pre className="term sess-term">{log||'Вывода нет'}</pre></>}
  </div>
 }
@@ -36,7 +38,7 @@ export function LocalDockerFields({value,onChange,error,onValidityChange}:{value
   <Field label="Сборка" error={error('config.local_docker.recipe')}>{ids=><Select ids={ids} value={c.recipe??'auto'} onChange={e=>set({recipe:e.target.value as LocalDockerConfig['recipe']})}><option value="auto">Определить автоматически</option><option value="go">Go</option><option value="node">Node.js</option><option value="static">Статический сайт</option></Select>}</Field>
   <Field label="Каталог приложения" hint="Относительно корня репозитория" error={error('config.local_docker.build_context')}>{ids=><TextInput ids={ids} value={c.build_context??'.'} onChange={e=>set({build_context:e.target.value})}/>}</Field>
   <div className="f-grid">{number('Ожидание запуска, с','startup_timeout_s',10,600,120)}{number('Ожидание остановки, с','stop_timeout_s',1,120,10)}</div>
-  <Field label="Переменные приложения" hint="JSON-объект с открытыми значениями. Пароли и ключи сюда не добавляйте." error={envError||error('config.local_docker.env')}>{ids=><TextArea ids={ids} value={envText} onChange={e=>{setEnvText(e.target.value);try{set({env:parseLocalEnv(e.target.value)});setEnvError('');onValidityChange(true)}catch{setEnvError('Введите JSON-объект со строковыми значениями');onValidityChange(false)}}}/>}</Field>
+  <Field label="Переменные приложения" hint="JSON-объект с открытыми значениями. Пароли и ключи задаются отдельно кнопкой «Секреты приложения» после создания окружения." error={envError||error('config.local_docker.env')}>{ids=><TextArea ids={ids} value={envText} onChange={e=>{setEnvText(e.target.value);try{set({env:parseLocalEnv(e.target.value)});setEnvError('');onValidityChange(true)}catch{setEnvError('Введите JSON-объект со строковыми значениями');onValidityChange(false)}}}/>}</Field>
   <div className="muted">Адрес появится после публикации. Приложение доступно только на этой машине.</div>
  </>
 }

@@ -831,6 +831,8 @@ export interface LocalDockerConfig {
  stop_timeout_s?: number
  env?: Record<string,string>
 }
+export interface ApplicationSecret { name: string; masked: string; updated_at: string }
+export interface ApplicationSecretPatch { set?: Record<string,string>; delete?: string[] }
 export interface LocalPublication {
  id: string; environment_id: string; version: string; generation: number
  status: 'queued'|'building'|'starting'|'verifying'|'running'|'unhealthy'|'stopping'|'stopped'|'failed'|'unknown'
@@ -1249,6 +1251,8 @@ export const api = {
     req<Environment>('POST', `/projects/${projectId}/environments`, e),
   patchEnvironment: (id: string, e: { name?: string; trigger?: string; config?: EnvConfig; runner_caps?: string[] }) =>
     req<Environment>('PATCH', `/environments/${id}`, e),
+  applicationSecrets: (id: string) => req<ApplicationSecret[]>('GET', `/environments/${id}/secrets`),
+  patchApplicationSecrets: (id: string, patch: ApplicationSecretPatch) => req<ApplicationSecret[]>('PATCH', `/environments/${id}/secrets`, patch),
   deleteEnvironment: (id: string) => req('DELETE', `/environments/${id}`),
   deploy: (envId: string) => req<Deployment>('POST', `/environments/${envId}/deploy`),
   localPublication: (id: string) => req<LocalPublication>('GET', `/environments/${id}/publication`),
