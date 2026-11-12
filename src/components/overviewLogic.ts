@@ -1,4 +1,4 @@
-import type { Amount, Decision, OverviewPeriod, RiskStatus } from '../api/client'
+import type { Amount, Attention, Decision, OverviewPeriod, RiskStatus } from '../api/client'
 
 // Обзор проекта для руководителя (add-project-lead-view): чистые функции
 // без React, чтобы проверяться юнит-тестом. Цифры считает сервер, консоль
@@ -21,10 +21,13 @@ export function browserTZ(): string {
 // События проекта, после которых обзор перечитывается (api-contract,
 // «Реальное время»). Публикации приходят как deploy.*. Эскалация уровня
 // проекта своего события не имеет и приходит вместе с policy.decision,
-// плановый бюджет месяца меняет policy.activated.
+// плановый бюджет месяца меняет policy.activated. Эскалация о нерабочих
+// учётных данных хостинга приходит с project.credentials, снимается и
+// заменой токена (project.repository).
 const RELEVANT = ['task.', 'epic.', 'attention.', 'deploy.', 'deployment.', 'role.', 'policy.']
+const RELEVANT_EXACT = ['project.credentials', 'project.repository']
 export function overviewEventRelevant(type: string): boolean {
-  return RELEVANT.some(p => type.startsWith(p))
+  return type === 'environment.host' || RELEVANT.some(p => type.startsWith(p)) || RELEVANT_EXACT.includes(type)
 }
 
 // Склейка перечитываний: не чаще раза в ms, первый вызов сразу, вызовы
@@ -98,22 +101,44 @@ export const DECISION_LABELS: Record<string, string> = {
 
 // Куда ведёт решение одним кликом: план — дашборд Epic'а с кнопкой
 // запуска, задача — её деталка, свой шаг — очередь «Мои шаги». Эскалация
-// без задачи: публикации (DEPLOY_FAILED) — окружения проекта, остальные
-// уровня проекта (движок или источник политик) — политики проекта, как в
-// списке задач.
+// без задачи: публикации (DEPLOY_FAILED) и хоста окружения (HOST_*):
+// окружения проекта, остальные уровня проекта (движок или источник
+// политик): политики проекта, как в списке задач.
 export const DEPLOY_FAILED = 'DEPLOY_FAILED'
+// Решения и отказы хоста окружения (add-environment-provisioning).
+export const HOST_REASONS = ['HOST_CREATE', 'HOST_DELETE', 'HOST_FAILED'] as const
+export function isHostReason(reason: string | null | undefined): boolean {
+  return !!reason && (HOST_REASONS as readonly string[]).includes(reason)
+}
+const toEnvironments = (reason: string | null | undefined) => reason === DEPLOY_FAILED || isHostReason(reason)
+export const SCM_CREDENTIALS = 'SCM_CREDENTIALS'
 export type DecisionTarget =
   | { view: 'epic'; id: string; taskId?: string }
   | { view: 'mysteps' }
   | { view: 'environments' }
   | { view: 'policies' }
+  | { view: 'general' }
   | null
 export function decisionTarget(d: Decision): DecisionTarget {
   if (d.kind === 'my_step') return { view: 'mysteps' }
   if (d.kind === 'plan_approval') return d.epic_id ? { view: 'epic', id: d.epic_id } : null
   if (d.epic_id && d.task_id) return { view: 'epic', id: d.epic_id, taskId: d.task_id }
-  if (d.kind === 'escalation' && !d.task_id) return d.reason === DEPLOY_FAILED ? { view: 'environments' } : { view: 'policies' }
+  if (d.kind === 'escalation' && !d.task_id) {
+    if (toEnvironments(d.reason)) return { view: 'environments' }
+    if (d.reason === SCM_CREDENTIALS) return { view: 'general' }
+    return { view: 'policies' }
+  }
   return d.epic_id ? { view: 'epic', id: d.epic_id } : null
+}
+
+// Куда ведёт карточка очереди «Требует внимания» в задачах проекта:
+// эскалация публикации или хоста: к окружениям проекта, прочая без задачи
+// (движок политик): к политикам, с задачей: к её деталке.
+export type AttentionTarget = 'environments' | 'policies' | 'task'
+export function attentionTarget(a: Pick<Attention, 'TaskID' | 'DeploymentID' | 'HostID' | 'Reason'>): AttentionTarget {
+  if (a.DeploymentID || a.HostID) return 'environments'
+  if (!a.TaskID) return toEnvironments(a.Reason) ? 'environments' : 'policies'
+  return 'task'
 }
 
 // Действие под карточкой решения.
@@ -124,6 +149,7 @@ export function decisionAction(d: Decision): string {
     case 'mysteps': return 'К моим шагам →'
     case 'environments': return 'К окружениям →'
     case 'policies': return 'К политикам →'
+    case 'general': return 'К подключению →'
     default: return d.kind === 'plan_approval' ? 'К плану →' : 'Открыть →'
   }
 }

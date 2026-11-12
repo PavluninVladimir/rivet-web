@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { dispositionFilename, type Decision } from '../api/client.ts'
-import { amountTokens, copyText, decisionAction, decisionTarget, fmtShare, fmtWait, fromLocalInput, overviewEventRelevant, parsePeriod, reportRange, riskInfo, startOfWeek, throttle, throttleWithRecheck, toLocalInput, type Clock } from './overviewLogic.ts'
+import { amountTokens, attentionTarget, copyText, decisionAction, decisionTarget, fmtShare, fmtWait, fromLocalInput, overviewEventRelevant, parsePeriod, reportRange, riskInfo, startOfWeek, throttle, throttleWithRecheck, toLocalInput, type Clock } from './overviewLogic.ts'
 
 function fakeClock() {
   let t = 0
@@ -95,10 +95,10 @@ test('занятость агентов: перечитывание сразу �
 
 test('события, по которым обзор перечитывается', () => {
   for (const t of ['task.status', 'epic.progress', 'epic.due_changed', 'attention.new', 'deploy.status', 'role.updated',
-    'policy.decision', 'policy.activated']) {
+    'policy.decision', 'policy.activated', 'environment.host', 'project.credentials', 'project.repository']) {
     assert.ok(overviewEventRelevant(t), t)
   }
-  for (const t of ['session.overlap', 'project.settings', 'runner.renamed', 'team.agent_updated']) {
+  for (const t of ['session.overlap', 'project.settings', 'runner.renamed', 'team.agent_updated', 'environment.config']) {
     assert.ok(!overviewEventRelevant(t), t)
   }
 })
@@ -125,11 +125,32 @@ test('решение одним кликом ведёт к месту дейст
   for (const reason of ['POLICY_ENGINE', 'POLICY_SOURCE', 'POLICY_CHANGE', null]) {
     assert.deepEqual(decisionTarget(dec({ kind: 'escalation', attention_id: 'a1', reason })), { view: 'policies' }, String(reason))
   }
+  // Нерабочие учётные данные хостинга — к замене токена на вкладке «Общее».
+  assert.deepEqual(decisionTarget(dec({ kind: 'escalation', attention_id: 'a1', reason: 'SCM_CREDENTIALS' })), { view: 'general' })
+  assert.equal(decisionAction(dec({ kind: 'escalation', attention_id: 'a1', reason: 'SCM_CREDENTIALS' })), 'К подключению →')
   assert.equal(decisionTarget(dec({ kind: 'plan_approval' })), null)
   assert.equal(decisionAction(dec({ kind: 'escalation', attention_id: 'a1', reason: 'POLICY_ENGINE' })), 'К политикам →')
   assert.equal(decisionAction(dec({ kind: 'escalation', attention_id: 'a1', reason: 'DEPLOY_FAILED' })), 'К окружениям →')
   assert.equal(decisionAction(dec({ kind: 'plan_approval', epic_id: 'e1' })), 'К плану →')
   assert.equal(decisionAction(dec({ kind: 'escalation', epic_id: 'e1', task_id: 't1' })), 'Открыть →')
+  // Решения и отказы хоста окружения ведут к окружениям проекта.
+  for (const reason of ['HOST_CREATE', 'HOST_DELETE', 'HOST_FAILED']) {
+    assert.deepEqual(decisionTarget(dec({ kind: 'escalation', attention_id: 'a1', reason })), { view: 'environments' }, reason)
+    assert.equal(decisionAction(dec({ kind: 'escalation', attention_id: 'a1', reason })), 'К окружениям →', reason)
+  }
+})
+
+test('карточка «Требует внимания»: публикация и хост: к окружениям', () => {
+  const att = (p: { TaskID?: string; DeploymentID?: string; HostID?: string; Reason?: string }) =>
+    ({ TaskID: '', DeploymentID: '', Reason: '', ...p })
+  assert.equal(attentionTarget(att({ DeploymentID: 'd1', Reason: 'DEPLOY_FAILED' })), 'environments')
+  for (const reason of ['HOST_CREATE', 'HOST_DELETE', 'HOST_FAILED']) {
+    assert.equal(attentionTarget(att({ HostID: 'h1', Reason: reason })), 'environments', reason)
+    // Бэкенд без поля HostID: причина всё равно ведёт к окружениям.
+    assert.equal(attentionTarget(att({ Reason: reason })), 'environments', reason)
+  }
+  assert.equal(attentionTarget(att({ Reason: 'POLICY_ENGINE' })), 'policies')
+  assert.equal(attentionTarget(att({ TaskID: 't1', Reason: 'NEEDS_INFO' })), 'task')
 })
 
 test('копирование: Clipboard API, без него запасной путь, отказ виден', async () => {

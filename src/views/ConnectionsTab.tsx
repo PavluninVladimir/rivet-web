@@ -5,11 +5,14 @@ import { fieldShown, parseTokens, presetConnectionId, presetForSave, presetInUse
 import { SideModal } from '../components/StepModal'
 import { Button, Checkbox, Field, FormActions, FormNote, NumberInput, PasswordInput, Select, TextInput, errText } from '../components/form'
 import { useActions } from './AppManagement'
+import { InfraConnections } from './InfraConnections'
 
 // Вкладка «Подключения» (add-model-connections, спека web «Вкладка
 // подключений к моделям»): карточки подключений, окно подключения и окно
 // списка моделей у правого края, выбор модели декомпозиции Epic. Пресеты
 // провайдеров (add-native-agent) открывают то же окно с готовыми полями.
+// Под подключениями моделей: раздел «Инфраструктура» с провайдерами
+// хостов окружений (add-environment-provisioning).
 
 const STATE_LABEL: Record<string, string> = { ok: 'в порядке', invalid: 'ключ отклонён', unchecked: 'не проверено' }
 const stateColor = (s: string) => s === 'ok' ? 'var(--c-done)' : s === 'invalid' ? 'var(--c-block)' : 'var(--c-review)'
@@ -146,6 +149,8 @@ export function ConnectionsTab() {
           Ключи и секретные заголовки хранятся зашифрованными и повторно не показываются. При сохранении подключение проверяется запросом списка моделей.
         </div>
       </div>
+
+      <InfraConnections />
 
       {modal?.kind === 'new' && <ConnectionModal preset={modal.preset} taken={list.map(c => c.id)} onClose={() => setModal(null)} onSaved={r => { setSaved(r); refresh() }} />}
       {modal?.kind === 'edit' && current && <ConnectionModal conn={current} onClose={() => setModal(null)} onSaved={r => { setSaved(r); refresh() }} />}

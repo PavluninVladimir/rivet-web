@@ -4,7 +4,7 @@ export type TaskStatus =
   | 'queued' | 'ready' | 'running' | 'testing' | 'review'
   | 'fixing' | 'blocked' | 'failed' | 'done' | 'cancelled'
 
-export interface Criterion { text: string; ok: boolean }
+export interface Criterion { text: string; ok: boolean; status?: 'ok' | 'fail'; note?: string; by?: string; pass?: number }
 
 export interface Task {
   ID: string; EpicID: string; Num: number
@@ -439,6 +439,10 @@ export interface RepositoryStatus {
   web_url: string
   credential: { owner: string; token_prefix: string; added_at: string } | null
   state: 'ok' | 'invalid' | 'unchecked' | string
+  // Причина нерабочего подключения: код (bad_token, no_access,
+  // insufficient_scope, not_found) и текст; у рабочего пустые.
+  state_reason?: string
+  state_message?: string
   checked_at: string | null
   webhook: { registered: boolean; url: string; secret_hint: string }
 }
@@ -650,6 +654,10 @@ export interface StepItem {
 export interface Attention {
   ID: string; ProjectID: string; TaskID: string
   DeploymentID: string // эскалация публикации (DEPLOY_FAILED): задачи нет
+  // Эскалация хоста окружения (HOST_CREATE, HOST_DELETE, HOST_FAILED,
+  // add-environment-provisioning): задачи и публикации нет. Старый бэкенд
+  // полей не отдаёт.
+  HostID?: string; EnvironmentID?: string
   Reason: string; Message: string; Status: string; ClaimedBy: string; Created: string
 }
 
@@ -712,6 +720,106 @@ export interface EnvConfig {
   key?: string
   // Наблюдение за работающим приложением (add-sdlc-cycle).
   monitor?: MonitorConfig
+  // Закреплённый ключ хоста (строки known_hosts). У хоста от провайдера его
+  // пишет Rivet, присланное значение сервер игнорирует.
+  host_key?: string
+  // Привязка Linux-хоста к провайдеру инфраструктуры
+  // (add-environment-provisioning). Нет: хост задаёт администратор.
+  provision?: ProvisionConfig
+}
+
+// Привязка окружения к провайдеру: local: машина deploy-runner'а,
+// ruvds: VPS у RUVDS через подключение инфраструктуры.
+export type ProvisionProvider = 'local' | 'ruvds'
+export interface ProvisionConfig {
+  provider: ProvisionProvider | string
+  connection?: string
+  datacenter?: number
+  tariff_id?: number
+  os_id?: number
+  payment_period?: number
+  cpu?: number
+  ram?: number   // ГБ
+  drive?: number // ГБ
+  drive_tariff_id?: number
+  ssh_public_key?: string
+  bootstrap_cmd?: string // пусто: скрипт провайдера по умолчанию
+  port?: number          // local: порт хоста, 0: назначит Rivet
+}
+
+export interface Money { amount: number; currency: string }
+// Сумма за период оплаты провайдера (цена создания, стоимость продления).
+export interface PeriodMoney extends Money { period: number; period_label: string }
+
+export type HostState = 'quoting' | 'awaiting_approval' | 'approved' | 'creating' | 'bootstrapping' | 'ready'
+  | 'delete_requested' | 'deleting' | 'deleted' | 'rejected' | 'failed'
+
+// Хост окружения: текущий живой или последний в конечном состоянии.
+export interface EnvHost {
+  id: string
+  provider: ProvisionProvider | string
+  state: HostState | string
+  live: boolean
+  spec: ProvisionConfig
+  // Названия из справочника провайдера на момент расчёта цены: ключи
+  // datacenter, tariff, os, drive_tariff. Может быть пустым или без части
+  // ключей, старый бэкенд поля не отдаёт.
+  spec_labels?: Record<string, string>
+  address: string
+  server_id: string
+  quote: PeriodMoney | null
+  balance: Money | null
+  approved_by: string
+  approved_at: string | null
+  requested_by: string
+  waiting_payment: boolean
+  paid_till: string | null
+  cost: PeriodMoney | null
+  cost_checked_at: string | null
+  attempts: number
+  needs_retry: boolean
+  remove_volumes: boolean
+  delete_requested_by: string
+  detail: string
+  failure: string
+  compose_project: string
+  port: number
+  created_at: string
+  updated_at: string
+}
+
+export type HostAction = 'request' | 'approve' | 'reject' | 'delete' | 'confirm-delete' | 'cancel-delete' | 'retry' | 'refresh'
+
+// Подключение к провайдеру инфраструктуры (администратор): токен наружу
+// только префиксом.
+export interface InfraConnection {
+  id: string
+  provider: 'ruvds' | string
+  name: string
+  token_prefix: string
+  has_token: boolean
+  enabled: boolean
+  state: 'ok' | 'invalid' | 'unchecked' | string
+  check_detail: string
+  checked_at: string | null
+  balance: Money | null
+  updated_at: string
+  updated_by: string
+}
+export interface InfraConnectionInput { provider: string; name: string; token?: string; enabled: boolean }
+
+// Справочники провайдера для формы окружения.
+export interface InfraDatacenter { id: number; name: string; tariffs: number[]; drive_tariffs: number[] }
+export interface InfraTariff { id: number; name: string; cpu_price: number; ram_price: number; active: boolean }
+export interface InfraDriveTariff { id: number; name: string; price: number; active: boolean }
+export interface InfraOS { id: number; name: string; type: string; active: boolean; ssh_keys: boolean }
+export interface InfraPeriod { id: number; label: string }
+export interface InfraCatalog {
+  datacenters: InfraDatacenter[]
+  tariffs: InfraTariff[]
+  drive_tariffs: InfraDriveTariff[]
+  os: InfraOS[]
+  payment_periods: InfraPeriod[]
 }
 
 export interface LocalDockerConfig {
@@ -750,6 +858,9 @@ export interface Environment {
   // проверки (без истории проверок).
   monitor_reason?: string
   monitor_last_at?: string | null
+  // Хост от провайдера (add-environment-provisioning); null у окружения
+  // без привязки, старый бэкенд поля не отдаёт.
+  host?: EnvHost | null
   created_at: string
 }
 
@@ -1148,6 +1259,10 @@ export const api = {
   localLogs: (id: string, stream: 'builder'|'container', tail=200) => reqText(`/environments/${id}/publication/logs?stream=${stream}&tail=${tail}`),
   resumeEnv: (envId: string) => req<Environment>('POST', `/environments/${envId}/resume`),
   deployments: (envId: string) => req<Deployment[]>('GET', `/environments/${envId}/deployments`),
+  // Действия с хостом окружения (api-contract add-environment-provisioning):
+  // approve несёт сумму, которую видел владелец, delete: снятие томов.
+  hostAction: (envId: string, action: HostAction, body?: { amount?: number; remove_volumes?: boolean }) =>
+    req<{ host: EnvHost }>('POST', `/environments/${envId}/host/${action}`, body),
   deploymentLog: (id: string) => reqText(`/deployments/${id}/log`),
   answer: (id: string, text: string) => req('POST', `/tasks/${id}/answer`, { text }),
   retry: (id: string) => req('POST', `/tasks/${id}/retry`),
@@ -1195,6 +1310,14 @@ export const api = {
   putConnectionModels: (id: string, models: ModelEntry[]) =>
     req<ModelConnection>('PUT', `/system/connections/${id}/models`, { models }),
   connectionPresets: () => req<{ presets: ConnectionPreset[] | null }>('GET', '/system/connections/presets'),
+  // Подключения к провайдерам инфраструктуры (api-contract add-environment-provisioning).
+  infraConnections: () => req<InfraConnection[] | null>('GET', '/system/infra-connections'),
+  putInfraConnection: (id: string, input: InfraConnectionInput) =>
+    req<{ connection: InfraConnection }>('PUT', `/system/infra-connections/${encodeURIComponent(id)}`, input),
+  deleteInfraConnection: (id: string) => req<{ status: string }>('DELETE', `/system/infra-connections/${encodeURIComponent(id)}`),
+  checkInfraConnection: (id: string) =>
+    req<{ connection: InfraConnection }>('POST', `/system/infra-connections/${encodeURIComponent(id)}/check`),
+  infraCatalog: (id: string) => req<InfraCatalog>('GET', `/system/infra-connections/${encodeURIComponent(id)}/catalog`),
   // Каталог агентов: один агент Rivet (api-contract add-native-agent).
   agents: () => req<AgentCatalog>('GET', '/agents'),
   systemAgents: () => req<AgentCatalog>('GET', '/system/agents'),
@@ -1566,7 +1689,13 @@ export function subscribe(projectId: string, handlers: {
 }): () => void {
   const es = new EventSource(`/api/v1/stream?project=${projectId}`)
   const evTypes = ['task.status', 'task.step', 'task.verdict', 'task.wait', 'epic.progress', 'session.step', 'task.assign', 'task.review_passed', 'epic.decomposed', 'attention.new', 'attention.claimed', 'deploy.status', 'environment.config',
+    // Хост окружения (add-environment-provisioning): состояние, решение,
+    // адрес и стоимость меняются без перезагрузки.
+    'environment.host',
     'project.repository', 'project.settings',
+    // Учётные данные хостинга перестали действовать или снова работают:
+    // настройки и очередь эскалаций перечитываются (fix-credential-state).
+    'project.credentials',
     // Состав и роли участников: страница настроек должна показывать
     // актуальные права, а не ждать перезагрузки.
     'project.member_added', 'project.member_removed', 'project.member_role_changed',

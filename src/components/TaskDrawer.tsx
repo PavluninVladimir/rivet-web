@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, errCode, stColor, type Event, type OverlapPayload, type ResolvedProcess, type Session, type StepPayload, type StepTransition, type Task, type StepRun } from '../api/client'
 import { MERGE_ERROR_TEXT, outsideDocsEvent, outsideDocsFailure, outsideDocsOf } from './archModel'
+import { awaitingMerge } from './mergeLogic'
+import { criterionState, timelineDetail } from './reviewResults'
 import { OutsideDocsNote, rejectTitle } from './ArchitectureParts'
 
 // stepOf валидирует payload session.step: он runner-controlled, битые типы
@@ -265,7 +267,7 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
         </div>
         <h2>{task.Title}</h2>
         <div className="dw-actions">
-          {task.Status === 'review' && task.PRURL && !deferred &&
+          {task.Status === 'review' && (task.PRURL || awaitingMerge(timeline)) && !deferred &&
             <Button variant="primary" size="sm" busy={busy} onClick={act(() => api.merge(task.ID))}>Merge</Button>}
           {task.PRURL &&
             <a className="btn sm" href={task.PRURL} target="_blank" rel="noreferrer">Открыть PR</a>}
@@ -444,11 +446,15 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
         {(task.Criteria?.length ?? 0) > 0 && (
           <div className="dw-sec">
             <h3>Acceptance criteria</h3>
-            {task.Criteria!.map((c, i) => (
-              <div key={i} className={'crit ' + (c.ok ? 'ok' : 'pend')}>
-                <span className="m">{c.ok ? '✓' : '○'}</span>{c.text}
+            {task.Criteria!.map((c, i) => {
+              const state = criterionState(c)
+              return <div key={i} className={'crit ' + state.className}>
+                <span className="m" aria-label={state.label}>{state.mark}</span>
+                <span>{c.text}{state.className === 'pend' && <span className="muted"> · {state.label}</span>}
+                  {c.status === 'fail' && c.note && <span className="crit-note">{c.note}</span>}
+                </span>
               </div>
-            ))}
+            })}
           </div>
         )}
 
@@ -544,6 +550,7 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
             {timeline.map(e => {
               const step = stepOf(e)
               const who = performersOfEvent(e)
+              const detail = timelineDetail(e)
               // Плашка роли у событий агента (add-agent-roles): роль и имя
               // исполнителя; у вердиктов шага — каждый участник отдельно.
               const chips = (who.list.length > 0 || who.undelivered) && (
@@ -563,9 +570,10 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
                 return (
                   <div key={e.ID} className="tl-row bad">
                     <span className="t">{timeShort(e.TS)}</span>
-                    <span>{chips}{rejectTitle(od)}
+                    <div>{chips}{rejectTitle(od)}
                       {od.files.length > 0 && <span className="mono muted"> · {od.files.slice(0, 5).join(', ')}{od.total > 5 ? ` +${od.total - 5}` : ''}</span>}
-                    </span>
+                      {detail && <details className="tl-detail"><summary>Подробнее</summary><pre>{detail}</pre></details>}
+                    </div>
                   </div>
                 )
               }
@@ -585,7 +593,9 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
                       )}
                       {step.ok === false && ' — ошибка'}
                     </span>
-                  ) : <span>{chips}{e.Text}<span className="muted">{overlapTail(e)}{wait.tail}</span></span>}
+                  ) : <div>{chips}{e.Text}<span className="muted">{overlapTail(e)}{wait.tail}</span>
+                    {detail && <details className="tl-detail"><summary>Подробнее</summary><pre>{detail}</pre></details>}
+                  </div>}
                 </div>
               )
             })}

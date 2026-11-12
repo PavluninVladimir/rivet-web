@@ -406,6 +406,36 @@ textarea.answer { width: 100%; min-height: 64px; }
 .env-history { margin-top: 10px; border-top: 1px solid var(--fg-soft); padding-top: 8px;
   display: flex; flex-direction: column; gap: 4px; }
 
+/* ─── хост окружения от провайдера (add-environment-provisioning) ───── */
+.env-host { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--r);
+  background: var(--fg-soft); font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
+.env-host-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.env-host-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.env-host-label { font: 600 10px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; }
+.env-host-state { font-weight: 600; }
+.env-host-meta { display: flex; gap: 4px 12px; flex-wrap: wrap; color: var(--muted); }
+.env-host-meta .mono { color: var(--fg); }
+.env-host-paid.soon, .env-host-paid.soon .mono { color: var(--c-review); font-weight: 600; }
+.env-host-detail { font: 400 11px/1.5 var(--font-mono); color: var(--muted); white-space: pre-wrap; word-break: break-word;
+  max-height: 96px; overflow: auto; }
+.env-host-detail.fail { color: var(--c-fail); }
+.env-host-decision { border: 1px solid color-mix(in oklch, var(--c-review) 45%, var(--border)); border-radius: var(--r);
+  background: color-mix(in oklch, var(--c-review) 7%, var(--surface)); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.env-host-decision.danger { border-color: color-mix(in oklch, var(--c-block) 50%, var(--border));
+  background: color-mix(in oklch, var(--c-block) 7%, var(--surface)); }
+.env-host-decision-head { font-weight: 600; font-size: 12.5px; }
+.env-host-spec { display: flex; flex-direction: column; gap: 2px; margin: 0; }
+.env-host-spec > div { display: grid; grid-template-columns: 110px 1fr; gap: 10px; }
+.env-host-spec dt { color: var(--muted); }
+.env-host-spec dd { margin: 0; }
+.env-host-warn { color: var(--c-block); }
+.env-host-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.provision-fields { border: 1px solid var(--border); border-radius: var(--r); padding: 8px 12px 10px; margin: 0;
+  display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.provision-fields legend { font-size: 11px; color: var(--muted); padding: 0 4px; }
+.provision-note { font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+.provision-note code { font-family: var(--font-mono); color: var(--fg); }
+
 /* ─── мастер создания проекта (add-repo-onboarding) ──────────────────── */
 .modal.wizard { max-width: 560px; }
 .wiz-steps { display: flex; gap: 12px; margin: 4px 0 10px; }
@@ -697,3 +727,9 @@ textarea.answer { width: 100%; min-height: 64px; }
 .tok-bind > div { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 11.5px; }
 /* Отказ регистрации: идентификатор runner'а цветом блокировки. */
 .rej-row .who { color: var(--c-block); }
+
+.crit.fail .m { color: var(--c-fail); }
+.crit-note { display: block; color: var(--muted); margin-top: 3px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tl-detail { margin-top: 5px; }
+.tl-detail summary { cursor: pointer; color: var(--muted); }
+.tl-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; font: 12px/1.5 var(--font-mono); background: var(--term-bg); padding: 10px; border: 1px solid var(--border); border-radius: var(--r); }

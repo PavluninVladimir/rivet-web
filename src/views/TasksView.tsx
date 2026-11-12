@@ -3,6 +3,7 @@ import { api, type Epic, type Task } from '../api/client'
 import { ClaimControl, StBadge } from '../components/ui'
 import { AttCard } from '../components/AttCard'
 import { Performer } from '../components/RoleChip'
+import { attentionTarget } from '../components/overviewLogic'
 import { useStore } from '../store'
 
 // Сквозной список задач проекта + очередь needs attention. Эскалации —
@@ -47,14 +48,16 @@ export function TasksView() {
               const claim = <ClaimControl id={a.ID} claimedBy={a.ClaimedBy} onClaimed={refreshAttention} />
               // Эскалация публикации (DEPLOY_FAILED) не привязана к задаче:
               // карточка ведёт к окружениям на странице настроек проекта.
-              if (a.DeploymentID) {
+              if (attentionTarget(a) === 'environments') {
                 return <AttCard key={a.ID} href={href({ view: 'project-settings', pid: a.ProjectID, tab: 'environments' })}
-                  tid="deploy" reason={a.Reason} msg={a.Message} act={<>{claim}{' '}К окружениям →</>} />
+                  tid={a.DeploymentID ? 'deploy' : 'хост'} reason={a.Reason} msg={a.Message} act={<>{claim}{' '}К окружениям →</>} />
               }
-              // Эскалация уровня проекта (движок политик недоступен): ни
-              // задачи, ни публикации — карточка ведёт в настройки проекта.
+              // Эскалация уровня проекта (движок политик недоступен, учётные
+              // данные хостинга не работают): ни задачи, ни публикации —
+              // карточка ведёт в настройки проекта, к политикам или к
+              // репозиторию, где заменяется токен.
               if (!a.TaskID) {
-                return <AttCard key={a.ID} href={href({ view: 'project-settings', pid: a.ProjectID, tab: 'policies' })}
+                return <AttCard key={a.ID} href={href({ view: 'project-settings', pid: a.ProjectID, tab: a.Reason === 'SCM_CREDENTIALS' ? 'general' : 'policies' })}
                   tid="проект" reason={a.Reason} msg={a.Message} act={<>{claim}{' '}К настройкам →</>} />
               }
               // Пока задача не нашлась в списке, адреса нет: карточка без

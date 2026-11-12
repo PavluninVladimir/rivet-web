@@ -101,6 +101,13 @@ export function ProjectSettings({ projectId, tab, user }: { projectId: string; t
                     <b style={{ color: repo.state === 'ok' ? 'var(--c-done)' : repo.state === 'invalid' ? 'var(--c-fail)' : undefined }}>
                       {STATE_LABEL[repo.state] ?? repo.state}
                     </b></div>
+                  {repo.state === 'invalid' && (
+                    <div className="kv" style={{ gridColumn: '1 / -1' }}><span>причина</span>
+                      <b data-testid="repo-state-reason" style={{ whiteSpace: 'normal' }}>
+                        {repo.state_message || 'хостинг не принимает учётные данные'}
+                        {repo.checked_at && <span className="muted"> · проверено {fmtDate(repo.checked_at)}</span>}
+                      </b></div>
+                  )}
                   <div className="kv"><span>учётные данные</span>
                     <b>{repo.credential ? `${repo.credential.owner} · ${repo.credential.token_prefix}…` : 'токен установки'}</b></div>
                 </div>
@@ -230,7 +237,7 @@ export function ProjectSettings({ projectId, tab, user }: { projectId: string; t
         </>
       ))}
 
-      {panel('environments', () => <Environments projectId={projectId} isAdmin={user.admin} />)}
+      {panel('environments', () => <Environments projectId={projectId} isAdmin={user.admin} isOwner={isOwner} />)}
     </div>
   )
 }
