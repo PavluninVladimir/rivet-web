@@ -302,8 +302,8 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
                 {route.view === 'runners' && <RunnersView admin={user.admin} />}
                 {route.view === 'activity' && <ActivityView />}
                 {route.view === 'usage' && <UsageView />}
-                {route.view === 'overview' && <OverviewView key={route.pid} period={route.period} user={user} />}
-                {route.view === 'cycle' && <CycleView key={route.pid} projectId={route.pid} phase={route.phase} period={route.period} admin={user.admin} />}
+                {route.view === 'overview' && <OverviewView key={route.pid} period={route.period} focus={route.focus} user={user} />}
+                {route.view === 'cycle' && <CycleView key={route.pid} projectId={route.pid} phase={route.phase} period={route.period} agentId={route.agentId} focus={route.focus} state={route.state} admin={user.admin} />}
                 {route.view === 'releases' && <ReleasesView id={route.id} login={user.login} />}
                 {route.view === 'incidents' && <IncidentsView id={route.id} login={user.login} />}
                 {route.view === 'architecture' && (

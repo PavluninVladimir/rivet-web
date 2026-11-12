@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type Report } from '../api/client'
+import { api, type Report, type CyclePeriod } from '../api/client'
 import { Button, FormNote, errText } from '../components/form'
 import { copyText, reportRange, type ReportPreset } from '../components/overviewLogic'
 
@@ -8,17 +8,23 @@ import { copyText, reportRange, type ReportPreset } from '../components/overview
 // же текст, что в предпросмотре, под именем файла из ответа сервера.
 
 const PRESETS: { id: ReportPreset; label: string }[] = [
-  { id: '7d', label: 'последние 7 суток' }, { id: 'last_week', label: 'прошлая неделя' }, { id: 'custom', label: 'свои даты' },
+  { id: 'today', label: 'сегодня' }, { id: '7d', label: 'последние 7 суток' }, { id: '30d', label: 'последние 30 суток' }, { id: 'last_week', label: 'прошлая неделя' }, { id: 'custom', label: 'свои даты' },
 ]
 
-export function ReportModal({ projectId, tz, onClose }: { projectId: string; tz: string; onClose: () => void }) {
-  const [preset, setPreset] = useState<ReportPreset>('7d')
+export function ReportModal({ projectId, tz, initialPeriod='7d', onClose }: { projectId: string; tz: string; initialPeriod?: CyclePeriod; onClose: () => void }) {
+  const [preset, setPreset] = useState<ReportPreset>(initialPeriod)
   const [custom, setCustom] = useState({ from: '', to: '' })
   const [report, setReport] = useState<Report | null>(null)
   const [err, setErr] = useState('')
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
 
+  const dialog=useRef<HTMLDivElement>(null)
+  useEffect(()=>{
+    const previous=document.activeElement instanceof HTMLElement?document.activeElement:null
+    dialog.current?.querySelector<HTMLElement>('button')?.focus()
+    return ()=>previous?.focus()
+  },[])
   const seq = useRef(0)
   const load = useCallback(() => {
     const range = reportRange(preset, new Date(), custom)
@@ -68,7 +74,7 @@ export function ReportModal({ projectId, tz, onClose }: { projectId: string; tz:
 
   return (
     <div className="modal-wrap" onClick={onClose}>
-      <div className="modal report f-form" role="dialog" aria-modal="true" aria-label="Отчёт" onClick={e => e.stopPropagation()}>
+      <div ref={dialog} className="modal report f-form" role="dialog" aria-modal="true" aria-label="Отчёт" onClick={e => e.stopPropagation()}>
         <div className="modal-head">
           <h2>Отчёт по проекту</h2>
           <Button variant="quiet" size="sm" aria-label="закрыть" onClick={onClose}>✕</Button>
@@ -76,7 +82,7 @@ export function ReportModal({ projectId, tz, onClose }: { projectId: string; tz:
         <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-start' }}>
           <div className="seg">
             {PRESETS.map(p => (
-              <button key={p.id} className={p.id === preset ? 'on' : ''} onClick={() => setPreset(p.id)}>{p.label}</button>
+              <button key={p.id} className={p.id === preset ? 'on' : ''} aria-pressed={p.id===preset} onClick={() => setPreset(p.id)}>{p.label}</button>
             ))}
           </div>
           {preset === 'custom' && (

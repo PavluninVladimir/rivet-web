@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { ApiError, api, type CycleAgent, type CycleArtifact, type CycleItem, type CyclePeriod, type CyclePhase, type CyclePhaseId, type CycleView as View, type Environment, type Event, type Incident, type ModelChoice, type Release, type TeamAgent } from '../api/client'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { ApiError, api, type CycleAgent, type CycleArtifact, type CycleItem, type CycleItemState, type CyclePeriod, type CyclePhase, type CyclePhaseId, type CycleView as View, type Environment, type Event, type Incident, type ModelChoice, type Release, type TeamAgent } from '../api/client'
 import { BugRef } from '../components/BugRef'
 import { useStore, type NavTarget, type Route } from '../store'
 import { useMedia } from '../components/useMedia'
@@ -10,6 +10,8 @@ import { Button, Select, errText } from '../components/form'
 import { fmtAgo, fmtCost, fmtTokens, timeShort } from '../components/ui'
 import { FeedbackForm } from '../components/FeedbackForm'
 import { unaccountedText } from '../components/discovery'
+import { agentDestination, phaseDestination, summaryDestinations, type CycleRoute } from '../components/cycleNavigation'
+import { ReportModal } from './ReportModal'
 
 // Экран «Цикл разработки» (add-sdlc-cycle, спека web «Представление «Цикл
 // разработки»»): кольцо восьми фаз с агентами и счётчиками, движение
@@ -52,10 +54,11 @@ function MovingDot({ m }: { m: Marker }) {
   )
 }
 
-export function CycleView({ projectId, phase, period = '7d', admin }: {
-  projectId: string; phase?: CyclePhaseId; period?: CyclePeriod; admin: boolean
+export function CycleView({ projectId, phase, period = '7d', agentId, focus, state, admin }: {
+  projectId: string; phase?: CyclePhaseId; period?: CyclePeriod; agentId?: string; focus?: CycleRoute['focus']; state?: CycleItemState; admin: boolean
 }) {
   const { nav, eventTick, connects, recent } = useStore()
+  const [report,setReport]=useState(false)
   // События этого проекта: после «Назад» поток стора мог остаться на другом.
   const mine = useMemo(() => recent.filter(e => e.ProjectID === projectId), [recent, projectId])
   const [view, setView] = useState<View | null>(null)
@@ -63,7 +66,7 @@ export function CycleView({ projectId, phase, period = '7d', admin }: {
   const reduced = useMedia('(prefers-reduced-motion: reduce)')
   const narrow = useMedia('(max-width: 900px)')
   const go = useCallback((patch: Partial<Extract<Route, { view: 'cycle' }>>, replace = false) =>
-    nav({ view: 'cycle', pid: projectId, phase, period, ...patch }, { replace }), [nav, projectId, phase, period])
+    nav({ view: 'cycle', pid: projectId, phase, period, agentId, focus, state, ...patch }, { replace }), [nav, projectId, phase, period, agentId, focus, state])
 
   // Перечитывание агрегата не чаще раза в 3 секунды после событий проекта
   // и сразу после любого подключения потока (первого, повторного, к этому
@@ -173,7 +176,7 @@ export function CycleView({ projectId, phase, period = '7d', admin }: {
 
   const phases = view?.phases ?? []
   const sel = phases.find(p => p.id === phase)
-  const select = (id: CyclePhaseId | undefined, replace = false) => go({ phase: id }, replace)
+  const select = (id: CyclePhaseId | undefined, replace = false) => go({ phase: id, agentId:undefined, focus:undefined, state:undefined }, replace)
   // Закрытие панели возвращает фокус на узел фазы.
   const close = () => {
     const was = phase
@@ -200,7 +203,8 @@ export function CycleView({ projectId, phase, period = '7d', admin }: {
     <div className={'page cycle-page' + (narrow ? ' narrow' : '')}>
       <div className="page-head">
         <h1>Цикл разработки</h1>
-        <div className="right cycle-periods" role="group" aria-label="период">
+        <div className="right cycle-periods" role="group" aria-label="период и отчёт">
+          <Button size="sm" onClick={()=>setReport(true)}>Отчёт проекта</Button>
           {PERIODS.map(p => (
             <button key={p.id} className={'chip' + (p.id === period ? ' on' : '')} aria-pressed={p.id === period}
               onClick={() => go({ period: p.id })}>{p.label}</button>
@@ -213,7 +217,7 @@ export function CycleView({ projectId, phase, period = '7d', admin }: {
         <div className={'cycle-layout' + (sel ? ' with-panel' : '')}>
           <div className="cycle-main">
             {narrow
-              ? <CycleList phases={phases} selected={phase} onSelect={select} />
+              ? <CycleList phases={phases} selected={phase} onSelect={select} onKey={onNodeKey} projectId={projectId} period={period} />
               : (
                 <div className="cycle-ring">
                   <svg viewBox={`0 0 ${VIEW} ${VIEW}`} className="cycle-svg" aria-hidden="true">
@@ -236,108 +240,107 @@ export function CycleView({ projectId, phase, period = '7d', admin }: {
                     {!reduced && markers.map(m => <MovingDot key={m.key} m={m} />)}
                   </svg>
                   {phases.map((p, i) => (
-                    <PhaseNode key={p.id} p={p} selected={p.id === phase} pos={nodePercent(i)}
+                    <PhaseNode key={p.id} p={p} projectId={projectId} period={period} selected={p.id === phase} pos={nodePercent(i)}
                       incident={p.id === 'operations' && view.summary.incidents_open > 0}
                       onClick={() => select(p.id === phase ? undefined : p.id)} onKey={e => onNodeKey(e, i)} />
                   ))}
-                  <CycleCenter view={view} />
+                  <CycleCenter view={view} projectId={projectId} period={period} />
                 </div>
               )}
-            {narrow && <CycleCenter view={view} flat />}
-            <CycleFeed events={feed} />
+            {narrow && <CycleCenter view={view} projectId={projectId} period={period} flat />}
+            <CycleFeed events={feed} projectId={projectId} period={period} />
           </div>
-          {sel && <PhasePanel p={sel} projectId={projectId} admin={admin} extra={extra} onClose={close} onChanged={load} />}
+          {sel && <PhasePanel p={sel} projectId={projectId} period={period} agentId={agentId} focus={focus} state={state} admin={admin} extra={extra} onClose={close} onChanged={load} />}
         </div>
       )}
+      {report&&<ReportModal key={projectId+period} projectId={projectId} initialPeriod={period} tz={Intl.DateTimeFormat().resolvedOptions().timeZone} onClose={()=>setReport(false)}/>}
     </div>
   )
 }
 
-function AgentDots({ agents }: { agents: CycleAgent[] }) {
-  const { roleOf } = useStore()
-  if (!agents.length) return null
-  return (
-    <span className="cyc-agents">
-      {agents.slice(0, 5).map(a => (
-        <span key={a.agent_id} className={'cyc-agent s-' + a.state} title={`${a.name} · ${STATE_LABEL[a.state]}`}
-          aria-label={`${a.name}: ${STATE_LABEL[a.state]}`}
-          style={{ ['--rc' as string]: roleColorVar(roleOf(a.role_id)?.color) }}>
-          {initials(a.name)}{a.state === 'no_runner' && <span className="cyc-warn" aria-hidden="true">!</span>}
-        </span>
-      ))}
-      {agents.length > 5 && <span className="cyc-more">+{agents.length - 5}</span>}
-    </span>
-  )
+// Повторный переход на тот же hash тоже возвращает фокус в точную цель.
+function focusCycleLink(e: ReactMouseEvent<HTMLAnchorElement>) {
+  e.stopPropagation()
+  if(e.currentTarget.hash!==window.location.hash)return
+  const q=new URLSearchParams(e.currentTarget.hash.split('?')[1]??'')
+  const root=document.querySelector<HTMLElement>('.cycle-panel')
+  const agent=q.get('agent'),section=q.get('focus')
+  const target=agent?Array.from(root?.querySelectorAll<HTMLElement>('[data-agent]')??[]).find(el=>el.dataset.agent===agent)
+    :Array.from(root?.querySelectorAll<HTMLElement>('[data-cycle-section]')??[]).find(el=>el.dataset.cycleSection===section)
+  target?.focus({preventScroll:true});target?.scrollIntoView({block:'nearest'})
 }
 
-function PhaseNode({ p, selected, pos, incident, onClick, onKey }: {
-  p: CyclePhase; selected: boolean; pos: { left: string; top: string }; incident: boolean
+function AgentDots({ agents, phase, projectId, period }: { agents: CycleAgent[]; phase: CyclePhaseId; projectId: string; period: CyclePeriod }) {
+  const { roleOf, href } = useStore()
+  if (!agents.length) return null
+  return <span className="cyc-agents">
+    {agents.slice(0,5).map(a=><a key={a.agent_id} className={'cyc-agent s-'+a.state}
+      href={href(agentDestination(projectId,phase,period,a.agent_id))}
+      title={`${a.name} · ${STATE_LABEL[a.state]}`}
+      aria-label={`Открыть карточку агента ${a.name}: ${STATE_LABEL[a.state]}`}
+      onClick={focusCycleLink} onKeyDown={e=>e.stopPropagation()}
+      style={{['--rc' as string]:roleColorVar(roleOf(a.role_id)?.color)}}>
+      {initials(a.name)}{a.state==='no_runner'&&<span className="cyc-warn" aria-hidden="true">!</span>}
+    </a>)}
+    {agents.length>5&&<a className="cyc-more" href={href(phaseDestination(projectId,phase,period,'agents'))}
+      aria-label={`Все агенты фазы ${PHASE_TITLE[phase]}`} onClick={focusCycleLink}>+{agents.length-5}</a>}
+  </span>
+}
+
+function PhaseNode({ p, selected, pos, incident, onClick, onKey, projectId, period }: {
+  p: CyclePhase; selected: boolean; pos: { left: string; top: string }; incident: boolean; projectId: string; period: CyclePeriod
   onClick: () => void; onKey: (e: ReactKeyboardEvent) => void
 }) {
-  const c = p.counters
-  const total = c.active + c.waiting + c.needs_human
-  return (
-    <button className={'cycle-node' + (selected ? ' on' : '') + (p.no_data ? ' nodata' : '') + (incident ? ' incident' : '')}
-      data-phase-node={p.id} style={{ ...pos, ['--ph' as string]: incident ? 'var(--c-fail)' : PHASE_COLOR[p.id] }}
-      aria-pressed={selected}
-      aria-label={p.no_data ? `${p.title}: нет данных, ${p.hint ?? ''}`
-        : `${p.title}: в работе ${c.active}, ждут ${c.waiting}, нужен человек ${c.needs_human}${incident ? ', есть открытые инциденты' : ''}${(p.feedback_unaccounted ?? 0) > 0 ? ', ' + unaccountedText(p.feedback_unaccounted!) : ''}`}
-      onClick={onClick} onKeyDown={onKey}>
-      <span className="cn-title">{p.title}{incident && <span className="cn-alert" aria-hidden="true"> ⚠</span>}</span>
-      {p.no_data
-        ? <><span className="cn-nodata">нет данных</span>{p.hint && <span className="cn-hint">{p.hint}</span>}</>
-        : <span className="cn-count mono">{total}<small> · {c.done_period} за период</small></span>}
-      {(p.feedback_unaccounted ?? 0) > 0 && <span className="cn-feedback">{unaccountedText(p.feedback_unaccounted!)}</span>}
-      {c.needs_human > 0 && <span className="cn-human" title="нужен человек">{c.needs_human}</span>}
-      <AgentDots agents={p.agents} />
-      {p.template_only && p.agents.length === 0 && <span className="cn-template">по шаблону</span>}
+  const {href}=useStore(),c=p.counters,total=c.active+c.waiting+c.needs_human
+  return <div className={'cycle-node'+(selected?' on':'')+(p.no_data?' nodata':'')+(incident?' incident':'')}
+    role="group" aria-label={`Фаза ${p.title}`} style={{...pos,['--ph' as string]:incident?'var(--c-fail)':PHASE_COLOR[p.id]}}>
+    <button type="button" className="cn-open" data-phase-node={p.id} aria-pressed={selected}
+      aria-label={`Открыть фазу ${p.title}`} onClick={onClick} onKeyDown={onKey}>
+      <span className="cn-title">{p.title}{incident&&<span className="cn-alert" aria-hidden="true"> ⚠</span>}</span>
     </button>
-  )
+    {p.no_data?<><span className="cn-nodata">нет данных</span>{p.hint&&<span className="cn-hint">{p.hint}</span>}</>:
+      <span className="cn-count mono">
+        <a onClick={focusCycleLink} href={href(phaseDestination(projectId,p.id,period,'items'))} aria-label={`Текущие элементы фазы ${p.title}: ${total}`}>{total}</a>
+        <small> · <a onClick={focusCycleLink} href={href(phaseDestination(projectId,p.id,period,'artifacts'))} aria-label={`Материалы фазы ${p.title}, завершено за период: ${c.done_period}`}>{c.done_period} за период</a></small>
+      </span>}
+    {(p.feedback_unaccounted??0)>0&&<a className="cn-feedback" onClick={focusCycleLink} href={href({view:'discovery',pid:projectId})}>{unaccountedText(p.feedback_unaccounted!)}</a>}
+    {c.needs_human>0&&<a className="cn-human" onClick={focusCycleLink} aria-label={`Требуют человека в фазе ${p.title}: ${c.needs_human}`} href={href(phaseDestination(projectId,p.id,period,'items','needs_human'))}>{c.needs_human}</a>}
+    <AgentDots agents={p.agents} phase={p.id} projectId={projectId} period={period}/>
+    {p.template_only&&p.agents.length===0&&<span className="cn-template">по шаблону</span>}
+  </div>
 }
 
-function CycleCenter({ view, flat }: { view: View; flat?: boolean }) {
-  const s = view.summary
-  return (
-    <div className={'cycle-center' + (flat ? ' flat' : '')}>
-      <div className="cc-stat"><b className="mono">{s.agents_working}</b><span>из {s.agents_total} агентов в работе</span></div>
-      <div className={'cc-stat' + (s.incidents_open ? ' bad' : '')}><b className="mono">{s.incidents_open}</b><span>инцидентов</span></div>
-      <div className="cc-stat">
-        <b className="mono">{s.last_release ? s.last_release.version.slice(0, 8) : '—'}</b>
-        <span>{s.last_release ? `релиз ${s.last_release.env_name} · ${fmtAgo(s.last_release.created_at)}` : 'релизов не было'}</span>
+function CycleCenter({ view, flat, projectId, period }: { view: View; flat?: boolean; projectId: string; period: CyclePeriod }) {
+  const s=view.summary,{href,overviewAvailable}=useStore(),to=summaryDestinations(projectId,period,s)
+  const money=<><b className="mono">{fmtCost(s.spend_usd)}</b><span>{fmtTokens(s.tokens)} токенов</span></>
+  return <div className={'cycle-center'+(flat?' flat':'')}>
+    <a className="cc-stat" href={href(to.agents)} aria-label={`Сессии команды проекта: ${s.agents_working} агентов в работе`}><b className="mono">{s.agents_working}</b><span>из {s.agents_total} агентов в работе</span></a>
+    <a className={'cc-stat'+(s.incidents_open?' bad':'')} href={href(to.incidents)} aria-label={`Инциденты проекта: ${s.incidents_open}`}><b className="mono">{s.incidents_open}</b><span>инцидентов</span></a>
+    <a className="cc-stat" href={href(to.release)} aria-label={s.last_release?`Открыть релиз ${s.last_release.version}`:'Релизы проекта'}>
+      <b className="mono">{s.last_release?s.last_release.version.slice(0,8):'—'}</b><span>{s.last_release?`релиз ${s.last_release.env_name} · ${fmtAgo(s.last_release.created_at)}`:'релизов не было'}</span>
+    </a>
+    {overviewAvailable?<a className="cc-stat" href={href(to.money)} aria-label="Финансы проекта за выбранный период">{money}</a>:<div className="cc-stat" title="Финансовый обзор недоступен на этой версии сервера">{money}</div>}
+  </div>
+}
+
+function CycleList({ phases, selected, onSelect, onKey, projectId, period }: { phases: CyclePhase[]; selected?: CyclePhaseId; onSelect: (id?: CyclePhaseId) => void; onKey: (e: ReactKeyboardEvent, i: number) => void; projectId: string; period: CyclePeriod }) {
+  const {href}=useStore()
+  return <ol className="cycle-list">
+    {phases.map((p,i)=>{const c=p.counters;return <li key={p.id} style={{['--ph' as string]:PHASE_COLOR[p.id]}}>
+      <div className={'cl-row'+(p.id===selected?' on':'')}>
+        <button type="button" className="cl-open" aria-pressed={p.id===selected} aria-label={`Открыть фазу ${p.title}`} data-phase-node={p.id} onKeyDown={e=>onKey(e,i)} onClick={()=>onSelect(p.id===selected?undefined:p.id)}><span className="cl-dot"/><span className="cl-title">{p.title}</span></button>
+        {p.no_data?<span className="muted">нет данных</span>:<a className="mono" aria-label={`Текущие элементы фазы ${p.title}: ${c.active+c.waiting+c.needs_human}`} href={href(phaseDestination(projectId,p.id,period,'items'))}>{c.active+c.waiting+c.needs_human}</a>}
+        {(p.feedback_unaccounted??0)>0&&<a className="cn-feedback" onClick={focusCycleLink} href={href({view:'discovery',pid:projectId})}>{unaccountedText(p.feedback_unaccounted!)}</a>}
+        {c.needs_human>0&&<a className="cn-human" onClick={focusCycleLink} aria-label={`Требуют человека в фазе ${p.title}: ${c.needs_human}`} href={href(phaseDestination(projectId,p.id,period,'items','needs_human'))}>{c.needs_human}</a>}
+        <AgentDots agents={p.agents} phase={p.id} projectId={projectId} period={period}/>
       </div>
-      <div className="cc-stat"><b className="mono">{fmtCost(s.spend_usd)}</b><span>{fmtTokens(s.tokens)} токенов</span></div>
-    </div>
-  )
+    </li>})}
+    <li className="cl-back" aria-label="возврат к исследованию">↺ отзывы и инциденты возвращаются в исследование и разработку</li>
+  </ol>
 }
 
-// Узкий экран: фазы списком сверху вниз и стрелка возврата от
-// сопровождения к исследованию.
-function CycleList({ phases, selected, onSelect }: { phases: CyclePhase[]; selected?: CyclePhaseId; onSelect: (id?: CyclePhaseId) => void }) {
-  return (
-    <ol className="cycle-list">
-      {phases.map(p => {
-        const c = p.counters
-        return (
-          <li key={p.id} style={{ ['--ph' as string]: PHASE_COLOR[p.id] }}>
-            <button className={'cl-row' + (p.id === selected ? ' on' : '')} aria-pressed={p.id === selected} data-phase-node={p.id}
-              onClick={() => onSelect(p.id === selected ? undefined : p.id)}>
-              <span className="cl-dot" />
-              <span className="cl-title">{p.title}</span>
-              {p.no_data ? <span className="muted">нет данных</span>
-                : <span className="mono">{c.active + c.waiting + c.needs_human}</span>}
-              {(p.feedback_unaccounted ?? 0) > 0 && <span className="cn-feedback">{unaccountedText(p.feedback_unaccounted!)}</span>}
-              {c.needs_human > 0 && <span className="cn-human">{c.needs_human}</span>}
-              <AgentDots agents={p.agents} />
-            </button>
-          </li>
-        )
-      })}
-      <li className="cl-back" aria-label="возврат к исследованию">↺ отзывы и инциденты возвращаются в исследование и разработку</li>
-    </ol>
-  )
-}
-
-function CycleFeed({ events }: { events: Event[] }) {
+function CycleFeed({ events, projectId, period }: { events: Event[]; projectId: string; period: CyclePeriod }) {
+  const open=useOpenTarget(projectId),{href}=useStore()
   return (
     <section className="panel cycle-feed">
       <div className="panel-head"><h2>События цикла</h2></div>
@@ -349,8 +352,8 @@ function CycleFeed({ events }: { events: Event[] }) {
             <li key={e.ID} style={{ ['--ph' as string]: ph ? PHASE_COLOR[ph] : 'var(--muted)' }}>
               <span className="cf-dot" />
               <span className="mono muted">{timeShort(e.TS)}</span>
-              {ph && <span className="cf-phase">{PHASE_TITLE[ph]}</span>}
-              <span className="cf-text">{e.Text}</span>
+              {ph && <a className="cf-phase" href={href(phaseDestination(projectId,ph,period))}>{PHASE_TITLE[ph]}</a>}
+              {e.TaskID||e.EpicID?<button type="button" className="cf-text cc-link" onClick={()=>open(e.TaskID?{kind:'task',id:e.TaskID}:{kind:'epic',id:e.EpicID!})}>{e.Text}</button>:<span className="cf-text">{e.Text}</span>}
             </li>
           )
         })}
@@ -364,53 +367,62 @@ function CycleFeed({ events }: { events: Event[] }) {
 // useOpenTarget — переход по ссылке артефакта или текущей работы агента.
 // Решение ADR открывается в реестре со всеми статусами: заменённое или
 // отклонённое решение иначе было бы скрыто фильтром по умолчанию.
-function useOpenTarget(): (t: ArtifactTarget | null) => void {
+function useOpenTarget(projectId: string): (t: ArtifactTarget | null) => void {
   const { nav } = useStore()
   return (t) => {
     switch (t?.kind) {
       case 'external': window.open(t.url, '_blank', 'noopener,noreferrer'); break
-      case 'epic': nav({ view: 'epic', id: t.id }); break
-      case 'task': api.task(t.id).then(r => nav({ view: 'epic', id: r.task.EpicID, taskId: t.id })).catch(() => nav({ view: 'tasks' })); break
-      case 'release': nav({ view: 'releases', id: t.id }); break
-      case 'incident': nav({ view: 'incidents', id: t.id }); break
-      case 'discovery': nav(t.runId ? { view: 'discovery', runId: t.runId } : { view: 'discovery' }); break
-      case 'architecture': nav({ view: 'architecture', tab: 'hld' }); break
-      case 'adr': nav({ view: 'architecture', tab: 'decisions', sub: t.number, status: 'all' }); break
+      case 'epic': nav({ pid:projectId, view: 'epic', id: t.id }); break
+      case 'task': api.task(t.id).then(r => nav({ pid:projectId, view: 'epic', id: r.task.EpicID, taskId: t.id })).catch(() => nav({ pid:projectId, view: 'tasks' })); break
+      case 'release': nav({ pid:projectId, view: 'releases', id: t.id }); break
+      case 'incident': nav({ pid:projectId, view: 'incidents', id: t.id }); break
+      case 'discovery': nav(t.runId ? { pid:projectId, view: 'discovery', runId: t.runId } : { pid:projectId, view: 'discovery' }); break
+      case 'architecture': nav({ pid:projectId, view: 'architecture', tab: 'hld' }); break
+      case 'adr': nav({ pid:projectId, view: 'architecture', tab: 'decisions', sub: t.number, status: 'all' }); break
     }
   }
 }
 
-function PhasePanel({ p, projectId, admin, extra, onClose, onChanged }: {
-  p: CyclePhase; projectId: string; admin: boolean; extra: PhaseExtra; onClose: () => void; onChanged: () => void
+function PhasePanel({ p, projectId, period, agentId, focus, state, admin, extra, onClose, onChanged }: {
+  p: CyclePhase; projectId: string; period: CyclePeriod; agentId?: string; focus?: CycleRoute['focus']; state?: CycleItemState; admin: boolean; extra: PhaseExtra; onClose: () => void; onChanged: () => void
 }) {
   const { nav, href, overviewAvailable } = useStore()
+  const panel=useRef<HTMLElement>(null)
+  const hasAgent=!!agentId&&p.agents.some(a=>a.agent_id===agentId)
+  useEffect(()=>{
+    if(!agentId&&!focus)return
+    const root=panel.current
+    const target=agentId?Array.from(root?.querySelectorAll<HTMLElement>('[data-agent]')??[]).find(el=>el.dataset.agent===agentId):root?.querySelector<HTMLElement>(`[data-cycle-section="${focus}"]`)
+    const el=target??root;el?.focus({preventScroll:true});el?.scrollIntoView({block:'nearest'})
+  },[p.id,agentId,focus,state,hasAgent])
+  const shownItems=state?p.items.filter(it=>it.state===state):p.items
   const openTask = (taskId: string) => {
-    api.task(taskId).then(r => nav({ view: 'epic', id: r.task.EpicID, taskId })).catch(() => nav({ view: 'tasks' }))
+    api.task(taskId).then(r => nav({ pid:projectId, view: 'epic', id: r.task.EpicID, taskId })).catch(() => nav({ pid:projectId, view: 'tasks' }))
   }
   const open = (it: CycleItem) => {
-    if (it.kind === 'task') { if (it.epic_id) nav({ view: 'epic', id: it.epic_id, taskId: it.id }); else openTask(it.id) }
-    else if (it.kind === 'epic') nav({ view: 'epic', id: it.id })
-    else if (it.kind === 'incident') nav({ view: 'incidents', id: it.id })
+    if (it.kind === 'task') { if (it.epic_id) nav({ pid:projectId, view: 'epic', id: it.epic_id, taskId: it.id }); else openTask(it.id) }
+    else if (it.kind === 'epic') nav({ pid:projectId, view: 'epic', id: it.id })
+    else if (it.kind === 'incident') nav({ pid:projectId, view: 'incidents', id: it.id })
     // Версия анализа и материал исследования ведут в «Исследование»
     // (add-product-discovery).
-    else if (it.kind === 'analysis') nav({ view: 'discovery', runId: it.id })
-    else if (it.kind === 'material') nav({ view: 'discovery' })
-    else if (it.kind === 'deployment' || it.kind === 'environment') nav({ view: 'project-settings', pid: projectId, tab: 'environments' })
+    else if (it.kind === 'analysis') nav({ pid:projectId, view: 'discovery', runId: it.id })
+    else if (it.kind === 'material') nav({ pid:projectId, view: 'discovery' })
+    else if (it.kind === 'deployment' || it.kind === 'environment') nav({ pid:projectId, view: 'project-settings', tab: 'environments' })
   }
-  const openTarget = useOpenTarget()
+  const openTarget = useOpenTarget(projectId)
   const openArt = (a: CycleArtifact) => openTarget(artifactTarget(a.ref))
   const links: { label: string; to: NavTarget }[] = []
   if (p.id === 'discovery') links.push({ label: 'Исследование', to: { view: 'discovery' } })
   if (p.id === 'architecture') links.push({ label: 'Архитектура', to: { view: 'architecture', tab: 'hld' } })
   if (p.id === 'planning' || p.id === 'development' || p.id === 'testing' || p.id === 'review') {
     links.push({ label: 'Epic’и проекта', to: { view: 'epics' } })
-    if (overviewAvailable) links.push({ label: 'Обзор', to: { view: 'overview', period: '7d' } })
+    if (overviewAvailable) links.push({ label: 'Обзор', to: { view: 'overview', period } })
   }
   if (p.id === 'release') links.push({ label: 'Релизы', to: { view: 'releases' } }, { label: 'Окружения', to: { view: 'project-settings', pid: projectId, tab: 'environments' } })
   if (p.id === 'operations') links.push({ label: 'Инциденты', to: { view: 'incidents' } }, { label: 'Наблюдение окружений', to: { view: 'project-settings', pid: projectId, tab: 'environments' } })
   const c = p.counters
   return (
-    <aside className="cycle-panel" style={{ ['--ph' as string]: PHASE_COLOR[p.id] }}
+    <aside ref={panel} tabIndex={-1} className="cycle-panel" style={{ ['--ph' as string]: PHASE_COLOR[p.id] }}
       onKeyDown={e => { if (e.key === 'Escape') onClose() }} aria-label={`Фаза ${p.title}`}>
       <div className="cp-head">
         <span className="cl-dot" />
@@ -420,24 +432,26 @@ function PhasePanel({ p, projectId, admin, extra, onClose, onChanged }: {
       {p.no_data
         ? <div className="muted cp-hint">Нет данных: {p.hint}</div>
         : <div className="cp-counters">
-            <span><b className="mono">{c.active}</b> в работе</span>
-            <span><b className="mono">{c.waiting}</b> ждут</span>
-            <span className={c.needs_human ? 'bad' : ''}><b className="mono">{c.needs_human}</b> нужен человек</span>
-            <span><b className="mono">{c.done_period}</b> за период</span>
+            <a onClick={focusCycleLink} href={href(phaseDestination(projectId,p.id,period,'items','active'))}><b className="mono">{c.active}</b> в работе</a>
+            <a onClick={focusCycleLink} href={href(phaseDestination(projectId,p.id,period,'items','waiting'))}><b className="mono">{c.waiting}</b> ждут</a>
+            <a onClick={focusCycleLink} className={c.needs_human ? 'bad' : ''} href={href(phaseDestination(projectId,p.id,period,'items','needs_human'))}><b className="mono">{c.needs_human}</b> нужен человек</a>
+            <a onClick={focusCycleLink} href={href(phaseDestination(projectId,p.id,period,'artifacts'))}><b className="mono">{c.done_period}</b> за период</a>
             {(p.feedback_unaccounted ?? 0) > 0 && <span className="cp-feedback">{unaccountedText(p.feedback_unaccounted!)}</span>}
           </div>}
 
-      <section className="dw-sec">
+      <section className="dw-sec" data-cycle-section="agents" tabIndex={-1} aria-label="Агенты фазы">
         <h3>Агенты</h3>
+        {agentId&&!hasAgent&&<p role="status">Агента «{agentId}» больше нет в этой фазе. Откройте актуальную карточку из узла.</p>}
         {p.agents.length === 0 && <div className="muted">{p.template_only ? 'В команде нет агентов роли: фаза работает по шаблону.' : 'Агентов нет.'}</div>}
-        {p.agents.map(a => <CycleAgentCard key={a.agent_id} a={a} admin={admin} />)}
+        {p.agents.map(a => <CycleAgentCard key={a.agent_id} a={a} admin={admin} projectId={projectId} targeted={a.agent_id===agentId} />)}
       </section>
 
-      <section className="dw-sec">
-        <h3>Сейчас</h3>
-        {p.items.length === 0 && <div className="muted">Активных элементов нет.</div>}
+      <section className="dw-sec" data-cycle-section="items" tabIndex={-1} aria-label="Текущие элементы фазы">
+        <h3>Сейчас{state?`: ${ITEM_STATE[state]}`:''}</h3>
+        {state&&<a className="tlink" onClick={focusCycleLink} href={href(phaseDestination(projectId,p.id,period,'items'))}>Все текущие элементы</a>}
+        {shownItems.length === 0 && <div className="muted">Активных элементов нет.</div>}
         <ul className="cp-items">
-          {p.items.map(it => {
+          {shownItems.map(it => {
             const body = <>
               <span className={'cp-state s-' + it.state}>{ITEM_STATE[it.state] ?? it.state}</span>
               {it.num ? <span className="mono">task-{it.num}</span> : null}
@@ -466,7 +480,7 @@ function PhasePanel({ p, projectId, admin, extra, onClose, onChanged }: {
       {p.id === 'release' && <ReleasesBlock releases={extra.releases} err={extra.errors.releases} />}
       {p.id === 'operations' && <OperationsBlock extra={extra} />}
 
-      <section className="dw-sec">
+      <section className="dw-sec" data-cycle-section="artifacts" tabIndex={-1} aria-label="Материалы фазы">
         <h3>Материалы</h3>
         {p.artifacts.length === 0 && <div className="muted">Пока пусто.</div>}
         <ul className="cp-items">
@@ -496,8 +510,8 @@ function PhasePanel({ p, projectId, admin, extra, onClose, onChanged }: {
 
 // Карточка агента фазы: модель меняет администратор механизмом команды
 // агентов (add-agent-roles), с предупреждением о вариантах без runner'а.
-function CycleAgentCard({ a, admin }: { a: CycleAgent; admin: boolean }) {
-  const { team, roleOf, refreshTeam } = useStore()
+function CycleAgentCard({ a, admin, projectId, targeted }: { a: CycleAgent; admin: boolean; projectId: string; targeted: boolean }) {
+  const { team, roleOf, refreshTeam, href } = useStore()
   const role = roleOf(a.role_id)
   const member: TeamAgent | undefined = team.find(t => t.id === a.agent_id)
   const [choices, setChoices] = useState<ModelChoice[] | null>(null)
@@ -522,9 +536,9 @@ function CycleAgentCard({ a, admin }: { a: CycleAgent; admin: boolean }) {
   }
   const w = a.current
   const wt = workTarget(w)
-  const openTarget = useOpenTarget()
+  const openTarget = useOpenTarget(projectId)
   return (
-    <div className={'cyc-card s-' + a.state} style={{ ['--rc' as string]: roleColorVar(role?.color) }} data-agent={a.agent_id}>
+    <div tabIndex={-1} aria-label={`Карточка агента ${a.name}`} className={'cyc-card s-' + a.state+(targeted?' is-target':'')} style={{ ['--rc' as string]: roleColorVar(role?.color) }} data-agent={a.agent_id}>
       <div className="cc-top">
         <span className={`cyc-agent s-${a.state}`}>{initials(a.name)}</span>
         <b>{a.name}</b>
@@ -533,8 +547,8 @@ function CycleAgentCard({ a, admin }: { a: CycleAgent; admin: boolean }) {
       </div>
       <div className="cc-work">
         {w ? <>{w.action}{w.num ? <span className="mono"> task-{w.num}</span> : null} · {wt
-          ? <button type="button" className="cc-link" onClick={() => openTarget(wt)}>{w.title}</button>
-          : w.title}</> : <span className="muted">задачи нет</span>}
+          ? <button type="button" className="cc-link" onClick={() => openTarget(wt)}>{w.kind==='task'?'Задача и сессии: ':'Текущая работа: '}{w.title}</button>
+          : w.kind==='deployment'?<a className="cc-link" href={href({view:'project-settings',pid:projectId,tab:'environments'})}>Публикация: {w.title}</a>:w.title}</> : <span className="muted">задачи нет</span>}
       </div>
       <div className="cc-model">
         {editing && admin && member ? (
