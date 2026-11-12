@@ -83,7 +83,7 @@ function overlapTail(e: Event): string {
 
 import { useStore } from '../store'
 import { shortHash } from './PolicyPanel'
-import { Button, Checkbox, Field, FormNote, NumberInput, TextArea, TextInput } from './form'
+import { Button, Checkbox, Field, FormNote, NumberInput, Select, TextArea, TextInput } from './form'
 import { StBadge, attemptStr, fmtDuration, fmtTokens, timeShort } from './ui'
 import { Performer, RoleChip } from './RoleChip'
 import { agentVerdictNote, runnerName, verdictLabel } from './roleLabels'
@@ -130,8 +130,12 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
   epicTasks?: Task[]
 }) {
   // Runner'ы — из стора: деталке нужны только их имена для участников шага.
-  const { tick, logs, roleOf, runners, listen, connects } = useStore()
+  const { tick, logs, roleOf, runners, team, listen, connects } = useStore()
   const [task, setTask] = useState<Task | null>(null)
+  const [canSetDeveloper, setCanSetDeveloper] = useState(false)
+  const [developerChoice, setDeveloperChoice] = useState<string | null>(null)
+  const currentTaskId = useRef(taskId)
+  currentTaskId.current = taskId
   const [timeline, setTimeline] = useState<Event[]>([])
   const [stepRuns, setStepRuns] = useState<StepRun[]>([])
   // Снимок процесса задачи и её переходы по шагам: граф «Процесс»
@@ -185,13 +189,15 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
   // Если шаг или статус задачи разошлись с графом (событие задачи пропущено
   // курсором потока или пришло между запросами), процесс перечитывается.
   const refresh = useCallback(() => {
-    api.task(taskId).then(({ task, timeline, step_runs }) => {
+    api.task(taskId).then(({ task, timeline, step_runs, can_set_developer }) => {
+      if (currentTaskId.current !== taskId) return
       setTask(task)
+      setCanSetDeveloper(can_set_developer === true)
       setTimeline(timeline ?? [])
       setStepRuns(step_runs ?? [])
       const p = procRef.current
       if (p && (p.step !== task.Step || p.status !== task.Status)) refreshProcess()
-    }).catch(e => setErr(String(e)))
+    }).catch(e => { if (currentTaskId.current === taskId) setErr(String(e)) })
     api.taskSessions(taskId).then(s => setSessions(s ?? [])).catch(() => {})
   }, [taskId, refreshProcess])
   useEffect(refresh, [refresh, tick])
@@ -204,6 +210,8 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
     setProc(null)
     setLimitEdit(null); setSessPrompt(''); setSessPrivate(false)
     setEditing(false); setConfirmDelete(false)
+    setDeveloperChoice(null); setCanSetDeveloper(false)
+    setErr('')
   }, [taskId])
 
   const showTranscript = (s: Session) => {
@@ -230,13 +238,15 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
     try { await fn(); onChanged(); refresh() } catch (e) {
       // Отказы merge задачи описания — понятным текстом; задача после них
       // меняет статус, поэтому деталка перечитывается.
-      const known = MERGE_ERROR_TEXT[errCode(e)]
-      setErr(known ?? String(e))
-      if (known) { onChanged(); refresh() }
+      if (currentTaskId.current === taskId) {
+        const known = MERGE_ERROR_TEXT[errCode(e)]
+        setErr(known ?? String(e))
+        if (known) { onChanged(); refresh() }
+      }
     } finally { busyRef.current = false; setBusy(false) }
   }
 
-  if (!task) return null
+  if (!task || task.ID !== taskId) return null
   const live = ['running', 'testing', 'fixing', 'review'].includes(task.Status)
   const planEditable = ['queued', 'ready'].includes(task.Status)
     && !['done', 'archived'].includes(epicStatus ?? '')
@@ -288,6 +298,24 @@ export function TaskDrawer({ taskId, onClose, onChanged, epicStatus, epicTasks }
       </div>
 
       <div className="dw-body">
+        <section className="dw-sec" aria-label="Разработчик задачи">
+          <h3>Разработчик</h3>
+          <p>{task.DeveloperAgentID ? `Закреплён: ${task.DeveloperAgentName || task.DeveloperAgentID}` : 'Автоматический выбор команды'}</p>
+          {canSetDeveloper && <div className="f-form">
+            <Field label="Для кода и исправлений">
+              {ids => <Select ids={ids} value={developerChoice ?? task.DeveloperAgentID ?? ''} disabled={busy} onChange={e => setDeveloperChoice(e.target.value)}>
+                <option value="">Автоматически</option>
+                {task.DeveloperAgentID && !team.some(a => a.id === task.DeveloperAgentID && a.role_id === 'developer') && <option value={task.DeveloperAgentID}>{task.DeveloperAgentName || task.DeveloperAgentID}</option>}
+                {team.filter(a => a.role_id === 'developer').map(a => <option key={a.id} value={a.id}>{a.name} · {a.model || 'модель роли'}{a.enabled ? '' : ' (выключен)'}</option>)}
+              </Select>}
+            </Field>
+            <p className="muted">Проверки и review идут по обычному процессу. Если выбранный разработчик недоступен, задача ждёт его.</p>
+            <div><Button size="sm" busy={busy} disabled={developerChoice === null || developerChoice === (task.DeveloperAgentID ?? '')} onClick={act(async () => {
+              await api.setTaskDeveloper(task.ID, developerChoice || null)
+              if (currentTaskId.current === task.ID) setDeveloperChoice(null)
+            })}>Сохранить разработчика</Button></div>
+          </div>}
+        </section>
         {editing && (
           <div className="dw-sec">
             <h3>Правка плана</h3>

@@ -29,6 +29,8 @@ export interface Task {
   RoleID?: string
   AgentID?: string
   AgentName?: string
+  DeveloperAgentID?: string
+  DeveloperAgentName?: string
   RunnerName?: string
   // Время задачи (api-contract add-project-lead-view): первое назначение
   // на runner и переход в done; старый бэкенд их не отдаёт.
@@ -1252,7 +1254,8 @@ export const api = {
     req('POST', `/epics/${id}/${action}`),
   addTask: (epicId: string, t: { title: string; description: string; criteria: string[]; deps: string[] }) =>
     req<Task>('POST', `/epics/${epicId}/tasks`, t),
-  task: (id: string) => req<{ task: Task; timeline: Event[] | null; step_runs: StepRun[] | null }>('GET', `/tasks/${id}`),
+  task: (id: string) => req<{ task: Task; timeline: Event[] | null; step_runs: StepRun[] | null; can_set_developer?: boolean }>('GET', `/tasks/${id}`),
+  setTaskDeveloper: (id: string, agentId: string | null) => req<Task>('PUT', `/tasks/${id}/developer`, { agent_id: agentId }),
   // Процесс задачи для графа в деталке (fix-web-console-tails); старый
   // бэкенд отвечает 404.
   // Шаг и статус задачи идут в том же ответе, что и переходы, и читаются
@@ -1739,7 +1742,7 @@ export function subscribe(projectId: string, handlers: {
     // обновляются по ним.
     'task.merge_deferred', 'task.merge_failed', 'deploy.deferred', 'policy.budget_exceeded', 'policy.activated',
     'policy.decision', 'task.checks_external', 'task.review_external', 'task.pr_closed',
-    'task.plan_edited', 'epic.plan_edited', 'epic.budget_exceeded',
+    'task.plan_edited', 'task.developer_changed', 'epic.plan_edited', 'epic.budget_exceeded',
     // Пересечения работ: реестр «Команды» и timeline задач (add-team-visibility).
     'session.overlap',
     // Шаблоны ролей, команда агентов, имена runner'ов и модель
