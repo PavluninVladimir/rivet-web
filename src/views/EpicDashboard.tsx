@@ -9,6 +9,7 @@ import { TeamPanel } from '../components/TeamPanel'
 import { EpicWaiting, EpicWhy } from '../components/EpicWhy'
 import { ArchitectureBlock } from '../components/ArchitectureBlock'
 import { EpicAssessment } from '../components/EpicAssessment'
+import { EpicCurrentWork } from '../components/EpicCurrentWork'
 import { Button, Field, FormActions, FormNote, NumberInput, Select, TextArea, TextInput, errText, useBusy } from '../components/form'
 import { useStore } from '../store'
 
@@ -172,6 +173,7 @@ export function EpicDashboard({ projectId, epicId, taskId, admin = false, login 
             ))}
           </div>
         </div>
+        <EpicCurrentWork epic={epic} tasks={tasks} />
         {epic.budget?.exhausted && (
           <div className="budget-pause">
             Бюджет Epic исчерпан ({fmtTokens(epic.budget.used)} из {fmtTokens(epic.TokenBudget)}):
