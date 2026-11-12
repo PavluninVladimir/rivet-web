@@ -182,6 +182,7 @@ export type ArtifactTarget =
   | { kind: 'epic' | 'task' | 'release' | 'incident'; id: string }
   | { kind: 'discovery'; runId?: string }
   | { kind: 'architecture' }
+  | { kind: 'operations' }
   | { kind: 'adr'; number: string }
 
 export function artifactTarget(ref: { view?: string; id?: string; url?: string }): ArtifactTarget | null {
@@ -205,6 +206,7 @@ export function workTarget(w: { kind: string; id: string } | null | undefined): 
   switch (w.kind) {
     case 'task': case 'epic': case 'release': case 'incident': return { kind: w.kind, id: w.id }
     case 'analysis': return { kind: 'discovery', runId: w.id }
+    case 'issue_watch': return { kind: 'operations' }
   }
   return null
 }
@@ -218,7 +220,7 @@ export const ARTIFACT_KIND: Record<string, string> = {
 // Событие цикла: меняет фазу задачи или относится к релизам и сопровождению.
 export function isCycleEvent(type: string, payload: Record<string, unknown> | undefined): boolean {
   if (payload && ('phase_to' in payload || 'phase_from' in payload)) return true
-  return /^(release|incident|monitor|ops|architecture|feedback)\./.test(type) || type === 'deploy.status'
+  return /^(release|incident|monitor|ops|operations|architecture|feedback)\./.test(type) || type === 'deploy.status'
     || type === 'epic.decomposed' || type === 'epic.decomposing' || type === 'epic.progress'
     || type === 'project.architecture_updated'
     // Ход анализа («конспекты 3 из 5») ленту не забивает: видны старт,

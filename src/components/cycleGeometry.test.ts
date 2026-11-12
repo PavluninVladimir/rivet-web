@@ -102,6 +102,12 @@ test('ссылки артефактов фаз', () => {
   assert.equal(artifactTarget({ view: 'unknown', id: 'x' }), null)
 })
 
+test('наблюдение Issues агента SRE открывает Сопровождение', () => {
+  assert.deepEqual(workTarget({ kind: 'issue_watch', id: 'project' }), { kind: 'operations' })
+  assert.equal(isCycleEvent('operations.issue_watch_changed', undefined), true)
+  assert.equal(isCycleEvent('operations.issue_received', { phase_from: 'operations', phase_to: 'discovery' }), true)
+})
+
 test('ссылка текущей работы агента', () => {
   assert.deepEqual(workTarget({ kind: 'task', id: 't1' }), { kind: 'task', id: 't1' })
   assert.deepEqual(workTarget({ kind: 'analysis', id: 'run1' }), { kind: 'discovery', runId: 'run1' })
