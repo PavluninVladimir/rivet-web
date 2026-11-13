@@ -22,6 +22,7 @@ export function EpicDashboard({ projectId, epicId, taskId, admin = false, login 
   const [filter, setFilter] = useState<DagFilter>('all')
   const [hideDone, setHideDone] = useState(false)
   const [showCP, setShowCP] = useState(false)
+  const [fitRequest, setFitRequest] = useState(0)
   const [adding, setAdding] = useState(false)
   const [err, setErr] = useState('')
   // Бюджет Epic (add-cost-transparency): черновик поля, null — не редактируется.
@@ -225,9 +226,10 @@ export function EpicDashboard({ projectId, epicId, taskId, admin = false, login 
             </div>
             <button className={'tglbtn' + (hideDone ? ' on' : '')} onClick={() => setHideDone(h => !h)}>Скрыть завершённые</button>
             <button className={'tglbtn' + (showCP ? ' on' : '')} onClick={() => setShowCP(c => !c)}>Критический путь</button>
+            {mode === 'graph' && <button className="tglbtn" onClick={() => setFitRequest(value => value + 1)}>Уместить граф</button>}
           </div>
           {mode === 'graph'
-            ? <Dag tasks={tasks} filter={filter} hideDone={hideDone} showCP={showCP} selected={taskId} onSelect={openTask} />
+            ? <Dag tasks={tasks} filter={filter} hideDone={hideDone} showCP={showCP} fitRequest={fitRequest} selected={taskId} onSelect={openTask} />
             : (
               <div className="epic-list">
                 <table className="tbl">

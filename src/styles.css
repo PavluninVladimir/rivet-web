@@ -147,7 +147,8 @@ h1,h2,h3,h4 { margin: 0; }
 #viewport { flex: 1; min-height: 0; position: relative; overflow: auto; }
 /* Фокус после выбора пункта в меню узкого экрана: цель, а не элемент управления. */
 #viewport:focus { outline: none; }
-.view-epic { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+/* Длинные обоснование и оценка прокручиваются вместе с Epic, не сжимая DAG до нуля. */
+.view-epic { display: flex; flex-direction: column; min-height: 100%; }
 
 /* buttons / statuses / chips */
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px;
@@ -239,7 +240,7 @@ h1,h2,h3,h4 { margin: 0; }
 .tglbtn:hover { color: var(--fg); }
 .tglbtn.on { color: var(--fg); border-color: var(--accent); background: var(--accent-soft); }
 .dag-toolbar .zoom { margin-left: auto; display: inline-flex; gap: 4px; }
-.dag-canvas { flex: 1; position: relative; overflow: hidden; cursor: grab;
+.dag-canvas { flex: 1; min-height: 240px; position: relative; overflow: hidden; cursor: grab;
   background: radial-gradient(color-mix(in oklch, var(--fg) 5%, transparent) 1px, transparent 1px);
   background-size: 22px 22px; }
 .dag-canvas.panning { cursor: grabbing; }

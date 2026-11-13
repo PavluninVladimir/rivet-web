@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Task } from '../api/client'
 import { StBadge } from './ui'
 import { Performer } from './RoleChip'
+import { fitDagViewport } from './dagViewport'
 
 // Слоевая раскладка DAG — перенос алгоритма эталонного прототипа:
 // слой узла = 1 + max(слой зависимостей), слои центрируются по вертикали.
@@ -85,13 +86,14 @@ const MATCH: Record<DagFilter, (t: Task) => boolean> = {
   done: t => t.Status === 'done',
 }
 
-export function Dag({ tasks, filter, hideDone, showCP, selected, onSelect }: {
+export function Dag({ tasks, filter, hideDone, showCP, selected, onSelect, fitRequest = 0 }: {
   tasks: Task[]
   filter: DagFilter
   hideDone: boolean
   showCP: boolean
   selected?: string
   onSelect: (id: string) => void
+  fitRequest?: number
 }) {
   const canvasRef = useRef<HTMLDivElement>(null)
   const [view, setView] = useState({ x: 0, y: 0, k: 1 })
@@ -107,12 +109,24 @@ export function Dag({ tasks, filter, hideDone, showCP, selected, onSelect }: {
 
   const fit = () => {
     const r = canvasRef.current?.getBoundingClientRect()
-    if (!r) return
-    const k = Math.min((r.width - 24) / lay.w, (r.height - 24) / lay.h, 1.15)
-    setView({ k, x: (r.width - lay.w * k) / 2, y: (r.height - lay.h * k) / 2 })
+    if (!r) return false
+    const next = fitDagViewport(r.width, r.height, lay.w, lay.h)
+    if (!next) return false
+    setView(next)
+    return true
   }
+  // Measure once for a new layout or explicit fit. If the canvas is still
+  // collapsed, defer until it has usable geometry, then disconnect. Later
+  // resizes must not discard the user's manual pan/zoom.
+  useEffect(() => {
+    if (fit()) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const observer = new ResizeObserver(() => { if (fit()) observer.disconnect() })
+    observer.observe(canvas)
+    return () => observer.disconnect()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(fit, [lay.w, lay.h])
+  }, [lay.w, lay.h, fitRequest])
 
   const zoomAt = (f: number, px: number, py: number) => {
     setView(v => {
