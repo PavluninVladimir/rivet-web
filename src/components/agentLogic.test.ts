@@ -32,6 +32,18 @@ test('лимиты: пусто — по умолчанию, только цел�
   assert.deepEqual(Object.keys(bad.errors).sort(), ['minutes', 'tokens', 'turns'])
 })
 
+test('минуты: нулевой профиль и очистка поля снимают override, положительный сохраняется', () => {
+  const profile = { max_turns: 40, max_tokens: 2_000_000, max_minutes: 15 }
+  const draft = limitsDraft(profile)
+  assert.deepEqual(parseLimits(draft), { limits: profile, errors: {} })
+  assert.deepEqual(limitsDraft(parseLimits(draft).limits), draft)
+
+  const cleared = parseLimits({ ...draft, minutes: '' })
+  assert.deepEqual(cleared, { limits: { max_turns: 40, max_tokens: 2_000_000 }, errors: {} })
+  assert.equal(limitsDraft(cleared.limits).minutes, '')
+  assert.deepEqual(parseLimits(limitsDraft({ max_minutes: 0 })), { limits: {}, errors: {} })
+})
+
 test('пара модели: ключ туда и обратно, «/» в имени модели', () => {
   const m = { connection_id: 'openrouter', model: 'anthropic/claude-sonnet' }
   assert.equal(refKey(m), 'openrouter/anthropic/claude-sonnet')

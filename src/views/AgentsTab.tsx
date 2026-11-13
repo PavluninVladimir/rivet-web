@@ -86,8 +86,8 @@ function AgentCard({ agent, runners, onSaved }: { agent: AgentProfile; runners: 
     setLimits(base); setBadInput({}); setLimitsGen(g => g + 1); setErr(null); setNote('')
   }
 
-  const limitField = (k: keyof LimitsDraft, label: string, fallback: number) => (
-    <Field label={label} optional error={limitErr(k)} hint={`пусто — ${fallback.toLocaleString('ru-RU')}`}>
+  const limitField = (k: keyof LimitsDraft, label: string, fallback: number | string) => (
+    <Field label={label} optional error={limitErr(k)} hint={`пусто — ${typeof fallback === 'number' ? fallback.toLocaleString('ru-RU') : fallback}`}>
       {ids => <NumberInput ids={ids} min={1} step={1} width={140} placeholder={String(fallback)} value={limits[k]}
         onChange={e => { setBadInput(b => ({ ...b, [k]: e.target.validity.badInput })); setLimit(k)(e.target.value) }} />}
     </Field>
@@ -150,7 +150,7 @@ function AgentCard({ agent, runners, onSaved }: { agent: AgentProfile; runners: 
           <div className="f-grid" key={limitsGen} style={{ gridTemplateColumns: 'repeat(3, auto)', justifyContent: 'start' }}>
             {limitField('turns', 'Ходов', DEFAULT_LIMITS.turns)}
             {limitField('tokens', 'Токенов', DEFAULT_LIMITS.tokens)}
-            {limitField('minutes', 'Минут', DEFAULT_LIMITS.minutes)}
+            {limitField('minutes', 'Минут', DEFAULT_LIMITS.minutes || 'без ограничения')}
           </div>
           <div className="f-hint">сессия останавливается по первому сработавшему лимиту; токены — некешированный вход плюс выход</div>
           {fe('limits') && <div className="f-error" role="alert">{fe('limits')}</div>}

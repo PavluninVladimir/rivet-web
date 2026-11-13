@@ -37,7 +37,7 @@ export function agentRunnerStats(runners: (Pick<Runner, 'Agent' | 'Status' | 'Ne
 
 // Значения цикла по умолчанию (native.DefaultLimits в rivet-runner):
 // только для подсказки, решает их сам runner.
-export const DEFAULT_LIMITS = { turns: 80, tokens: 1_000_000, minutes: 30 }
+export const DEFAULT_LIMITS = { turns: 80, tokens: 1_000_000, minutes: 0 }
 
 // Черновик лимитов строками: пустая строка — значение по умолчанию.
 export interface LimitsDraft { turns: string; tokens: string; minutes: string }
