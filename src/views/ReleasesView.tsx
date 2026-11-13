@@ -1,3 +1,4 @@
+import { LoadTestingPanel } from '../components/LoadTesting'
 import { useEffect, useRef, useState } from 'react'
 import { api, errCode, type Release } from '../api/client'
 import { releaseAfter } from '../components/pagedList'
@@ -92,6 +93,7 @@ function ReleaseCard({ id, login, onChanged }: { id: string; login: string; onCh
           {r.prev_version ? <> · прошлая версия <span className="mono">{r.prev_version.slice(0, 12)}</span></> : ' · первый релиз окружения'}
         </div>
       </div>
+      <div className="dw-sec"><LoadTestingPanel environmentId={r.env_id} releaseId={r.id}/></div>
       <div className="dw-sec">
         <h3>Состав</h3>
         {r.composition.length === 0 && <div className="muted">Задач в составе нет.</div>}

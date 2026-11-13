@@ -10,7 +10,9 @@ const RIVET = 'rivet'
 // ─── runner'ы ───────────────────────────────────────────────────────────
 
 // Runner выкатки работает без агента: исполняет только задания выкатки.
-export const isDeployRunner = (r: Pick<Runner, 'Agent'>): boolean => !r.Agent
+type RunnerKind = Pick<Runner,'Agent'> & Partial<Pick<Runner,'Capabilities'|'Features'>>
+export const isLoadRunner = (r:RunnerKind):boolean => !r.Agent && r.Capabilities?.length===1 && r.Capabilities[0]==='load' && !!r.Features?.includes('k6_load_v1')
+export const isDeployRunner = (r:RunnerKind):boolean => !r.Agent && !r.Capabilities?.includes('load')
 
 // Команды агента Rivet на этом runner'е идут без песочницы и видят сеть.
 export const agentNetworkOpen = (r: Pick<Runner, 'Agent' | 'NetworkIsolated'>): boolean =>
@@ -19,7 +21,7 @@ export const agentNetworkOpen = (r: Pick<Runner, 'Agent' | 'NetworkIsolated'>): 
 export interface AgentRunnerStats { total: number; online: number; isolated: number; deploy: number }
 // Счётчики runner'ов агента Rivet: всего, в сети, с песочницей без сети;
 // runner'ы выкатки считаются отдельно.
-export function agentRunnerStats(runners: Pick<Runner, 'Agent' | 'Status' | 'NetworkIsolated'>[]): AgentRunnerStats {
+export function agentRunnerStats(runners: (Pick<Runner, 'Agent' | 'Status' | 'NetworkIsolated'> & Partial<Pick<Runner,'Capabilities'|'Features'>>)[]): AgentRunnerStats {
   const out = { total: 0, online: 0, isolated: 0, deploy: 0 }
   for (const r of runners) {
     if (isDeployRunner(r)) { out.deploy++; continue }

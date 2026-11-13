@@ -1,3 +1,4 @@
+import { ProjectLoadBanner } from './components/LoadTesting'
 import { Fragment, Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { api, setOnPasswordChangeRequired, setOnUnauthorized, type Project, type User } from './api/client'
 import { StoreProvider, routeHash, useStore } from './store'
@@ -285,6 +286,7 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
             ? <div className="page"><span className="muted">Загрузка…</span></div>
             : (
               <ErrorBoundary key={boundaryKey(route)} resetKey={here} what="экран" page>
+                {projectId && <ProjectLoadBanner key={`load-banner/${projectId}`} projectId={projectId}/>}
                 {route.view === 'projects' && <ProjectsView />}
                 {route.view === 'project-settings' && <ProjectSettings key={route.pid} projectId={route.pid} tab={route.tab} user={user} />}
                 {route.view === 'profile' && <Profile me={user} />}

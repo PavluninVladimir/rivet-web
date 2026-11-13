@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { api, RIVET_AGENT, type Runner } from '../api/client'
 import { CtxBar, fmtAgo, StBadge } from '../components/ui'
 import { Performer } from '../components/RoleChip'
-import { agentNetworkOpen, isDeployRunner } from '../components/agentLogic'
+import { loadStageLabel } from '../components/loadTestingLogic'
+import { agentNetworkOpen, isDeployRunner, isLoadRunner } from '../components/agentLogic'
 import { Button, TextInput, errText } from '../components/form'
 import { useStore } from '../store'
 
@@ -12,7 +13,7 @@ import { useStore } from '../store'
 export function RunnersView({ admin }: { admin: boolean }) {
   // Runner'ы из store: их перечитывают и события своего проекта (tick), и
   // занятость агентов в других проектах, которая tick не двигает.
-  const { tick, nav, runners, refreshRunners: refresh } = useStore()
+  const { tick, nav, href, runners, refreshRunners: refresh } = useStore()
   // Правка имени runner'а администратором (add-agent-roles): одна строка
   // за раз; пустое имя возвращает имя из регистрации.
   const [edit, setEdit] = useState<{ id: string; value: string } | null>(null)
@@ -73,10 +74,10 @@ export function RunnersView({ admin }: { admin: boolean }) {
               <td title="агент команды, чья сессия идёт на runner’е">
                 {r.AgentName || r.RoleID
                   ? <Performer roleId={r.RoleID} agentName={r.AgentName} />
-                  : <span className="muted">{r.TaskID ? 'занят' : '—'}</span>}
+                  : r.CurrentLoadTest ? <a href={href({view:'releases',pid:r.CurrentLoadTest.project_id,id:r.CurrentLoadTest.release_id})}>k6 · {loadStageLabel(r.CurrentLoadTest.stage)||'Нагрузочный тест'}</a> : <span className="muted">{r.TaskID ? 'занят' : '—'}</span>}
               </td>
-              <td className="muted" data-runner-agent={r.Agent || 'deploy'}>
-                {isDeployRunner(r)
+              <td className="muted" data-runner-agent={isLoadRunner(r)?'load':r.Agent||'deploy'}>
+                {isLoadRunner(r) ? <span title="выделенный native k6, без агента и моделей">нагрузочный runner k6{!r.Secure&&<span className="muted"> · без защищённого канала: тестовый секрет недоступен</span>}</span> : isDeployRunner(r)
                   ? <span title="исполняет только задания выкатки, агента нет">runner выкатки</span>
                   : <>
                       {r.ProfileName ? <>{r.ProfileName} <span className="mono">{r.Agent}</span></> : <span className="mono">{r.Agent}</span>}
@@ -91,8 +92,8 @@ export function RunnersView({ admin }: { admin: boolean }) {
               </td>
               <td className="mono muted">{r.Host}</td>
               <td className="mono muted">{r.Capabilities.join(', ')}</td>
-              <td className="mono muted" title={isDeployRunner(r) ? 'у runner’а выкатки нет сессий агента' : `глубина данных сессий; обратный канал контекста: ${r.ContextChannel ? 'есть' : 'нет'}`}>
-                {isDeployRunner(r) ? '—' : r.Depth || 'minimal'}
+              <td className="mono muted" title={isDeployRunner(r)||isLoadRunner(r) ? 'у выделенного runner нет сессий агента' : `глубина данных сессий; обратный канал контекста: ${r.ContextChannel ? 'есть' : 'нет'}`}>
+                {isDeployRunner(r)||isLoadRunner(r) ? '—' : r.Depth || 'minimal'}
               </td>
               <td><CtxBar pct={r.CtxPct} /></td>
               <td><StBadge s={r.Status} />{r.Draining && <span className="muted" style={{ marginLeft: 6, fontSize: 10.5 }}>drain</span>}</td>

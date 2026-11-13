@@ -1,3 +1,4 @@
+import { LoadTestingPanel } from './LoadTesting'
 import { ApplicationSecrets } from './ApplicationSecrets'
 import { useEffect, useState } from 'react'
 import { api, ApiError, type Environment, type LocalDockerConfig, type LocalPublication } from '../api/client'
@@ -24,6 +25,7 @@ export function LocalDockerCard({env,tick,isAdmin,onSettings}:{env:Environment;t
    <Button size="sm" disabled={!pub} onClick={()=>log===null?void logs(stream):setLog(null)}>Логи</Button>
    {isAdmin&&<><Button size="sm" onClick={onSettings}>Настроить</Button><Button size="sm" aria-expanded={secretsOpen} onClick={()=>setSecretsOpen(v=>!v)}>Секреты приложения</Button></>}
   </div>
+  <LoadTestingPanel environmentId={env.id}/>
   {secretsOpen&&isAdmin&&<ApplicationSecrets env={env} />}
   {log!==null&&<><div className="dw-actions"><Button size="sm" onClick={()=>void logs('builder')}>Сборка</Button><Button size="sm" disabled={!pub?.container_id||pub.status==='stopped'} onClick={()=>void logs('container')}>Приложение</Button></div><pre className="term sess-term">{log||'Вывода нет'}</pre></>}
  </div>
