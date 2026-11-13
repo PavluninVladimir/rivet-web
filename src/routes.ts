@@ -27,6 +27,8 @@ export type ProjectRoute =
   | { view: 'overview'; pid: string; period: OverviewPeriod; focus?: 'money' }
   // Исследование (add-product-discovery): runId — версия из истории.
   | { view: 'discovery'; pid: string; runId?: string }
+  | { view: 'assistant'; pid: string }
+  | { view: 'design'; pid: string }
   // Архитектура (add-architecture-c4): вкладка, уровень или выбор, элемент, фильтр.
   | ({ view: 'architecture'; pid: string } & ArchRoute)
   | { view: 'epics'; pid: string }
@@ -54,7 +56,7 @@ type Unpinned<R> = R extends { pid: string } ? Omit<R, 'pid'> & { pid?: string }
 export type NavTarget = Unpinned<Route>
 export type ProjectTarget = Unpinned<ProjectRoute>
 
-const PROJECT_VIEWS: readonly string[] = ['overview', 'discovery', 'architecture', 'epics', 'epic', 'tasks', 'cycle',
+const PROJECT_VIEWS: readonly string[] = ['overview', 'assistant', 'design', 'discovery', 'architecture', 'epics', 'epic', 'tasks', 'cycle',
   'releases', 'incidents', 'team', 'activity', 'project-settings'] satisfies ProjectView[]
 
 export const isProjectView = (v: string): v is ProjectView => PROJECT_VIEWS.includes(v)
@@ -104,7 +106,7 @@ function parseSection(section: string, rest: string[], query: string): ProjectTa
     case 'epic':
       if (!b) return { view: 'epics' }
       return c === 'task' && d ? { view: 'epic', id: b, taskId: d } : { view: 'epic', id: b }
-    case 'tasks': case 'team': case 'activity': return { view: section }
+    case 'assistant': case 'design': case 'tasks': case 'team': case 'activity': return { view: section }
     case 'cycle': return cycleTarget(query)
     case 'releases': case 'incidents': return b ? { view: section, id: b } : { view: section }
     case 'settings':
@@ -115,7 +117,7 @@ function parseSection(section: string, rest: string[], query: string): ProjectTa
 
 // Разделы, которые до add-project-navigation жили в корне адреса без
 // проекта: #/epics, #/epic/<id>, #/architecture/… и т.д.
-const LEGACY_ROOT = ['overview', 'discovery', 'architecture', 'epics', 'epic', 'tasks', 'releases', 'incidents', 'team', 'activity']
+const LEGACY_ROOT = ['overview', 'assistant', 'design', 'discovery', 'architecture', 'epics', 'epic', 'tasks', 'releases', 'incidents', 'team', 'activity']
 
 export function parseHash(hash: string): Parsed {
   const [path, query = ''] = hash.replace(/^#\/?/, '').split('?')
@@ -227,7 +229,9 @@ export function switchProject(r: Route, pid: string): Route {
 // Разделы проекта в порядке боковой панели (спека «Навигация по проекту»).
 export const PROJECT_SECTIONS: { view: Exclude<ProjectView, 'epic'>; label: string }[] = [
   { view: 'overview', label: 'Обзор' },
+  { view: 'assistant', label: 'Ассистент' },
   { view: 'discovery', label: 'Исследование' },
+  { view: 'design', label: 'Дизайн-система' },
   { view: 'architecture', label: 'Архитектура' },
   { view: 'epics', label: 'Epic’и' },
   { view: 'tasks', label: 'Задачи' },

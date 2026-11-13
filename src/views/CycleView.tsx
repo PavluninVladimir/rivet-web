@@ -12,6 +12,7 @@ import { FeedbackForm } from '../components/FeedbackForm'
 import { GitHubIssueWatch } from '../components/GitHubIssueWatch'
 import { unaccountedText } from '../components/discovery'
 import { agentDestination, phaseDestination, summaryDestinations, type CycleRoute } from '../components/cycleNavigation'
+import { phaseOpenLabel } from '../components/cycleAccessibility'
 import { ReportModal } from './ReportModal'
 
 // Экран «Цикл разработки» (add-sdlc-cycle, спека web «Представление «Цикл
@@ -296,7 +297,7 @@ function PhaseNode({ p, selected, pos, incident, onClick, onKey, projectId, peri
   return <div className={'cycle-node'+(selected?' on':'')+(p.no_data?' nodata':'')+(incident?' incident':'')}
     role="group" aria-label={`Фаза ${p.title}`} style={{...pos,['--ph' as string]:incident?'var(--c-fail)':PHASE_COLOR[p.id]}}>
     <button type="button" className="cn-open" data-phase-node={p.id} aria-pressed={selected}
-      aria-label={`Открыть фазу ${p.title}`} onClick={onClick} onKeyDown={onKey}>
+      aria-label={phaseOpenLabel(p)} onClick={onClick} onKeyDown={onKey}>
       <span className="cn-title">{p.title}{incident&&<span className="cn-alert" aria-hidden="true"> ⚠</span>}</span>
     </button>
     {p.no_data?<><span className="cn-nodata">нет данных</span>{p.hint&&<span className="cn-hint">{p.hint}</span>}</>:
@@ -329,7 +330,7 @@ function CycleList({ phases, selected, onSelect, onKey, projectId, period }: { p
   return <ol className="cycle-list">
     {phases.map((p,i)=>{const c=p.counters;return <li key={p.id} style={{['--ph' as string]:PHASE_COLOR[p.id]}}>
       <div className={'cl-row'+(p.id===selected?' on':'')}>
-        <button type="button" className="cl-open" aria-pressed={p.id===selected} aria-label={`Открыть фазу ${p.title}`} data-phase-node={p.id} onKeyDown={e=>onKey(e,i)} onClick={()=>onSelect(p.id===selected?undefined:p.id)}><span className="cl-dot"/><span className="cl-title">{p.title}</span></button>
+        <button type="button" className="cl-open" aria-pressed={p.id===selected} aria-label={phaseOpenLabel(p)} data-phase-node={p.id} onKeyDown={e=>onKey(e,i)} onClick={()=>onSelect(p.id===selected?undefined:p.id)}><span className="cl-dot"/><span className="cl-title">{p.title}</span></button>
         {p.no_data?<span className="muted">нет данных</span>:<a className="mono" aria-label={`Текущие элементы фазы ${p.title}: ${c.active+c.waiting+c.needs_human}`} href={href(phaseDestination(projectId,p.id,period,'items'))}>{c.active+c.waiting+c.needs_human}</a>}
         {(p.feedback_unaccounted??0)>0&&<a className="cn-feedback" onClick={focusCycleLink} href={href({view:'discovery',pid:projectId})}>{unaccountedText(p.feedback_unaccounted!)}</a>}
         {c.needs_human>0&&<a className="cn-human" onClick={focusCycleLink} aria-label={`Требуют человека в фазе ${p.title}: ${c.needs_human}`} href={href(phaseDestination(projectId,p.id,period,'items','needs_human'))}>{c.needs_human}</a>}

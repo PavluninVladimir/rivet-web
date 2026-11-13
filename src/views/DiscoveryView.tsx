@@ -14,6 +14,7 @@ import {
   needsByPersona, nextHumanKey, personaColor, progressPct, progressText, quoteLines, removeEpic, sizeText, usageText, validateRow,
   feedbackNote, quoteSource, runIsOlder, withMissing,
 } from '../components/discovery'
+import { answerMaterial, canEditDiscovery, discoveryOutcome, OUTCOME_LABEL } from '../components/discoveryOutcomes'
 import { useStore } from '../store'
 
 // Представление «Исследование» (спека clients/web, add-product-discovery):
@@ -51,6 +52,7 @@ export function DiscoveryView({ user, runId }: { user: User; runId?: string }) {
   const [unsupported, setUnsupported] = useState(false)
   const [startErr, setStartErr] = useState('')
   const [adding, setAdding] = useState(false)
+  const [answerSeed, setAnswerSeed] = useState('')
   const [viewer, setViewer] = useState<{ id: string; quote?: Quote } | null>(null)
   // selErr — ошибка открытой версии отдельно от ошибки состояния: успешное
   // перечитывание состояния её не стирает.
@@ -183,7 +185,7 @@ export function DiscoveryView({ user, runId }: { user: User; runId?: string }) {
         <h1>Исследование</h1>
         <span className="sub">{project?.Name}{isOwner ? '' : ' · только просмотр'}</span>
         <div className="right">
-          {isOwner && <Button onClick={() => setAdding(true)}>Добавить интервью</Button>}
+          {isOwner && <Button onClick={() => {setAnswerSeed('');setAdding(true)}}>Добавить интервью</Button>}
           {isOwner && (
             <Button variant="primary" busy={busy || running} busyLabel="анализ идёт…"
               disabled={interviews.length === 0 && feedback.length === 0} onClick={start}>Запустить анализ</Button>
@@ -208,6 +210,7 @@ export function DiscoveryView({ user, runId }: { user: User; runId?: string }) {
       )}
 
       {current && <RunStatusBar run={current} role={analystRole} isHistory={!!runId} onBack={() => nav({ view: 'discovery' })} />}
+      {current && ['ready','approved','superseded'].includes(current.status) && <DiscoveryDecision run={current} isOwner={isOwner} onQuote={openQuote} onAnswer={text=>{setAnswerSeed(text);setAdding(true)}} />}
 
       <InterviewsSection interviews={interviews} isOwner={isOwner} projectId={projectId}
         onOpen={id => setViewer({ id })} onChanged={refresh} />
@@ -220,7 +223,7 @@ export function DiscoveryView({ user, runId }: { user: User; runId?: string }) {
       {current && (current.status === 'failed') && <FailedSection run={current} />}
       {current && (current.personas?.length ?? 0) > 0 && <ResultsSection run={current} onQuote={openQuote} />}
       {current && (current.dropped?.length ?? 0) > 0 && <DroppedSection run={current} />}
-      {current && (current.backlog?.length ?? 0) > 0 && (
+      {current && discoveryOutcome(current)==='backlog_ready' && (current.backlog?.length ?? 0) > 0 && (
         <BacklogSection key={current.id} run={current} projectId={projectId} epics={epics}
           isOwner={isOwner} onChanged={reloadAll} onRun={applyRun} onDirty={onDirty} epicHref={id => href({ view: 'epic', id })} />
       )}
@@ -228,10 +231,24 @@ export function DiscoveryView({ user, runId }: { user: User; runId?: string }) {
       <VersionsSection versions={state.versions ?? []} currentId={current?.id}
         onOpen={id => nav(id === state.current?.id ? { view: 'discovery' } : { view: 'discovery', runId: id })} />
 
-      {adding && <AddInterviewModal projectId={projectId} onClose={() => setAdding(false)} onAdded={() => { setAdding(false); refresh() }} />}
+      {adding && <AddInterviewModal initialText={answerSeed} projectId={projectId} onClose={() => {setAdding(false);setAnswerSeed('')}} onAdded={() => { setAdding(false); setAnswerSeed(''); refresh() }} />}
       {viewer && <InterviewViewer projectId={projectId} id={viewer.id} quote={viewer.quote} onClose={closeViewer} />}
     </div>
   )
+}
+
+function DiscoveryDecision({run,isOwner,onQuote,onAnswer}:{run:Run;isOwner:boolean;onQuote:(q:Quote)=>void;onAnswer:(text:string)=>void}) {
+  const outcome=discoveryOutcome(run)
+  const source=(s:NonNullable<Run['sources']>[number],i:number)=><button key={i} className="btn sm" onClick={()=>onQuote({interview:s.material_id,line:s.line,text:s.quote,interview_title:'Материал решения',respondent_role:''})}>Материал · строка {s.line}: {s.quote}</button>
+  return <section className="dw-sec" aria-label="Исход исследования"><h3>{outcome?OUTCOME_LABEL[outcome]:'Исход не подтверждён'}</h3>
+    {run.outcome_legacy&&<p className="muted">Историческая версия. Исход прочитан без изменения сохранённой истории.</p>}
+    {!outcome&&<p role="alert">{run.outcome_error||'Сервер вернул неизвестный или неполный исход. Редактирование и создание Epic недоступны.'}</p>}
+    {run.rationale&&<p style={{whiteSpace:'pre-wrap'}}>{run.rationale}</p>}
+    <div className="disc-decision-sources">{(run.sources??[]).map(source)}</div>
+    {(run.questions??[]).map(q=><article key={q.id} className="disc-question"><h4>{q.text}</h4><p>Зачем уточнить: {q.reason}</p><div className="disc-decision-sources">{q.sources.map(source)}</div>{isOwner&&<Button size="sm" onClick={()=>onAnswer(answerMaterial(run,q))}>Добавить ответ материалом</Button>}</article>)}
+    {outcome==='needs_clarification'&&<p>Ответ сохраняется новым материалом. После добавления ответов отдельно нажмите «Запустить анализ». Предыдущая версия не изменяется, задачи автоматически не запускаются.</p>}
+    {outcome==='no_development_recommended'&&<p>Анализ завершён без создания работ. Новые сведения можно добавить материалом и явно запустить новую версию.</p>}
+  </section>
 }
 
 // ─── статус версии ──────────────────────────────────────────────────────
@@ -387,12 +404,12 @@ function FeedbackSection({ feedback, unaccounted, coverage, isOwner, projectId, 
   )
 }
 
-function AddInterviewModal({ projectId, onClose, onAdded }: { projectId: string; onClose: () => void; onAdded: () => void }) {
-  const [mode, setMode] = useState<'file' | 'text'>('file')
-  const [title, setTitle] = useState('')
+function AddInterviewModal({ projectId, onClose, onAdded, initialText='' }: { initialText?:string; projectId: string; onClose: () => void; onAdded: () => void }) {
+  const [mode, setMode] = useState<'file' | 'text'>(initialText?'text':'file')
+  const [title, setTitle] = useState(initialText?'Ответы на вопросы исследования':'')
   const [role, setRole] = useState('')
   const [heldAt, setHeldAt] = useState('')
-  const [text, setText] = useState('')
+  const [text, setText] = useState(initialText)
   const [file, setFile] = useState<File | null>(null)
   const [err, setErr] = useState<{ msg: string; field?: string } | null>(null)
   const [busy, run] = useBusy()
@@ -592,7 +609,7 @@ function BacklogSection({ run, projectId, epics, isOwner, onChanged, onRun, onDi
   run: Run; projectId: string; epics: Epic[]; isOwner: boolean; onChanged: () => void
   onRun: (r: Run) => void; onDirty: (runId: string, dirty: boolean) => void; epicHref: (id: string) => string
 }) {
-  const editable = isOwner && run.status === 'ready' && !run.outdated
+  const editable = isOwner && canEditDiscovery(run)
   const [draft, setDraft] = useState<BacklogEpic[]>(() => (run.backlog ?? []).map(stripRow))
   // baseRev — ревизия, от которой идёт черновик: сохранение и утверждение
   // идут с ней, а не с ревизией последнего ответа сервера.
@@ -639,6 +656,7 @@ function BacklogSection({ run, projectId, epics, isOwner, onChanged, onRun, onDi
   const hasLocal = localErrs.some(e => Object.keys(e).length > 0)
 
   const fail = (e: unknown, list: BacklogEpic[]) => {
+    if(e instanceof ApiError && e.code==='discovery_outcome_not_actionable') onChanged()
     const bf = backlogField(apiField(e))
     const rev = e instanceof ApiError && e.code === 'backlog_conflict' ? apiExtra<number>(e, 'backlog_rev') : undefined
     setErr({ msg: errText(e), rowKey: bf ? list[bf.index]?.key : undefined, field: bf?.field ?? apiField(e), conflict: rev })
@@ -831,7 +849,7 @@ function VersionsSection({ versions, currentId, onOpen }: {
           {versions.map(v => (
             <tr key={v.id} className={'rowlink' + (v.id === currentId ? ' sel' : '')} onClick={() => onOpen(v.id)}>
               <td className="id"><button type="button" className="row-link" onClick={e => { e.stopPropagation(); onOpen(v.id) }}>v{v.version}{v.outdated ? ' · устарела' : ''}</button></td>
-              <td><StBadgeRun s={v.status} /></td>
+              <td><StBadgeRun s={v.status} />{v.outcome && <div>{OUTCOME_LABEL[v.outcome as keyof typeof OUTCOME_LABEL]??'Неизвестный исход'}</div>}</td>
               <td className="mono muted">{fmtDate(v.created_at)}</td>
               <td className="mono muted">{fmtDate(v.finished_at)}</td>
               <td>{analystName({ role: { id: 'analyst', title: 'Аналитик' }, agent: v.agent_name ? { id: '', name: v.agent_name } : null })}</td>
