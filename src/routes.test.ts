@@ -23,6 +23,8 @@ test('экраны проекта: адрес с проектом собирае
   const cases: [Route, string][] = [
     [{ view: 'overview', pid: P, period: '7d' }, `#/p/${P}/overview`],
     [{ view: 'overview', pid: P, period: '30d' }, `#/p/${P}/overview/30d`],
+    [{ view: 'assistant', pid: P }, `#/p/${P}/assistant`],
+    [{ view: 'design', pid: P }, `#/p/${P}/design`],
     [{ view: 'discovery', pid: P }, `#/p/${P}/discovery`],
     [{ view: 'discovery', pid: P, runId: 'r9' }, `#/p/${P}/discovery/r9`],
     [{ view: 'architecture', pid: P, tab: 'hld' }, `#/p/${P}/architecture/hld`],
@@ -156,7 +158,7 @@ test('переключение проекта оставляет раздел и
 })
 
 test('пункты меню проекта: порядок и экраны по умолчанию', () => {
-  assert.deepEqual(PROJECT_SECTIONS.map(s => s.label), ['Обзор', 'Исследование', 'Архитектура', 'Epic’и', 'Задачи',
+  assert.deepEqual(PROJECT_SECTIONS.map(s => s.label), ['Обзор', 'Ассистент', 'Исследование', 'Дизайн-система', 'Архитектура', 'Epic’и', 'Задачи',
     'Цикл разработки', 'Релизы', 'Инциденты', 'Команда', 'Активность', 'Настройки'])
   assert.equal(routeHash(sectionRoute('overview', P)), `#/p/${P}/overview`)
   assert.equal(routeHash(sectionRoute('architecture', P)), `#/p/${P}/architecture/hld`)

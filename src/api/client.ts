@@ -108,7 +108,11 @@ export interface Interview {
   excerpt?: string // начало текста отзыва в списке отзывов
 }
 export type RunStatus = 'running' | 'ready' | 'failed' | 'approved' | 'superseded'
+export type DiscoveryOutcome = 'backlog_ready' | 'needs_clarification' | 'no_development_recommended'
+export interface DiscoverySource { material_id: string; line: number; quote: string }
+export interface DiscoveryQuestion { id: string; text: string; reason: string; sources: DiscoverySource[] }
 export interface RunSummary {
+  outcome?: DiscoveryOutcome | string | null; outcome_legacy?: boolean; outcome_error?: string
   id: string; version: number; status: RunStatus; created_at: string
   finished_at?: string; agent_name?: string; model: string; outdated: boolean
 }
@@ -132,6 +136,7 @@ export interface BacklogRow extends BacklogEpic {
 export interface Dropped { kind: 'quote' | 'finding' | 'persona' | 'need' | 'epic' | 'dependency' | string; ref: string; reason: string }
 export interface ApprovedEpic { key: string; epic_id: string; action: 'created' | 'linked' }
 export interface Run extends RunSummary {
+  rationale?: string; questions?: DiscoveryQuestion[]; sources?: DiscoverySource[]
   stage: 'summaries' | 'synthesis' | 'done'
   progress: { done: number; total: number }
   agent: { id: string; name: string } | null
@@ -1080,7 +1085,7 @@ export function setOnPasswordChangeRequired(fn: () => void) { onPasswordChangeRe
 function apiCode(data: unknown): string {
   const e = (data as { error?: unknown } | null)?.error
   if (typeof e === 'string') return e
-  return (e as { code?: string } | null | undefined)?.code ?? ''
+  return (e as { code?: string } | null | undefined)?.code ?? (data as { code?: string } | null)?.code ?? ''
 }
 function apiMessage(data: unknown): string {
   const d = data as { error?: unknown; message?: unknown } | null
@@ -1112,17 +1117,21 @@ export function errCode(e: unknown): string {
   return e instanceof ApiError ? e.code : ''
 }
 
+export async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal, headers?: Record<string, string>): Promise<T> {
+  return (await reqResp<T>(method, path, body, signal, headers)).data
+}
+
 async function req<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
-  return (await reqResp<T>(method, path, body, signal)).data
+  return request<T>(method, path, body, signal)
 }
 
 // Ответ вместе с HTTP-ответом: нужен, когда важны заголовки (Date).
-async function reqResp<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<{ data: T; resp: Response }> {
+async function reqResp<T>(method: string, path: string, body?: unknown, signal?: AbortSignal, headers?: Record<string, string>): Promise<{ data: T; resp: Response }> {
   // Аутентификация — httpOnly-cookie сессии, браузер шлёт её сам (same-origin).
   const resp = await fetch(`/api/v1${path}`, {
     method,
     signal,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
+    headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...headers },
     body: body ? JSON.stringify(body) : undefined,
   })
   // 204 приходит без тела: json() на нём падает.
@@ -1735,7 +1744,7 @@ export function subscribe(projectId: string, handlers: {
   onState?: (connected: boolean) => void
 }): () => void {
   const es = new EventSource(`/api/v1/stream?project=${projectId}`)
-  const evTypes = ['task.status', 'task.step', 'task.verdict', 'task.wait', 'epic.progress', 'session.step', 'task.assign', 'task.review_passed', 'epic.decomposed', 'attention.new', 'attention.claimed', 'deploy.status', 'environment.config',
+  const evTypes = ['assistant.run.updated', 'assistant.action.updated', 'assistant.message.created', 'assistant.snapshot.invalidated', 'design.document.updated', 'design.thread.updated', 'design.handoff.created', 'task.status', 'task.step', 'task.verdict', 'task.wait', 'epic.progress', 'session.step', 'task.assign', 'task.review_passed', 'epic.decomposed', 'attention.new', 'attention.claimed', 'deploy.status', 'environment.config',
     // Хост окружения (add-environment-provisioning): состояние, решение,
     // адрес и стоимость меняются без перезагрузки.
     'environment.host',

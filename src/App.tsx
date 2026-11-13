@@ -6,6 +6,7 @@ import { INSTALL_ITEMS, PROJECT_SECTIONS, activeItem, crumbs, installRoute, isSu
 import { ErrorBoundary, lazyWithReload } from './components/ErrorBoundary'
 import { EpicsView } from './views/EpicsView'
 import { EpicDashboard } from './views/EpicDashboard'
+import './workspace.css'
 import { DiscoveryView } from './views/DiscoveryView'
 import { ProjectsView } from './views/ProjectsView'
 import { ProjectSettings } from './views/ProjectSettings'
@@ -24,6 +25,8 @@ import { AppManagement } from './views/AppManagement'
 // не растёт ради экрана, который открывают не каждый раз.
 // После обновления rivetd старого чанка нет: одна автоматическая
 // перезагрузка, потом сообщение на экране (ErrorBoundary ниже).
+const AssistantView = lazy(lazyWithReload(() => import('./views/AssistantView').then(m => ({ default: m.AssistantView }))))
+const DesignWorkspace = lazy(lazyWithReload(() => import('./views/DesignWorkspace').then(m => ({ default: m.DesignWorkspace }))))
 const ArchitectureView = lazy(lazyWithReload(() => import('./views/ArchitectureView').then(m => ({ default: m.ArchitectureView }))))
 import { PasswordGate, Profile } from './views/Profile'
 import { Login } from './components/Login'
@@ -297,6 +300,8 @@ function Shell({ user, onLogout }: { user: User; onLogout: () => void }) {
                   : <div className="page"><span className="muted">Раздел доступен только администратору установки.</span></div>)}
                 {route.view === 'epics' && <EpicsView />}
                 {route.view === 'epic' && <EpicDashboard key={route.id} projectId={route.pid} epicId={route.id} taskId={route.taskId} admin={user.admin} login={user.login} />}
+                {route.view === 'assistant' && <Suspense fallback={<div className="page">Загрузка ассистента…</div>}><AssistantView key={route.pid} user={user} /></Suspense>}
+                {route.view === 'design' && <Suspense fallback={<div className="page">Загрузка редактора…</div>}><DesignWorkspace key={route.pid} user={user} /></Suspense>}
                 {route.view === 'discovery' && <DiscoveryView key={route.pid} user={user} runId={route.runId} />}
                 {route.view === 'tasks' && <TasksView />}
                 {route.view === 'team' && <TeamView />}
