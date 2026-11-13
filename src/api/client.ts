@@ -499,6 +499,7 @@ export interface Runner {
   // Инфраструктура (api-contract add-agent-roles): имя runner'а, его
   // возможности и агент команды текущей стадии. Ролей у runner'а нет:
   // RoleID и агент описывают только идущую стадию.
+  CurrentLoadTest?: {id:string;project_id:string;environment_id:string;release_id:string;stage:string}
   DisplayName?: string
   DisplayNameLocked?: boolean
   Features?: string[] | null
@@ -1189,6 +1190,14 @@ export function dispositionFilename(header: string | null, fallback: string): st
 }
 
 export const api = {
+ projectLoadTesting: async (id:string) => (await req<{environments:LoadView[]}>('GET',`/projects/${id}/load-testing`)).environments,
+ environmentLoadTesting: (id:string) => req<LoadView>('GET',`/environments/${id}/load-testing`),
+ deferLoadTesting: (id:string) => req<LoadView>('POST',`/environments/${id}/load-testing/defer`),
+ startLoadTest: (id:string,input:{request_id:string;binding:LoadBinding;profile:LoadProfile}) => req<LoadRun>('POST',`/environments/${id}/load-tests`,input),
+ loadTest: (id:string) => req<LoadRun>('GET',`/load-tests/${id}`),
+ cancelLoadTest: (id:string) => req<LoadRun>('POST',`/load-tests/${id}/cancel`),
+ loadTests: (id:string,before?:string) => req<{runs:LoadRun[];next:string|null}>('GET',`/environments/${id}/load-tests${before?`?before=${encodeURIComponent(before)}`:''}`),
+ releaseLoadTests: (id:string) => req<{runs:LoadRun[]}>('GET',`/releases/${id}/load-tests`),
   login: (login: string, password: string) => req<User>('POST', '/auth/login', { login, password }),
   logout: () => req('POST', '/auth/logout'),
   me: (signal?: AbortSignal) => req<User>('GET', '/auth/me', undefined, signal),
@@ -1771,6 +1780,7 @@ export function subscribe(projectId: string, handlers: {
     // задания Релиз-инженера и Инженера сопровождения.
     'release.created', 'release.notes_ready', 'incident.opened', 'incident.updated', 'incident.resolved',
     'monitor.state', 'ops.job',
+    'load_test.prompt_changed', 'load_test.status', 'load_test.progress',
     // Архитектура проекта (add-architecture-c4): новый снимок и постановка
     // задачи описания. Событие несёт только SHA и статус, снимок
     // перечитывается запросом.
@@ -1805,3 +1815,14 @@ export const stColor: Record<string, string> = {
   review: '--c-review', fixing: '--c-fix', blocked: '--c-block', failed: '--c-fail',
   done: '--c-done', cancelled: '--c-cancel',
 }
+
+// Additive k6_load_v1 API. Auth references contain no credential values.
+export interface LoadLimits { max_vus: number; max_rps: number; max_target_duration_s: number; max_run_duration_s: number }
+export interface LoadBinding { release_id: string; publication_id: string; version: string; generation: number }
+export interface LoadRoute { path: string; weight: number; expected_status: number; expected_content_type?: string }
+export interface LoadProfile { unit: 'vus' | 'rps'; target: number; capacity_ceiling: number; target_duration_s: number; max_vus: number; think_time_ms: number; p95_ms: number; max_error_rate_pct: number; routes: LoadRoute[]; auth?: { header: 'Authorization' | 'Cookie'; secret_name: string } }
+export type LoadState = 'queued' | 'running' | 'passed' | 'failed' | 'inconclusive' | 'config_needed' | 'cancelled' | 'interrupted'
+export interface LoadStage { stage: string; load: number; unit: string; status: string; reason: string; duration_s: number; requests: number; achieved_rps: number | null; active_vus: number | null; max_vus: number | null; p95_ms: number | null; p99_ms: number | null; error_rate: number | null; dropped_iterations: number; thresholds: Record<string, boolean>; per_route: {path:string; requests:number; p95_ms:number|null; p99_ms:number|null; error_rate:number|null}[] }
+export interface LoadReport { execution_state: string; scope: string; binding: LoadBinding; profile: LoadProfile; k6_version: string; target_result: string; capacity_result: string; highest_passing: number | null; first_failing: number | null; stop_reason: string; warnings: string[]; stages: LoadStage[] }
+export interface LoadRun extends LoadBinding { id:string; project_id:string; environment_id:string; profile:LoadProfile; state:LoadState; stopping:boolean; reason:{code:string;message:string}|null; runner_id:string; stage:string; created_at:string; started_at:string|null; finished_at:string|null; deadline_at:string|null; report:LoadReport|null }
+export interface LoadView { environment_id:string; project_id:string; name:string; supported:boolean; ready:boolean; can_manage:boolean; reason:{code:string;message:string}|null; binding:LoadBinding|null; limits:LoadLimits; prompt:{id:string;state:'awaiting_target'|'deferred'|'answered';first_release_id:string;updated_at:string}|null; saved_profile:LoadProfile|null; latest_run:LoadRun|null }

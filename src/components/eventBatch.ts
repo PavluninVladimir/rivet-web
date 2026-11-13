@@ -126,6 +126,7 @@ export function planRefresh(events: Event[], isAgentWork: (type: string) => bool
     // планировщика меняет модель агента-Тимлида.
     if (t.startsWith('role.') || t === 'planner.model_changed') { p.roles = true; p.team = true }
     if (t.startsWith('team.agent_')) p.team = true
+    if (t.startsWith('load_test.')) p.runners = true
     // Текущая работа агентов и runner'ов меняется вместе со статусами задач.
     if (t === 'task.status' || t === 'task.assign' || t === 'task.step' || t === 'runner.renamed') { p.team = true; p.runners = true }
     // Декомпозиция: Тимлид занят, пока не придёт итог плана. Релиз-инженер
