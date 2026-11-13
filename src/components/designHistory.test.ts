@@ -7,7 +7,8 @@ let next = 0
 const fixture = () => initialDesign(() => `00000000-0000-4000-8000-${String(++next).padStart(12, '0')}`)
 
 test('undo removes a property: snapshots show its real previous value and absence', () => {
-  const before = fixture(), after = structuredClone(before)
+  const before = fixture(),
+    after = structuredClone(before)
   before.screens[0].root.children[0].props.padding = 24
   const changes = compareDesignModels(before, after)
   assert.equal(changes.length, 1)
@@ -20,7 +21,8 @@ test('undo removes a property: snapshots show its real previous value and absenc
 })
 
 test('import replacement shows removed and added stable IDs without requiring PatchOps', () => {
-  const before = fixture(), after = fixture()
+  const before = fixture(),
+    after = fixture()
   after.screens[0].root.children[0].props.text = '<script>imported text only</script>'
   const changes = compareDesignModels(before, after)
   const removed = changes.find(change => change.path === `/screens/@${before.screens[0].id}`)
@@ -35,7 +37,8 @@ test('import replacement shows removed and added stable IDs without requiring Pa
 })
 
 test('comparison distinguishes null, deletion and object-key ordering', () => {
-  const before = fixture(), after = structuredClone(before)
+  const before = fixture(),
+    after = structuredClone(before)
   after.screens[0].root.props = Object.fromEntries(Object.entries(before.screens[0].root.props).reverse())
   assert.deepEqual(compareDesignModels(before, after), [])
   after.screens[0].root.props.padding = null
@@ -45,8 +48,14 @@ test('comparison distinguishes null, deletion and object-key ordering', () => {
 })
 
 test('inserting a node does not misreport unchanged siblings, but reorder is visible', () => {
-  const before = fixture(), inserted = structuredClone(before)
-  inserted.screens[0].root.children.unshift({ id: 'new', type: 'text', props: { text: 'Inserted' }, children: [] })
+  const before = fixture(),
+    inserted = structuredClone(before)
+  inserted.screens[0].root.children.unshift({
+    id: 'new',
+    type: 'text',
+    props: { text: 'Inserted' },
+    children: []
+  })
   const additions = compareDesignModels(before, inserted)
   assert.equal(additions.length, 1)
   assert.ok(additions[0].path.endsWith('/children/@new'))
@@ -55,6 +64,12 @@ test('inserting a node does not misreport unchanged siblings, but reorder is vis
   const order = compareDesignModels(before, reordered)
   assert.equal(order.length, 1)
   assert.ok(order[0].path.endsWith('/$order'))
-  assert.deepEqual(order[0].before, before.screens[0].root.children.map(child => child.id))
-  assert.deepEqual(order[0].after, reordered.screens[0].root.children.map(child => child.id))
+  assert.deepEqual(
+    order[0].before,
+    before.screens[0].root.children.map(child => child.id)
+  )
+  assert.deepEqual(
+    order[0].after,
+    reordered.screens[0].root.children.map(child => child.id)
+  )
 })
