@@ -27,6 +27,7 @@ import {
 } from '../components/designModel'
 import { Button, errText } from '../components/form'
 import { DesignRevisionComparison } from '../components/DesignRevisionComparison'
+import { useDesignAssets } from '../components/useDesignAssets'
 import { useIsOwner } from '../components/useOwner'
 import { useStore } from '../store'
 
@@ -53,7 +54,6 @@ export function DesignWorkspace({ user }: { user: User }) {
   const [threads, setThreads] = useState<DesignThread[]>([]),
     [revisions, setRevisions] = useState<DesignRevision[]>([]),
     [diff, setDiff] = useState<DesignDiff | null>(null),
-    [assets, setAssets] = useState<DesignAsset[]>([]),
     [handoff, setHandoff] = useState<DesignHandoff | null>(null)
   const [busy, setBusy] = useState(false),
     [err, setErr] = useState(''),
@@ -103,17 +103,6 @@ export function DesignWorkspace({ user }: { user: User }) {
       if (n !== seq.current) return
       setThreads(t.items ?? [])
       setRevisions(r.items ?? [])
-      const assetIds = [
-        ...new Set(
-          walkNodes(v.model)
-            .map(n => n.props.asset_id)
-            .filter((a): a is string => typeof a === 'string')
-        )
-      ]
-      if (assetIds.length) {
-        const loaded = await Promise.all(assetIds.map(a => designApi.readAsset(projectId, a)))
-        if (n === seq.current) setAssets(loaded)
-      }
       setView(prev => {
         if (historyRef.current !== null) return prev
         if (!prev || prev.document.id !== id || !dirty.current) {
@@ -198,6 +187,12 @@ export function DesignWorkspace({ user }: { user: User }) {
       return view.model
     }
   }, [view, ops])
+  const { assets, error: assetError } = useDesignAssets(
+    projectId,
+    model,
+    selection,
+    view?.document.revision ?? null
+  )
   const nodes = model ? walkNodes(model) : [],
     selected = nodes.find(n => n.id === selection)
   const roots = model
@@ -318,6 +313,11 @@ export function DesignWorkspace({ user }: { user: User }) {
         <h1>Дизайн-система</h1>
         <span className="sub">Токены, компоненты, экраны и обсуждения</span>
       </div>
+      {assetError && (
+        <p role="alert" className="workspace-error">
+          {assetError}
+        </p>
+      )}
       {err && (
         <p role="alert" className="workspace-error">
           {err}
@@ -703,7 +703,6 @@ export function DesignWorkspace({ user }: { user: User }) {
                           if (!f) return
                           void action(async () => {
                             const a = await designApi.asset(projectId!, f)
-                            setAssets(prev => [...prev, a])
                             changeProperty('asset_id', a.id)
                           })
                         }}
